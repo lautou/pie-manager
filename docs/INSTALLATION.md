@@ -2,17 +2,76 @@
 
 ## Sommaire
 
-1. [Prérequis détaillés](#1-prérequis-détaillés)
-2. [Installation sur Linux](#2-installation-sur-linux)
-3. [Installation sur Windows (WSL2)](#3-installation-sur-windows-wsl2)
-4. [Premier démarrage](#4-premier-démarrage)
-5. [Mise à jour](#5-mise-à-jour)
-6. [Désinstallation complète](#6-désinstallation-complète)
-7. [Dépannage](#7-dépannage)
+1. [Configuration système et empreinte ressources](#1-configuration-système-et-empreinte-ressources)
+2. [Prérequis détaillés](#2-prérequis-détaillés)
+3. [Installation sur Linux](#3-installation-sur-linux)
+4. [Installation sur Windows 11](#4-installation-sur-windows-11)
+5. [Premier démarrage](#5-premier-démarrage)
+6. [Mise à jour](#6-mise-à-jour)
+7. [Désinstallation complète](#7-désinstallation-complète)
+8. [Dépannage](#8-dépannage)
 
 ---
 
-## 1. Prérequis détaillés
+## 1. Configuration système et empreinte ressources
+
+### Configuration minimale recommandée
+
+| Ressource | Linux | Windows 11 |
+|---|---|---|
+| **CPU** | 2 cœurs | 4 cœurs (WSL2 en consomme 2) |
+| **RAM** | 2 Go | 4 Go (WSL2 + Podman Machine ~2 Go) |
+| **Disque** | 4 Go libres | 8 Go libres (VM WSL2 incluse) |
+| **OS** | Fedora 38+, Ubuntu 22.04+ | Windows 11 64-bit |
+
+### Empreinte en fonctionnement normal
+
+Les mesures ci-dessous sont relevées avec **1 à 2 portefeuilles actifs**, prix synchronisés, aucune action utilisateur.
+
+#### Linux (état de repos, app démarrée)
+
+| Service | RAM | CPU repos | CPU synchro prix |
+|---|---|---|---|
+| postgres | ~50 Mo | ~0 % | ~1 % |
+| redis | ~10 Mo | ~0 % | ~0 % |
+| backend (FastAPI) | ~150 Mo | ~0 % | ~5 % |
+| worker (Celery) | ~80 Mo | ~0 % | ~10 % |
+| frontend (Vite) | ~200 Mo | ~0 % | ~0 % |
+| nginx | ~5 Mo | ~0 % | ~0 % |
+| **Total** | **~500 Mo** | **~0 %** | **~15 % (15 s/15 min)** |
+
+#### Windows 11 (état de repos, app démarrée)
+
+Sur Windows, les containers tournent dans la **Podman Machine** (VM WSL2). Il faut ajouter la couche virtualisation :
+
+| Couche | RAM | Disque |
+|---|---|---|
+| WSL2 (hyperviseur) | ~100 Mo | — |
+| Podman Machine (VM Fedora CoreOS) | ~400 Mo | ~3 Go (disque virtuel .vhdx) |
+| 6 containers PIE Manager | ~500 Mo | ~50 Mo (données) |
+| **Total VmmemWSL** | **~2 Go** | **~3,5 Go** |
+
+Le processus `VmmemWSL` visible dans le Gestionnaire des tâches représente la mémoire totale de la VM WSL2 — c'est normal.
+
+### Évolution du stockage dans le temps
+
+| Durée d'utilisation | Données PostgreSQL | Disque total (Linux) | Disque total (Windows) |
+|---|---|---|---|
+| 1 mois (2 portefeuilles) | ~5 Mo | ~500 Mo | ~4 Go |
+| 6 mois | ~20 Mo | ~600 Mo | ~4,5 Go |
+| 2 ans | ~80 Mo | ~800 Mo | ~5 Go |
+
+La base de données reste légère — les prix historiques (yfinance) représentent l'essentiel du stockage. Les `.dump` de sauvegarde font généralement **300–500 Ko**.
+
+### Impact des synchronisations
+
+- **Toutes les 15 minutes** : Celery synchronise les prix Yahoo Finance → pic CPU de 5–15 s
+- **Au démarrage** : Alembic vérifie les migrations → 2–5 s de CPU supplémentaire
+- **Régénération snapshots** (Admin) : CPU ~30 % pendant 10–30 s selon la plage de dates
+
+---
+
+## 2. Prérequis détaillés
 
 ### Podman
 
@@ -42,7 +101,7 @@ podman-compose --version   # ou : podman compose version
 
 ---
 
-## 2. Installation sur Linux
+## 3. Installation sur Linux
 
 ### Télécharger le binaire d'installation
 
@@ -98,7 +157,7 @@ Sans WebKitGTK, le navigateur par défaut est utilisé à la place.
 
 ---
 
-## 3. Installation sur Windows 11
+## 4. Installation sur Windows 11
 
 L'installateur Windows gère tout automatiquement — aucune installation manuelle requise.
 
@@ -123,7 +182,7 @@ L'installateur Windows gère tout automatiquement — aucune installation manuel
 
 ---
 
-## 4. Premier démarrage
+## 5. Premier démarrage
 
 Après l'installation, deux méthodes pour lancer l'application :
 
@@ -141,7 +200,7 @@ L'application est accessible à `http://localhost:14943` (ou le port détecté l
 
 ---
 
-## 5. Mise à jour
+## 6. Mise à jour
 
 La mise à jour utilise la même commande que l'installation initiale. L'installateur détecte la version existante et affiche un avertissement de sauvegarde.
 
@@ -163,7 +222,7 @@ Voir [SAUVEGARDE.md](SAUVEGARDE.md) pour le guide complet.
 
 ---
 
-## 6. Désinstallation complète
+## 7. Désinstallation complète
 
 ### Arrêter et supprimer les containers et les volumes
 
@@ -201,7 +260,7 @@ gtk-update-icon-cache -f ~/.local/share/icons/hicolor
 
 ---
 
-## 7. Dépannage
+## 8. Dépannage
 
 ### Le port 14943 est déjà utilisé
 

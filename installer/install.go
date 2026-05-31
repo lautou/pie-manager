@@ -251,9 +251,9 @@ func forceRecreate(composeCmd, composePath string) {
 		// Python and podman-compose are available there natively — no Windows Python needed.
 		wslPath := wslComposePath(composePath)
 		exec.Command("wsl", "-d", "podman-machine-default", "--", //nolint:errcheck
-			"podman-compose", "-f", wslPath, "down", "--remove-orphans").Run()
+			podmanComposeInMachine(), "-f", wslPath, "down", "--remove-orphans").Run()
 		up := exec.Command("wsl", "-d", "podman-machine-default", "--",
-			"podman-compose", "-f", wslPath, "up", "-d")
+			podmanComposeInMachine(), "-f", wslPath, "up", "-d")
 		up.Stdout = io.Discard
 		up.Stderr = os.Stderr
 		up.Run() //nolint:errcheck

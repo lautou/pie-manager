@@ -179,14 +179,22 @@ func installPodmanComposeInMachine() {
 			"sudo", "dnf", "install", "-y", "--quiet", "python3-pip").Run() //nolint:errcheck
 	}
 
-	// Install podman-compose via pip
+	// Install podman-compose via pip and add ~/.local/bin to PATH in the machine
 	cmd := exec.Command("wsl", "-d", "podman-machine-default", "--",
-		"pip3", "install", "--quiet", "podman-compose")
+		"bash", "-c",
+		"pip3 install --quiet podman-compose && "+
+			"grep -q '.local/bin' ~/.bashrc || "+
+			"echo 'export PATH=$PATH:$HOME/.local/bin' >> ~/.bashrc")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		fmt.Printf("Warning: could not install podman-compose in machine: %v\n", err)
 	}
+}
+
+// podmanComposeInMachine returns the full path to podman-compose inside the machine.
+func podmanComposeInMachine() string {
+	return "/home/user/.local/bin/podman-compose"
 }
 
 // wslComposePath converts a Windows absolute path to its WSL equivalent

@@ -110,9 +110,9 @@ func runStartWithCompose(composeCmd, target string) {
 		// On Windows: run podman-compose inside the Podman Machine (WSL2 Fedora VM).
 		wslPath := wslComposePath(composePath)
 		exec.Command("wsl", "-d", "podman-machine-default", "--",
-			"podman-compose", "-f", wslPath, "down", "--remove-orphans").Run() //nolint:errcheck
+			podmanComposeInMachine(), "-f", wslPath, "down", "--remove-orphans").Run() //nolint:errcheck
 		up := exec.Command("wsl", "-d", "podman-machine-default", "--",
-			"podman-compose", "-f", wslPath, "up", "-d")
+			podmanComposeInMachine(), "-f", wslPath, "up", "-d")
 		up.Stdout = io.Discard
 		up.Stderr = os.Stderr
 		up.Run() //nolint:errcheck

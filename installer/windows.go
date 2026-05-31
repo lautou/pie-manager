@@ -213,12 +213,14 @@ func createWindowsShortcut(target, name, icoPath string) error {
 	startMenu := filepath.Join(os.Getenv("APPDATA"), "Microsoft", "Windows", "Start Menu", "Programs")
 	shortcutPath := filepath.Join(startMenu, name+".lnk")
 
-	// PowerShell script to create .lnk shortcut
+	// The shortcut runs PowerShell which:
+	// 1. Starts pie-manager.exe start in background (hidden)
+	// 2. Opens the browser (always works from PowerShell context)
 	ps := fmt.Sprintf(`
 $WshShell = New-Object -comObject WScript.Shell
 $Shortcut = $WshShell.CreateShortcut('%s')
-$Shortcut.TargetPath = '%s'
-$Shortcut.Arguments = 'start'
+$Shortcut.TargetPath = 'powershell.exe'
+$Shortcut.Arguments = '-NoProfile -WindowStyle Hidden -Command "Start-Process -WindowStyle Hidden "'+ '%s' +'" start; Start-Sleep 2; Start-Process "http://localhost:14943""'
 $Shortcut.Description = 'PIE Manager — Portfolio Tracker'
 $Shortcut.IconLocation = '%s,0'
 $Shortcut.Save()

@@ -1,0 +1,74 @@
+name: Publish Container Images
+on:
+  push:
+    tags: ['v*.*.*']
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Log in to ghcr.io
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build and push backend
+        run: |
+          podman build -t ghcr.io/lautou/pie-manager-backend:$VERSION -f ./backend/Containerfile ./backend
+          podman push ghcr.io/lautou/pie-manager-backend:$VERSION
+          podman tag ghcr.io/lautou/pie-manager-backend:$VERSION ghcr.io/lautou/pie-manager-backend:latest
+          podman push ghcr.io/lautou/pie-manager-backend:latest
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+
+      - name: Build and push frontend
+        run: |
+          podman build -t ghcr.io/lautou/pie-manager-frontend:$VERSION -f ./frontend/Containerfile ./frontend
+          podman push ghcr.io/lautou/pie-manager-frontend:$VERSION
+          podman tag ghcr.io/lautou/pie-manager-frontend:$VERSION ghcr.io/lautou/pie-manager-frontend:latest
+          podman push ghcr.io/lautou/pie-manager-frontend:latest
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+
+      - name: Purge anciennes versions backend (garde 2)
+        uses: actions/delete-package-versions@v5
+        continue-on-error: true
+        with:
+          package-name: pie-manager-backend
+          package-type: container
+          min-versions-to-keep: 2
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Purge anciennes versions frontend (garde 2)
+        uses: actions/delete-package-versions@v5
+        continue-on-error: true
+        with:
+          package-name: pie-manager-frontend
+          package-type: container
+          min-versions-to-keep: 2
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Scan backend image (Trivy)
+        uses: aquasecurity/trivy-action@v0.36.0
+        continue-on-error: true
+        with:
+          image-ref: ghcr.io/lautou/pie-manager-backend:${{ steps.version.outputs.version }}
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: 0
+
+      - name: Scan frontend image (Trivy)
+        uses: aquasecurity/trivy-action@v0.36.0
+        continue-on-error: true
+        with:
+          image-ref: ghcr.io/lautou/pie-manager-frontend:${{ steps.version.outputs.version }}
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: 0

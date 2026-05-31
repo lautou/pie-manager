@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=PIE Manager
+Comment=Investment portfolio tracker
+Exec=/opt/pie-manager/lancer.sh
+Icon=pie-manager
+Terminal=false
+Categories=Finance;Office;
+StartupNotify=true
+Keywords=portfolio;investment;finance;stocks;

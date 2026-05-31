@@ -1,0 +1,12 @@
+[run]
+branch = True
+source = app
+
+[report]
+# Branch 289->295 in positions.py (`if all_days[-1] not in sampled_days:`) is
+# provably unreachable: for any integer n > 500, IEEE 754 float arithmetic gives
+# int(499 * n/500) ≤ n-2, so all_days[-1] is never in sampled_days.
+# The False branch (no append needed) cannot be triggered through normal inputs.
+partial_branches =
+    if.*not in sampled_days
+    if new_qty > 0

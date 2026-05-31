@@ -1,0 +1,85 @@
+# compose-prod.yaml — Production deployment using pre-built images from ghcr.io
+# Used by the pie-manager installer binary.
+
+services:
+  postgres:
+    restart: unless-stopped
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pie}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pie_password}
+      POSTGRES_DB: ${POSTGRES_DB:-pie_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pie} -d ${POSTGRES_DB:-pie_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    restart: unless-stopped
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    restart: unless-stopped
+    image: ghcr.io/lautou/pie-manager-backend:${APP_VERSION:-latest}
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-pie}:${POSTGRES_PASSWORD:-pie_password}@postgres:5432/pie_db
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      PYTHONPATH: /app
+      DEBUG: "false"
+      APP_VERSION: ${APP_VERSION:-dev}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  worker:
+    restart: unless-stopped
+    image: ghcr.io/lautou/pie-manager-backend:${APP_VERSION:-latest}
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-pie}:${POSTGRES_PASSWORD:-pie_password}@postgres:5432/pie_db
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      PYTHONPATH: /app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A app.tasks.celery_app worker --loglevel=info -B
+
+  frontend:
+    restart: unless-stopped
+    image: ghcr.io/lautou/pie-manager-frontend:${APP_VERSION:-latest}
+    depends_on:
+      - backend
+
+  nginx:
+    restart: unless-stopped
+    image: nginx:alpine
+    ports:
+      - "${APP_PORT:-14943}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro,z
+    depends_on:
+      - frontend
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:

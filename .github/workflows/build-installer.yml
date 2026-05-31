@@ -1,0 +1,97 @@
+name: Build Installer
+on:
+  push:
+    tags: ['v*.*.*']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Copy assets for embed
+        run: |
+          mkdir -p installer/assets
+          cp compose-prod.yaml installer/assets/
+          cp packaging/pie-manager.desktop installer/assets/
+          cp packaging/pie-manager.svg installer/assets/
+          # wrapper.py is already in installer/assets/ (version-controlled)
+
+      - name: go mod tidy
+        run: cd installer && go mod tidy
+
+      - name: go vet
+        run: cd installer && go vet ./...
+
+      - name: Build static binary (linux/amd64)
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cd installer
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+            -ldflags="-s -w -X main.Version=${VERSION}" \
+            -o pie-manager-linux-amd64 .
+
+      - name: Build static binary (windows/amd64)
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cd installer
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
+            -ldflags="-s -w -X main.Version=${VERSION}" \
+            -o pie-manager-windows-amd64.exe .
+
+      - name: Smoke test — Linux binary executes
+        run: |
+          chmod +x installer/pie-manager-linux-amd64
+          output=$(./installer/pie-manager-linux-amd64 version)
+          echo "Version: $output"
+          [ -n "$output" ] || (echo "ERROR: empty version output" && exit 1)
+
+      - name: Create GitHub Release and upload binaries
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          NOTES="## PIE Manager ${VERSION}
+
+          ### Linux installation (x86_64)
+          \`\`\`bash
+          gh release download ${VERSION} --repo ${{ github.repository }} \\
+            --pattern 'pie-manager-linux-amd64' --dir ~/Downloads/ --clobber && \\
+          ~/Downloads/pie-manager-linux-amd64 install
+          \`\`\`
+
+          ### Windows 11 installation (x86_64)
+          Prerequisite: WSL2 enabled (https://aka.ms/wsl)
+          Download \`pie-manager-windows-amd64.exe\` and run it.
+
+          ### Update
+          Re-download the binary and run it again."
+
+          gh release create "${VERSION}" \
+            --repo ${{ github.repository }} \
+            --title "PIE Manager ${VERSION}" \
+            --notes "${NOTES}" \
+            2>/dev/null || true
+
+          gh release upload "${VERSION}" \
+            installer/pie-manager-linux-amd64 \
+            installer/pie-manager-windows-amd64.exe \
+            installer/checksums.txt \
+            --repo ${{ github.repository }} \
+            --clobber
+
+      - name: Delete obsolete releases (keep only the latest)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CURRENT="${{ github.ref_name }}"
+          gh release list --repo ${{ github.repository }} --limit 50 --json tagName \
+            --jq '.[].tagName' | grep -v "^${CURRENT}$" | while read tag; do
+            gh release delete "$tag" --repo ${{ github.repository }} --yes 2>/dev/null || true
+          done

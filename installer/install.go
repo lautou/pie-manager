@@ -252,7 +252,7 @@ func forceRecreate(composeCmd, composePath string) {
 		wslPath := wslComposePath(composePath)
 		exec.Command("wsl", "-d", "podman-machine-default", "--", //nolint:errcheck
 			podmanComposeInMachine(), "-f", wslPath, "down", "--remove-orphans").Run()
-		up := exec.Command("wsl", "-d", "podman-machine-default", "--",
+		up := exec.Command("podman", "machine", "ssh", "--",
 			podmanComposeInMachine(), "-f", wslPath, "up", "-d")
 		up.Stdout = io.Discard
 		up.Stderr = os.Stderr

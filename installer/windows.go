@@ -164,7 +164,7 @@ func installPodmanWindows() error {
 // (WSL2 Fedora VM). Python is available natively; pip is installed via dnf if needed.
 func installPodmanComposeInMachine() {
 	// Skip if already installed
-	if exec.Command("wsl", "-d", "podman-machine-default", "--",
+	if exec.Command("podman", "machine", "ssh", "--",
 		"podman-compose", "--version").Run() == nil {
 		return
 	}
@@ -172,15 +172,15 @@ func installPodmanComposeInMachine() {
 	fmt.Println("Installing podman-compose inside Podman Machine...")
 
 	// Ensure pip is available (install via dnf if not)
-	if exec.Command("wsl", "-d", "podman-machine-default", "--",
+	if exec.Command("podman", "machine", "ssh", "--",
 		"pip3", "--version").Run() != nil {
 		fmt.Println("  Installing pip via dnf...")
-		exec.Command("wsl", "-d", "podman-machine-default", "--",
+		exec.Command("podman", "machine", "ssh", "--",
 			"sudo", "dnf", "install", "-y", "--quiet", "python3-pip").Run() //nolint:errcheck
 	}
 
 	// Install podman-compose via pip and add ~/.local/bin to PATH in the machine
-	cmd := exec.Command("wsl", "-d", "podman-machine-default", "--",
+	cmd := exec.Command("podman", "machine", "ssh", "--",
 		"bash", "-c",
 		"pip3 install --quiet podman-compose && "+
 			"grep -q '.local/bin' ~/.bashrc || "+
@@ -200,7 +200,7 @@ func podmanComposeInMachine() string {
 // wslComposePath converts a Windows absolute path to its WSL equivalent
 // so compose files can be referenced from inside the Podman Machine.
 func wslComposePath(winPath string) string {
-	out, err := exec.Command("wsl", "-d", "podman-machine-default",
+	out, err := exec.Command("podman", "machine", "ssh",
 		"--", "wslpath", "-u", winPath).Output()
 	if err != nil {
 		return winPath

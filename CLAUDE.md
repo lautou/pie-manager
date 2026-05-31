@@ -1,5 +1,14 @@
 # PIE Manager — Technical Guide
 
+## Absolute rule: update documentation with code changes
+
+**After every code change that impacts user-facing behaviour, installation, or architecture:**
+1. Update `docs/INSTALLATION.md` and `docs/SAUVEGARDE.md` if installation or backup steps change
+2. Update `README.md` if prerequisites, commands, or features change
+3. Update `CLAUDE.md` if architecture, key rules, or technical patterns change
+
+Failing to update docs creates drift between code and documentation, which misleads future users and developers.
+
 ## Absolute rule: 100% test coverage
 
 **Absolute rule**: every code change or new feature must be accompanied by tests ensuring 100% coverage of the modified/added code. Never commit code without its tests.
@@ -207,19 +216,42 @@ pie-manager start                 # or GNOME icon
 | `version` | Print the installed version |
 
 ### Container images
-- Published on **GitHub Container Registry** (`ghcr.io/lautou/pie-manager-*`)
+- Published on **GitHub Container Registry** (`ghcr.io/lautou/pie-manager-*`) — **public**, no token required
+- Images are version-tagged: `ghcr.io/lautou/pie-manager-backend:1.0.0` (pinned in `.env` via `APP_VERSION`)
 - Build + push automated via `publish-images.yml` on tag `vX.X.X`
 
-
-### Installed files
+### Installed files (Linux)
 ```
 ~/.local/share/pie-manager/   compose-prod.yaml, nginx.conf, .env, pie-manager (binary), VERSION
 ~/.local/share/pie-manager/   wrapper.py (only if WebKitGTK is available)
 ~/.local/share/applications/  pie-manager.desktop
 ~/.local/share/icons/hicolor/ pie-manager.svg + .png
-
 ~/.local/bin/                 pie-manager (symlink)
 ```
+
+### Installed files (Windows)
+```
+%APPDATA%\pie-manager\   compose-prod.yaml, nginx.conf, .env, pie-manager.exe, VERSION
+%APPDATA%\pie-manager\   launcher.ps1, pie-manager.ico
+Start Menu\Programs\     PIE Manager.lnk  (→ powershell -File launcher.ps1)
+```
+
+### Windows installation architecture
+
+On Windows, PIE Manager requires WSL2 + Podman Machine (a WSL2-backed Fedora CoreOS VM).
+
+**Compose provider:** `podman-compose` is installed inside the Podman Machine via `dnf install python3-pip && pip3 install podman-compose`. Compose commands are run via `podman machine ssh -- /home/user/.local/bin/podman-compose ...` (NOT via `wsl -d` which lacks systemd).
+
+**Browser:** `launcher.ps1` opens Edge in `--app` mode (no address bar). If already open, brings it to front via `AppActivate`. The `pie-manager start` binary does NOT open the browser on Windows — the launcher handles it.
+
+**VmmemWSL memory:** ~2 GB is normal — the Podman Machine VM + all containers (postgres, redis, backend, frontend, nginx).
+
+**Windows install sequence (fresh machine):**
+1. Run `.exe` → auto-installs WSL2 + Podman CLI (may reboot)
+2. Re-run `.exe` → `podman machine init` (~650 MB download) + starts machine
+3. `podman-compose` installed inside the machine via pip
+4. All 6 containers pulled and started
+5. Edge --app window opens on port 14943
 
 The `.env` file written by the installer contains:
 ```

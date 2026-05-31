@@ -98,21 +98,28 @@ Sans WebKitGTK, le navigateur par défaut est utilisé à la place.
 
 ---
 
-## 3. Installation sur Windows (WSL2)
+## 3. Installation sur Windows 11
 
-> Le support Windows est expérimental. L'environnement recommandé est Linux natif.
+L'installateur Windows gère tout automatiquement — aucune installation manuelle requise.
 
-**Prérequis :**
-- WSL2 activé et une distribution Linux installée (Ubuntu recommandé)
-- [Podman Desktop](https://podman-desktop.io/) pour Windows installé et démarré
+**Prérequis :** Windows 11 64-bit (le reste est installé automatiquement)
 
 **Procédure :**
 
-1. Ouvrir un terminal WSL2
-2. Télécharger le binaire Linux (`pie-manager-linux-amd64`) dans WSL2
-3. Lancer l'installation comme sur Linux
+1. Télécharger `pie-manager-windows-amd64.exe` depuis la [page des releases](https://github.com/lautou/pie-manager/releases/latest)
+2. Double-cliquer pour lancer — Windows SmartScreen peut afficher un avertissement : cliquer **"Afficher plus" → "Exécuter quand même"**
+3. L'installateur gère dans l'ordre :
+   - Installation de WSL2 (si absent) — **reboot possible**, relancer l'exe après
+   - Installation de Podman CLI via winget
+   - Initialisation de la Podman Machine (~650 Mo, quelques minutes)
+   - Installation de `podman-compose` dans la machine
+   - Téléchargement des images (~1,5 Go)
+   - Démarrage des 6 containers
+   - Ouverture de PIE Manager dans Edge (fenêtre sans barre d'adresse)
 
-L'installateur détecte automatiquement WSL2 et vérifie que Podman est accessible depuis l'environnement WSL2.
+**Icône menu Démarrer :** après installation, l'icône PIE Manager lance l'application directement. Plusieurs clics ramènent la fenêtre au premier plan sans ouvrir de doublon.
+
+**Note mémoire :** le processus `VmmemWSL` consomme ~2 Go — normal, c'est la machine virtuelle Podman (WSL2) avec tous les containers.
 
 ---
 

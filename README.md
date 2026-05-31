@@ -24,30 +24,53 @@ PIE Manager permet de suivre plusieurs portefeuilles d'investissement depuis une
 
 | Élément | Détail |
 |---------|--------|
-| Système | Linux (Fedora, Ubuntu ou compatible) |
-| Podman | `podman` et `podman-compose` ou `podman compose` (plugin) |
-
-> **Windows** : supporté via WSL2 + Podman Desktop. Voir [docs/INSTALLATION.md](docs/INSTALLATION.md).
+| Linux | Fedora, Ubuntu ou toute distribution compatible Podman |
+| Windows | Windows 11 64-bit (WSL2 et Podman installés automatiquement) |
 
 ---
 
 ## Installation rapide
 
+### Linux (x86_64)
+
 ```bash
-gh release download --repo lautou/pie-manager --pattern 'pie-manager-linux-amd64' --dir ~/Downloads/ --clobber
+# Avec curl (recommandé — disponible sur toutes les distributions)
+curl -LO https://github.com/lautou/pie-manager/releases/latest/download/pie-manager-linux-amd64
+chmod +x pie-manager-linux-amd64
+./pie-manager-linux-amd64 install
+```
+
+```bash
+# Avec wget
+wget https://github.com/lautou/pie-manager/releases/latest/download/pie-manager-linux-amd64
+chmod +x pie-manager-linux-amd64
+./pie-manager-linux-amd64 install
+```
+
+```bash
+# Avec GitHub CLI (si gh est installé)
+gh release download v1.0.0 --repo lautou/pie-manager \
+  --pattern 'pie-manager-linux-amd64' --dir ~/Downloads/ --clobber
 chmod +x ~/Downloads/pie-manager-linux-amd64
 ~/Downloads/pie-manager-linux-amd64 install
 ```
 
-L'installateur demande votre token GitHub, télécharge les images, configure les services et ouvre l'application.
-
 Après l'installation, l'application est accessible via l'icône GNOME ou :
-
 ```bash
 pie-manager start
 ```
 
-Pour le guide d'installation détaillé : [docs/INSTALLATION.md](docs/INSTALLATION.md).
+### Windows 11 (x86_64)
+
+1. Télécharger [`pie-manager-windows-amd64.exe`](https://github.com/lautou/pie-manager/releases/latest/download/pie-manager-windows-amd64.exe) depuis la page des releases
+2. Double-cliquer pour lancer
+3. Si Windows SmartScreen bloque : cliquer **"Afficher plus" → "Exécuter quand même"**
+
+L'installateur gère tout automatiquement : WSL2, Podman, images Docker, démarrage des services. Un redémarrage peut être nécessaire si WSL2 n'est pas encore installé — relancer simplement l'exe après.
+
+Après l'installation, utiliser l'icône **PIE Manager** dans le menu Démarrer.
+
+Pour le guide détaillé : [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
 ---
 

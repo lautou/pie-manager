@@ -133,6 +133,16 @@ Guide détaillé : [docs/SAUVEGARDE.md](docs/SAUVEGARDE.md).
 
 ---
 
+---
+
+## Sécurité et signature de code
+
+Les binaires Windows sont signés par [SignPath Foundation](https://signpath.org), qui fournit gratuitement des services de signature de code aux projets open source.
+
+[![Signed by SignPath Foundation](https://signpath.org/assets/badges/signpath-oss-badge.svg)](https://signpath.org)
+
+---
+
 ## Licence
 
 [AGPL-3.0-or-later](LICENSE) — Copyright © 2025-2026 Laurent Tourreau.

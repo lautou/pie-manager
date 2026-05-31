@@ -101,9 +101,10 @@ func runInstall() {
 		fmt.Println("OK")
 	}
 
-	// On Windows, Podman requires a WSL2 machine to be running
+	// On Windows, ensure Podman Machine is running and podman-compose is installed inside it
 	if runtime.GOOS == "windows" {
 		ensurePodmanMachineRunning()
+		installPodmanComposeInMachine() // idempotent — skips if already installed
 	}
 
 	// Check for podman-compose

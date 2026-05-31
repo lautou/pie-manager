@@ -161,10 +161,25 @@ func installPodmanWindows() error {
 }
 
 // installPodmanComposeInMachine installs podman-compose inside the Podman Machine
-// (WSL2 Fedora VM where Python is natively available).
-// This keeps the Windows host clean — no Python or extra tooling on Windows.
+// (WSL2 Fedora VM). Python is available natively; pip is installed via dnf if needed.
 func installPodmanComposeInMachine() {
+	// Skip if already installed
+	if exec.Command("wsl", "-d", "podman-machine-default", "--",
+		"podman-compose", "--version").Run() == nil {
+		return
+	}
+
 	fmt.Println("Installing podman-compose inside Podman Machine...")
+
+	// Ensure pip is available (install via dnf if not)
+	if exec.Command("wsl", "-d", "podman-machine-default", "--",
+		"pip3", "--version").Run() != nil {
+		fmt.Println("  Installing pip via dnf...")
+		exec.Command("wsl", "-d", "podman-machine-default", "--",
+			"sudo", "dnf", "install", "-y", "--quiet", "python3-pip").Run() //nolint:errcheck
+	}
+
+	// Install podman-compose via pip
 	cmd := exec.Command("wsl", "-d", "podman-machine-default", "--",
 		"pip3", "install", "--quiet", "podman-compose")
 	cmd.Stdout = os.Stdout

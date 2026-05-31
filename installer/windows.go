@@ -230,21 +230,10 @@ $Shortcut.Save()
 	return cmd.Run()
 }
 
-// openBrowserWindows opens the app in Edge --app mode (no browser chrome).
+// openBrowserWindows opens the app via the default browser.
+// cmd /c start is reliable across all Windows setups.
 func openBrowserWindows(url string) {
-	// Try Edge in --app mode
-	edgePaths := []string{
-		`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`,
-		`C:\Program Files\Microsoft\Edge\Application\msedge.exe`,
-	}
-	for _, edge := range edgePaths {
-		if _, err := os.Stat(edge); err == nil {
-			exec.Command(edge, "--app="+url, "--window-size=1400,900").Start()
-			return
-		}
-	}
-	// Fallback: default browser
-	exec.Command("cmd", "/c", "start", url).Start()
+	exec.Command("cmd", "/c", "start", url).Start() //nolint:errcheck
 }
 
 // notifyWindows sends a Windows balloon notification via PowerShell.

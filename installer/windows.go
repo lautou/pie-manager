@@ -230,10 +230,17 @@ $Shortcut.Save()
 	return cmd.Run()
 }
 
-// openBrowserWindows opens the app via the default browser.
-// cmd /c start is reliable across all Windows setups.
+// openBrowserWindows opens the app in the default browser.
+// rundll32 url.dll,FileProtocolHandler is the most reliable way to open
+// a URL from any Windows process context (including non-interactive ones).
 func openBrowserWindows(url string) {
-	exec.Command("cmd", "/c", "start", url).Start() //nolint:errcheck
+	// Primary: rundll32 (works from any context)
+	if exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start() == nil {
+		return
+	}
+	// Fallback: PowerShell Start-Process
+	exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden",
+		"-Command", "Start-Process '" + url + "'").Start() //nolint:errcheck
 }
 
 // notifyWindows sends a Windows balloon notification via PowerShell.

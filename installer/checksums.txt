@@ -1,2 +1,2 @@
 2644b449124074729b53258290b67292c6a40dc739a3c49877b1372649fb0656  pie-manager-linux-amd64
-f734186089039b95ad4d3ca3c402400fcfbddbd3e4cd17bca04a1e0b2a381140  pie-manager-windows-amd64.exe
+5db00ba8c520ac631f33d901bb8cef3fef06dba587adba776d1d3c65ef3aff74  pie-manager-windows-amd64.exe

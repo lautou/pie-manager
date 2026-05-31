@@ -30,6 +30,9 @@ var wrapperPy []byte
 //go:embed assets/pie-manager.ico
 var iconICO []byte
 
+//go:embed assets/launcher.ps1
+var launcherPS1 []byte
+
 const defaultPort = 14943
 
 // findAvailablePort returns the first free TCP port starting from start.
@@ -206,16 +209,18 @@ func runInstall() {
 	os.Symlink(destBinary, symlink)
 
 
-	// Write ICO icon for Windows shortcut
+	// Write ICO icon and launcher script for Windows shortcut
 	if runtime.GOOS == "windows" {
-		os.WriteFile(filepath.Join(target, "pie-manager.ico"), iconICO, 0644) //nolint:errcheck
+		os.WriteFile(filepath.Join(target, "pie-manager.ico"), iconICO, 0644)          //nolint:errcheck
+		os.WriteFile(filepath.Join(target, "launcher.ps1"), launcherPS1, 0644)         //nolint:errcheck
 	}
 
 	// Desktop integration
 	fmt.Print("Desktop integration... ")
 	if runtime.GOOS == "windows" {
 		icoPath := filepath.Join(target, "pie-manager.ico")
-		createWindowsShortcut(destBinary, "PIE Manager", icoPath)
+		launcherPath := filepath.Join(target, "launcher.ps1")
+		createWindowsShortcut(launcherPath, "PIE Manager", icoPath)
 	} else {
 		hasWebKit := deployWrapper(target)
 		installDesktopAndIcon(home, target, hasWebKit)

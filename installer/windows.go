@@ -208,19 +208,21 @@ func wslComposePath(winPath string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// createWindowsShortcut creates a .lnk shortcut in the Start Menu with icon.
+// createWindowsShortcut creates a .lnk shortcut in the Start Menu.
+// target is the launcher.ps1 script path; the shortcut runs it via PowerShell.
 func createWindowsShortcut(target, name, icoPath string) error {
 	startMenu := filepath.Join(os.Getenv("APPDATA"), "Microsoft", "Windows", "Start Menu", "Programs")
 	shortcutPath := filepath.Join(startMenu, name+".lnk")
 
-	// The shortcut runs PowerShell which:
-	// 1. Starts pie-manager.exe start in background (hidden)
-	// 2. Opens the browser (always works from PowerShell context)
+	// The shortcut targets PowerShell running launcher.ps1 which:
+	// - Starts containers (pie-manager.exe start) in background
+	// - Waits for the app to be ready
+	// - Opens Edge in --app mode (no address bar) or default browser
 	ps := fmt.Sprintf(`
 $WshShell = New-Object -comObject WScript.Shell
 $Shortcut = $WshShell.CreateShortcut('%s')
 $Shortcut.TargetPath = 'powershell.exe'
-$Shortcut.Arguments = '-NoProfile -WindowStyle Hidden -Command "Start-Process -WindowStyle Hidden "'+ '%s' +'" start; Start-Sleep 2; Start-Process "http://localhost:14943""'
+$Shortcut.Arguments = '-ExecutionPolicy Bypass -WindowStyle Hidden -File "%s"'
 $Shortcut.Description = 'PIE Manager — Portfolio Tracker'
 $Shortcut.IconLocation = '%s,0'
 $Shortcut.Save()

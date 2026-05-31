@@ -60,10 +60,11 @@ func runStartWithCompose(composeCmd, target string) {
 	port := readAppPort(target)
 	url := fmt.Sprintf("http://localhost:%d", port)
 
-	// If the app already responds, bring existing window to front instead of opening a new one.
+	// If the app already responds, bring existing window to front.
+	// On Windows the browser is managed by launcher.ps1 — don't open another one.
 	if resp, err := http.Get(url); err == nil { //nolint:noctx
 		resp.Body.Close()
-		if !focusExistingWindow() {
+		if runtime.GOOS != "windows" && !focusExistingWindow() {
 			openBrowser(url)
 		}
 		return
@@ -98,10 +99,11 @@ func runStartWithCompose(composeCmd, target string) {
 		}
 	}
 
-	// Launch the window immediately — it shows an animated loading screen
-	// and polls the backend itself, navigating once it's ready.
-	// This gives instant visual feedback while containers are starting.
-	go openBrowser(url)
+	// On Linux: launch the WebKitGTK window immediately (animated loading screen).
+	// On Windows: the browser is opened by launcher.ps1 — skip here to avoid duplicates.
+	if runtime.GOOS != "windows" {
+		go openBrowser(url)
+	}
 
 	// Start containers.
 	notify("PIE Manager", "Starting services…", "low")

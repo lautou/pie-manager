@@ -2,6 +2,17 @@
 $pieManager = Join-Path $PSScriptRoot "pie-manager.exe"
 $url = "http://localhost:14943"
 
+# If an Edge --app window for PIE Manager is already open, bring it to front and exit
+$existingEdge = Get-Process msedge -ErrorAction SilentlyContinue |
+    Where-Object { $_.MainWindowTitle -like "*PIE Manager*" -or $_.MainWindowTitle -like "*localhost:14943*" } |
+    Select-Object -First 1
+
+if ($existingEdge -and $existingEdge.MainWindowHandle -ne 0) {
+    Add-Type -AssemblyName Microsoft.VisualBasic
+    [Microsoft.VisualBasic.Interaction]::AppActivate($existingEdge.Id)
+    exit 0
+}
+
 # Start containers in background (silent)
 Start-Process -WindowStyle Hidden $pieManager "start"
 
@@ -13,7 +24,7 @@ for ($i = 0; $i -lt 90; $i++) {
     } catch { Start-Sleep 1 }
 }
 
-# Open Edge in app mode (no address bar), fallback to default browser
+# Open Edge in app mode (no address bar, standalone window), fallback to default browser
 $edgePaths = @(
     "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
     "C:\Program Files\Microsoft\Edge\Application\msedge.exe"

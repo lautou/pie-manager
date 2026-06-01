@@ -17,7 +17,6 @@ import {
   Spinner,
   Text,
   TextContent,
-  TextInput,
   TextVariants,
   Title,
 } from '@patternfly/react-core';

@@ -1021,3 +1021,68 @@ async def test_summary_forex_deducts_foreign_currency_fees(client, db_session):
     assert pos is not None
     # 300,000 - 185 = 299,815 JPY (fee deducted from forex position)
     assert pos["quantity"] == pytest.approx(299_815.0, rel=0.001)
+
+
+@pytest.mark.asyncio
+async def test_summary_forex_fee_with_fully_sold_position(client, db_session):
+    """
+    brokers.py line 357->355 False branch:
+    `if adj and row.ticker in raw_positions.get(row.account_id, {})`
+    is False when adj != 0 but the forex position has been fully closed.
+
+    A broker holds JPY (buy 300k, sell 300k → net qty = 0).
+    The JPYEUR=X ticker is not in raw_positions, so the fee-adjustment
+    branch skips it without error.
+    """
+    from datetime import date
+
+    suffix = f"sold-jpy-{id(db_session)}"
+    portfolio = Portfolio(name=f"SoldJPY-{suffix}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    pid = portfolio.id
+
+    broker = Broker(name=f"MUFG-{suffix}", currency="JPY")
+    db_session.add(broker)
+    await db_session.flush()
+    db_session.add(PortfolioAccount(portfolio_id=pid, broker_id=broker.id))
+
+    jpyeur_ticker = f"JPYEUR.SOLD.{suffix}"
+    fee_ticker = f"FRAIS.JPY.SOLD.{suffix}"
+    db_session.add(Product(ticker=jpyeur_ticker, name="JPY/EUR closed", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker=fee_ticker, name="JPY Fee closed", category="Fee", currency="JPY"))
+    await db_session.flush()
+
+    # Buy 300k JPY, then sell all 300k → net qty = 0, no position in raw_positions
+    db_session.add(Transaction(
+        portfolio_id=pid, account_id=broker.id,
+        date=date(2025, 6, 1), type="Actif", ticker=jpyeur_ticker,
+        currency="JPY", exchange_rate=0.006,
+        quantity=300_000.0, unit_price=1.0, unit_price_eur=0.006,
+        total_amount=300_000.0, total_amount_eur=1800.0,
+    ))
+    db_session.add(Transaction(
+        portfolio_id=pid, account_id=broker.id,
+        date=date(2025, 6, 3), type="Actif", ticker=jpyeur_ticker,
+        currency="JPY", exchange_rate=0.006,
+        quantity=-300_000.0, unit_price=1.0, unit_price_eur=0.006,
+        total_amount=-300_000.0, total_amount_eur=-1800.0,
+    ))
+    # Fee still exists even though position is fully closed
+    db_session.add(Transaction(
+        portfolio_id=pid, account_id=broker.id,
+        date=date(2025, 6, 2), type="Frais", ticker=fee_ticker,
+        currency="JPY", exchange_rate=0.006,
+        quantity=-1.0, unit_price=185.0, unit_price_eur=1.11,
+        total_amount=-185.0, total_amount_eur=-1.11,
+    ))
+    await db_session.flush()
+
+    r = await client.get("/api/brokers/summary", params={"portfolio_id": pid})
+    assert r.status_code == 200
+    # No crash; the broker with a closed position and a fee is handled gracefully
+    broker_data = next((b for b in r.json() if b["name"] == f"MUFG-{suffix}"), None)
+    assert broker_data is not None
+    # Position is fully closed — should not appear
+    positions = [p for p in broker_data["positions"] if p["ticker"] == jpyeur_ticker]
+    assert positions == []

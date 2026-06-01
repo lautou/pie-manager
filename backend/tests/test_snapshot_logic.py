@@ -481,3 +481,67 @@ def test_weekend_days_excluded_from_trading_days():
 
     # Exactly 10 trading days in 2 weeks
     assert len(trading_days) == 10
+
+
+# ---------------------------------------------------------------------------
+# dashboard_service.get_holdings with as_of + forex fees — line 80
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_compute_daily_snapshot_forex_fee_with_as_of(db_session):
+    """
+    dashboard_service.py line 80: `if as_of is not None: fee_clauses.append(...)`.
+
+    compute_daily_snapshot calls get_holdings(db, pid, as_of=snap_date).
+    For the as_of branch to be reached, the portfolio must hold a non-EUR
+    Cash product (ticker_to_currency non-empty → foreign_currencies non-empty).
+    A Frais transaction in JPY triggers the full fee-adjustment path including
+    the as_of clause.
+    """
+    from app.models.broker import Broker
+    from app.models.portfolio_account import PortfolioAccount
+
+    portfolio = Portfolio(name=f"Snap-FX-Fee-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+
+    account = Broker(name="FX-Broker", currency="JPY")
+    db_session.add(account)
+    pool = Pool(portfolio_id=portfolio.id, name="FX-Pool", strategy="Offensive", target_pct=1.0, is_active=True)
+    db_session.add(pool)
+    await db_session.flush()
+
+    db_session.add(PortfolioAccount(portfolio_id=portfolio.id, broker_id=account.id))
+
+    jpyeur = f"JPYEUR.FEE.{portfolio.id}"
+    fee_ticker = f"FRAIS.JPY.{portfolio.id}"
+    db_session.add(Product(ticker=jpyeur, name="JPY/EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker=fee_ticker, name="JPY Fee", category="Fee", currency="JPY"))
+    db_session.add(PoolProduct(pool_id=pool.id, ticker=jpyeur))
+    await db_session.flush()
+
+    snap_date = date(2025, 11, 3)  # Monday
+    # Buy 100,000 JPY
+    db_session.add(Transaction(
+        portfolio_id=portfolio.id, account_id=account.id,
+        date=snap_date, type="Actif", ticker=jpyeur,
+        currency="JPY", exchange_rate=0.006,
+        quantity=100_000.0, unit_price=1.0, unit_price_eur=0.006,
+        total_amount=100_000.0, total_amount_eur=600.0,
+    ))
+    # Fee in JPY: 200 JPY brokerage
+    db_session.add(Transaction(
+        portfolio_id=portfolio.id, account_id=account.id,
+        date=snap_date, type="Frais", ticker=fee_ticker,
+        currency="JPY", exchange_rate=0.006,
+        quantity=-1.0, unit_price=200.0, unit_price_eur=1.2,
+        total_amount=-200.0, total_amount_eur=-1.2,
+    ))
+    db_session.add(AssetPrice(ticker=jpyeur, date=snap_date, price=0.006, currency="EUR", source="test"))
+    await db_session.flush()
+
+    # compute_daily_snapshot calls get_holdings(db, pid, as_of=snap_date) → line 80
+    snap = await compute_daily_snapshot(db_session, portfolio.id, snap_date)
+    assert snap is not None
+    # 99,800 JPY * 0.006 = 598.8 EUR (≈ after fee deduction)
+    assert snap.total_eur == pytest.approx(598.8, abs=1.0)

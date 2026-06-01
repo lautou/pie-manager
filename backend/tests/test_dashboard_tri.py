@@ -24,7 +24,7 @@ async def test_tri_no_transactions_returns_404(client, db_session):
     uid = await async_create_portfolio(client, f"TRI-NoTx-{id(db_session)}")
     r = await client.get("/api/dashboard/tri", params={"portfolio_id": uid})
     assert r.status_code == 404
-    assert "flux" in r.json()["detail"].lower()
+    assert "cash flows" in r.json()["detail"].lower()
 
 
 @pytest.mark.asyncio

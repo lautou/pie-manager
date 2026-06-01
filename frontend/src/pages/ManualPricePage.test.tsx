@@ -16,6 +16,18 @@ vi.mock('react-router-dom', () => ({
 // Mock PatternFly core — override Badge, Label, Spinner and NumberInput for assertions
 vi.mock('@patternfly/react-core', () => ({
   ...pfCoreStubs,
+  // FrDatePicker uses DatePicker from PatternFly
+  DatePicker: ({ value, onChange, id, placeholder, isDisabled }: any) => (
+    <input
+      data-testid="date-picker"
+      id={id}
+      type="text"
+      value={value ?? ''}
+      placeholder={placeholder}
+      disabled={isDisabled}
+      onChange={(e) => onChange?.(e, e.target.value)}
+    />
+  ),
   // ManualPricePage tests assert on data-testid="badge"
   Badge: ({ children }: any) => <span data-testid="badge">{children}</span>,
   // Label needs data-color so tests can assert badge colour
@@ -225,19 +237,27 @@ describe('ManualPricePage', () => {
     expect(screen.getByText('Or physique')).toBeTruthy();
   });
 
-  it('typing in date input updates date (line 116)', async () => {
+  it('date picker renders with FrDatePicker (line 116)', () => {
     mockUseProducts.mockReturnValue({ data: [mockManualProduct], isLoading: false, isError: false });
     mockUsePrices.mockReturnValue({ data: [], isLoading: false });
 
-    const user = userEvent.setup({ delay: null });
     render(<ManualPricePage />);
 
-    const dateInputs = screen.getAllByDisplayValue(/\d{4}-\d{2}-\d{2}/);
-    if (dateInputs.length > 0) {
-      await user.clear(dateInputs[0]);
-      await user.type(dateInputs[0], '2024-06-15');
-      expect(screen.getByText('Or physique')).toBeTruthy();
-    }
+    // FrDatePicker is rendered via the DatePicker mock with data-testid="date-picker"
+    expect(screen.getByTestId('date-picker')).toBeTruthy();
+    expect(screen.getByText('Or physique')).toBeTruthy();
+  });
+
+  it('FrDatePicker onChange clears date when value is empty (line 160)', () => {
+    mockUseProducts.mockReturnValue({ data: [mockManualProduct], isLoading: false, isError: false });
+    mockUsePrices.mockReturnValue({ data: [], isLoading: false });
+
+    render(<ManualPricePage />);
+
+    // Clearing the date input triggers FrDatePicker's else-if(!_strVal) branch → setDate('')
+    const dateInput = screen.getByTestId('date-picker');
+    fireEvent.change(dateInput, { target: { value: '' } });
+    expect(screen.getByText('Or physique')).toBeTruthy();
   });
 
   it('product with no currency falls back to EUR (line 53 branch)', () => {

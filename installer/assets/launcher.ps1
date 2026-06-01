@@ -17,7 +17,7 @@ if ($existingEdge -and $existingEdge.MainWindowHandle -ne 0) {
 Start-Process -WindowStyle Hidden $pieManager "start"
 
 # Wait for the app to be ready (up to 90s)
-for ($i = 0; $i -lt 90; $i++) {
+for ($i = 0; $i -lt 180; $i++) {
     try {
         Invoke-WebRequest -Uri "$url/api/admin/version" -TimeoutSec 1 -UseBasicParsing -EA Stop | Out-Null
         break

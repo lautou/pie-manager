@@ -24,6 +24,7 @@ import {
 import { useProducts, usePrices, useCreatePrice } from '../api/queries';
 import type { Product } from '../types';
 import { localDateStr } from '../utils/format';
+import FrDatePicker from '../components/FrDatePicker';
 
 const today = () => localDateStr();
 
@@ -153,11 +154,10 @@ function ProductCard({ product }: ProductCardProps) {
         <Grid hasGutter>
           <GridItem span={6}>
             <FormGroup label={t('common.date')} fieldId={`date-${product.ticker}`}>
-              <TextInput
+              <FrDatePicker
                 id={`date-${product.ticker}`}
-                type="date"
                 value={date}
-                onChange={(_evt, val) => setDate(val)}
+                onChange={(iso) => setDate(iso)}
               />
             </FormGroup>
           </GridItem>

@@ -783,11 +783,9 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.4rem', flexWrap: 'wrap' }}>
                 <div>
                   <span style={{ fontSize: '0.75rem', color: '#6A6E73', display: 'block' }}>{t('common.date')}</span>
-                  <input
-                    type="date"
+                  <FrDatePicker
                     value={form.date}
-                    onChange={(e) => setField('date', e.target.value)}
-                    style={{ padding: '4px 6px', border: '1px solid #0066CC', borderRadius: 4, fontSize: '0.9rem' }}
+                    onChange={(iso) => setField('date', iso)}
                   />
                 </div>
                 {!isEurCurrency && (
@@ -834,15 +832,13 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
                 <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.4rem', flexWrap: 'wrap' }}>
                   <div>
                     <span style={{ fontSize: '0.75rem', color: '#6A6E73', display: 'block' }}>{t('common.date')}</span>
-                    <input
-                      type="date"
+                    <FrDatePicker
                       value={exec.date}
-                      onChange={(e) => {
+                      onChange={(iso) => {
                         const updated = [...form.additional_executions];
-                        updated[idx] = { ...updated[idx], date: e.target.value };
+                        updated[idx] = { ...updated[idx], date: iso };
                         setField('additional_executions', updated);
                       }}
-                      style={{ padding: '4px 6px', border: '1px solid #ccc', borderRadius: 4, fontSize: '0.9rem' }}
                     />
                   </div>
                   {!isEurCurrency && (

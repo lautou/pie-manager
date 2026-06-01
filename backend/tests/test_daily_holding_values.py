@@ -50,7 +50,7 @@ async def _add_product(db, ticker: str, name: str = "ETF", category: str = "Acti
         await db.flush()
 
 
-URL = "/api/holdings/daily-holding-values"
+URL = "/api/dashboard/daily-holding-values"
 
 
 # ---------------------------------------------------------------------------

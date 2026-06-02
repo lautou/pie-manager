@@ -247,6 +247,8 @@ func runInstall() {
 		icoPath := filepath.Join(target, "pie-manager.ico")
 		launcherPath := filepath.Join(target, "launcher.ps1")
 		createWindowsShortcut(launcherPath, "PIE Manager", icoPath)
+		// Auto-start Podman Machine at Windows login to reduce cold-start time.
+		registerPodmanMachineAutostart()
 	} else {
 		hasWebKit := deployWrapper(target)
 		installDesktopAndIcon(home, target, hasWebKit)

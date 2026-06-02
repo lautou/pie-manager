@@ -126,6 +126,10 @@ func runInstall() {
 
 	// Pull images — skip pull if image already present locally.
 	// Images are public on ghcr.io — no authentication required.
+	// On upgrade: if a pull fails (e.g. 403 for an installer-only release that
+	// has no new container images), warn and keep the previous APP_VERSION so
+	// the running containers are not broken. The installer binary is still updated.
+	containerVersion := Version // version to write into .env
 	images := []string{
 		"ghcr.io/lautou/pie-manager-backend:" + Version,
 		"ghcr.io/lautou/pie-manager-frontend:" + Version,
@@ -143,6 +147,14 @@ func runInstall() {
 		cmd.Stdout = io.Discard
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
+			if existingVersion != "" {
+				// Upgrade: keep existing container images — only the installer binary is updated.
+				fmt.Printf("\nWARNING: Could not pull %s (%v)\n", img, err)
+				fmt.Printf("  Container images will remain at v%s.\n", existingVersion)
+				fmt.Println("  The installer binary has been updated to " + Version + ".")
+				containerVersion = existingVersion
+				break
+			}
 			fmt.Printf("ERROR: %v\n", err)
 			os.Exit(1)
 		}
@@ -178,8 +190,9 @@ func runInstall() {
 		}
 	}
 
-	// Write .env for podman-compose
-	envContent := fmt.Sprintf("APP_VERSION=%s\nAPP_PORT=%d\n", Version, port)
+	// Write .env for podman-compose — use containerVersion (may differ from Version
+	// when pulling new container images failed during an installer-only upgrade).
+	envContent := fmt.Sprintf("APP_VERSION=%s\nAPP_PORT=%d\n", containerVersion, port)
 	if err := os.WriteFile(filepath.Join(target, ".env"), []byte(envContent), 0644); err != nil {
 		fmt.Printf("ERROR writing .env: %v\n", err)
 		os.Exit(1)

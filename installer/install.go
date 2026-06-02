@@ -252,13 +252,14 @@ func detectComposeCmd() string {
 
 func forceRecreate(composeCmd, composePath string) {
 	if runtime.GOOS == "windows" {
-		// On Windows: run podman-compose inside the Podman Machine (WSL2 VM).
-		// Python and podman-compose are available there natively — no Windows Python needed.
+		// On Windows: run compose inside the Podman Machine via SSH.
+		// Use `podman compose` (built-in to the Podman binary in the VM) — more
+		// reliable than the pip-installed podman-compose which may not be present.
 		wslPath := wslComposePath(composePath)
-		exec.Command("wsl", "-d", "podman-machine-default", "--", //nolint:errcheck
-			podmanComposeInMachine(), "-f", wslPath, "down", "--remove-orphans").Run()
+		exec.Command("podman", "machine", "ssh", "--",
+			"podman", "compose", "-f", wslPath, "down", "--remove-orphans").Run() //nolint:errcheck
 		up := exec.Command("podman", "machine", "ssh", "--",
-			podmanComposeInMachine(), "-f", wslPath, "up", "-d")
+			"podman", "compose", "-f", wslPath, "up", "-d")
 		up.Stdout = io.Discard
 		up.Stderr = os.Stderr
 		up.Run() //nolint:errcheck

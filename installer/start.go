@@ -109,12 +109,13 @@ func runStartWithCompose(composeCmd, target string) {
 	notify("PIE Manager", "Starting services…", "low")
 
 	if runtime.GOOS == "windows" {
-		// On Windows: run podman-compose inside the Podman Machine (WSL2 Fedora VM).
+		// On Windows: run compose inside the Podman Machine via SSH.
+		// Use `podman compose` (built-in) rather than pip-installed podman-compose.
 		wslPath := wslComposePath(composePath)
 		exec.Command("podman", "machine", "ssh", "--",
-			podmanComposeInMachine(), "-f", wslPath, "down", "--remove-orphans").Run() //nolint:errcheck
+			"podman", "compose", "-f", wslPath, "down", "--remove-orphans").Run() //nolint:errcheck
 		up := exec.Command("podman", "machine", "ssh", "--",
-			podmanComposeInMachine(), "-f", wslPath, "up", "-d")
+			"podman", "compose", "-f", wslPath, "up", "-d")
 		up.Stdout = io.Discard
 		up.Stderr = os.Stderr
 		up.Run() //nolint:errcheck

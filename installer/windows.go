@@ -197,15 +197,20 @@ func podmanComposeInMachine() string {
 	return "/home/user/.local/bin/podman-compose"
 }
 
-// wslComposePath converts a Windows absolute path to its WSL equivalent
-// so compose files can be referenced from inside the Podman Machine.
+// wslComposePath converts a Windows absolute path to its WSL/Podman Machine equivalent.
+// e.g. C:\Users\foo\AppData\Roaming\pie-manager\compose-prod.yaml
+//   → /mnt/c/Users/foo/AppData/Roaming/pie-manager/compose-prod.yaml
+//
+// We compute this in pure Go instead of calling `wslpath` via SSH because
+// backslashes in the Windows path are consumed as escape characters by the
+// remote shell, producing a garbled path (e.g. ".localsharepie-managercompose-prod.yaml").
 func wslComposePath(winPath string) string {
-	out, err := exec.Command("podman", "machine", "ssh",
-		"--", "wslpath", "-u", winPath).Output()
-	if err != nil {
-		return winPath
+	p := strings.ReplaceAll(winPath, `\`, `/`)
+	if len(p) >= 2 && p[1] == ':' {
+		drive := strings.ToLower(string(p[0]))
+		p = "/mnt/" + drive + p[2:]
 	}
-	return strings.TrimSpace(string(out))
+	return p
 }
 
 // createWindowsShortcut creates a .lnk shortcut in the Start Menu.

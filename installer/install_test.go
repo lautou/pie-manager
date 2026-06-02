@@ -216,3 +216,21 @@ func TestCopyFile_ErrDstIsDir(t *testing.T) {
 		t.Error("expected error when dst is a directory")
 	}
 }
+
+func TestWslComposePath(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{`C:\Users\foo\AppData\Roaming\pie-manager\compose-prod.yaml`, `/mnt/c/Users/foo/AppData/Roaming/pie-manager/compose-prod.yaml`},
+		{`C:\Users\ltour\AppData\Roaming\pie-manager\compose-prod.yaml`, `/mnt/c/Users/ltour/AppData/Roaming/pie-manager/compose-prod.yaml`},
+		{`D:\foo\bar`, `/mnt/d/foo/bar`},
+		{`/already/unix/path`, `/already/unix/path`},
+	}
+	for _, tt := range tests {
+		got := wslComposePath(tt.input)
+		if got != tt.want {
+			t.Errorf("wslComposePath(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}

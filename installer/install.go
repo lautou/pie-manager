@@ -50,6 +50,15 @@ func findAvailablePort(start int) int {
 const installDir = ".local/share/pie-manager"
 
 func runInstall() {
+	// On Windows: always wait for Enter before exiting so the console window
+	// stays open long enough for the user to read any error messages.
+	if runtime.GOOS == "windows" {
+		defer func() {
+			fmt.Print("\nPress Enter to close this window...")
+			fmt.Scanln()
+		}()
+	}
+
 	fmt.Printf("=== PIE Manager %s — Installation ===\n\n", Version)
 
 	if runtime.GOOS != "linux" && runtime.GOOS != "windows" {
@@ -62,6 +71,7 @@ func runInstall() {
 	if runtime.GOOS == "windows" {
 		target = windowsInstallDir()
 	}
+	fmt.Printf("Install directory: %s\n", target)
 
 	// Check for existing installation — always update config files.
 	existingVersion := readInstalledVersion(target)
@@ -170,7 +180,10 @@ func runInstall() {
 
 	// Write .env for podman-compose
 	envContent := fmt.Sprintf("APP_VERSION=%s\nAPP_PORT=%d\n", Version, port)
-	os.WriteFile(filepath.Join(target, ".env"), []byte(envContent), 0644)
+	if err := os.WriteFile(filepath.Join(target, ".env"), []byte(envContent), 0644); err != nil {
+		fmt.Printf("ERROR writing .env: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Write nginx.conf
 	if err := os.WriteFile(filepath.Join(target, "nginx.conf"), nginxConf, 0644); err != nil {

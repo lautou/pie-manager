@@ -39,6 +39,7 @@ services:
       PYTHONPATH: /app
       DEBUG: "false"
       APP_VERSION: ${APP_VERSION:-dev}
+      INSTALLER_VERSION: ${INSTALLER_VERSION:-UNKNOWN}
     depends_on:
       postgres:
         condition: service_healthy

@@ -450,18 +450,33 @@ async def test_sync_status_returns_last_sync():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_version_endpoint():
-    """GET /api/admin/version retourne un objet avec version (fallback dev)."""
-    async with _client() as client:
-        r = await client.get("/api/admin/version")
+async def test_version_endpoint_fallback_unknown():
+    """GET /api/admin/version returns UNKNOWN when no version env var is set."""
+    with patch.dict("os.environ", {}, clear=False):
+        env = {k: v for k, v in __import__("os").environ.items()
+               if k not in ("INSTALLER_VERSION", "APP_VERSION")}
+        with patch.dict("os.environ", env, clear=True):
+            async with _client() as client:
+                r = await client.get("/api/admin/version")
     assert r.status_code == 200
-    assert "version" in r.json()
+    assert r.json()["version"] == "UNKNOWN"
 
 
 @pytest.mark.asyncio
-async def test_version_endpoint_from_env():
-    """GET /api/admin/version returns the version from APP_VERSION env var if set."""
-    with patch.dict("os.environ", {"APP_VERSION": "1.2.3"}):
+async def test_version_endpoint_installer_version_takes_priority():
+    """INSTALLER_VERSION takes priority over APP_VERSION."""
+    with patch.dict("os.environ", {"INSTALLER_VERSION": "1.0.6", "APP_VERSION": "1.0.0"}):
+        async with _client() as client:
+            r = await client.get("/api/admin/version")
+    assert r.status_code == 200
+    assert r.json()["version"] == "1.0.6"
+
+
+@pytest.mark.asyncio
+async def test_version_endpoint_from_app_version_fallback():
+    """Falls back to APP_VERSION when INSTALLER_VERSION is not set."""
+    env = {k: v for k, v in __import__("os").environ.items() if k != "INSTALLER_VERSION"}
+    with patch.dict("os.environ", {**env, "APP_VERSION": "1.2.3"}, clear=True):
         async with _client() as client:
             r = await client.get("/api/admin/version")
     assert r.status_code == 200

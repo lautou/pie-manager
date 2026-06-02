@@ -190,9 +190,11 @@ func runInstall() {
 		}
 	}
 
-	// Write .env for podman-compose — use containerVersion (may differ from Version
-	// when pulling new container images failed during an installer-only upgrade).
-	envContent := fmt.Sprintf("APP_VERSION=%s\nAPP_PORT=%d\n", containerVersion, port)
+	// Write .env for podman-compose.
+	// APP_VERSION  = container image tag (may stay at previous version if pull failed)
+	// INSTALLER_VERSION = this installer's version (always current — shown in the UI)
+	envContent := fmt.Sprintf("APP_VERSION=%s\nINSTALLER_VERSION=%s\nAPP_PORT=%d\n",
+		containerVersion, Version, port)
 	if err := os.WriteFile(filepath.Join(target, ".env"), []byte(envContent), 0644); err != nil {
 		fmt.Printf("ERROR writing .env: %v\n", err)
 		os.Exit(1)

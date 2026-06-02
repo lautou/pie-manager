@@ -238,13 +238,12 @@ async def delete_setting(key: str, db: AsyncSession = Depends(get_db)):
 
 @router.get("/version")
 async def get_version():
-    """Retourne la version de l'application."""
+    """Retourne la version de l'application.
+
+    Priority: INSTALLER_VERSION env var (set by installer via .env)
+              → APP_VERSION env var (fallback)
+              → "UNKNOWN" (installer did not run or env not injected)
+    """
     import os
-    import pathlib
-    version = os.getenv("APP_VERSION", "")
-    if not version:
-        try:
-            version = pathlib.Path("/app/VERSION").read_text().strip()
-        except Exception:
-            version = "dev"
+    version = os.getenv("INSTALLER_VERSION") or os.getenv("APP_VERSION") or "UNKNOWN"
     return {"version": version}

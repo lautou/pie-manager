@@ -33,6 +33,11 @@ func notify(summary, body, urgency string) {
 func runStart() {
 	home := os.Getenv("HOME")
 	target := filepath.Join(home, installDir)
+	// On Windows: ensure the Podman Machine (WSL2 VM) is running before
+	// attempting compose commands — it may be stopped after a reboot.
+	if runtime.GOOS == "windows" {
+		ensurePodmanMachineRunning()
+	}
 	composeCmd := detectComposeCmd()
 	runStartWithCompose(composeCmd, target)
 }

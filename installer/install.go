@@ -125,14 +125,13 @@ func runInstall() {
 	fmt.Printf("Compose : %s\n", composeCmd)
 
 	// Pull images — skip pull if image already present locally.
-	// Images are public on ghcr.io — no authentication required.
-	// On upgrade: if a pull fails (e.g. 403 for an installer-only release that
-	// has no new container images), warn and keep the previous APP_VERSION so
+	// Images are hosted on quay.io which allows unrestricted anonymous pulls.
+	// On upgrade: if a pull fails, warn and keep the previous APP_VERSION so
 	// the running containers are not broken. The installer binary is still updated.
 	containerVersion := Version // version to write into .env
 	images := []string{
-		"ghcr.io/lautou/pie-manager-backend:" + Version,
-		"ghcr.io/lautou/pie-manager-frontend:" + Version,
+		"quay.io/ltourreau/pie-manager-backend:" + Version,
+		"quay.io/ltourreau/pie-manager-frontend:" + Version,
 		"postgres:16-alpine",
 		"redis:7-alpine",
 		"nginx:alpine",
@@ -148,7 +147,6 @@ func runInstall() {
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
 			if existingVersion != "" {
-				// Upgrade: keep existing container images — only the installer binary is updated.
 				fmt.Printf("\nWARNING: Could not pull %s (%v)\n", img, err)
 				fmt.Printf("  Container images will remain at v%s.\n", existingVersion)
 				fmt.Println("  The installer binary has been updated to " + Version + ".")

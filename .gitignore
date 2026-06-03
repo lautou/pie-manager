@@ -52,4 +52,5 @@ installer/assets/pie-manager.svg
 installer/pie-manager-linux-amd64
 installer/pie-manager-windows-amd64.exe
 installer/signed/
+installer-prereq/pie-manager-prereq-windows-amd64.exe
 VERSION

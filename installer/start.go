@@ -90,11 +90,11 @@ func runStartWithCompose(composeCmd, target string) {
 	notify("PIE Manager", "Starting…", "low")
 
 	// Pull images if missing — no authentication needed (public registry).
-	if !podmanImageExists("ghcr.io/lautou/pie-manager-backend:" + Version) {
+	if !podmanImageExists("quay.io/ltourreau/pie-manager-backend:" + Version) {
 		notify("PIE Manager", "Downloading images…", "low")
 		for _, img := range []string{
-			"ghcr.io/lautou/pie-manager-backend:" + Version,
-			"ghcr.io/lautou/pie-manager-frontend:" + Version,
+			"quay.io/ltourreau/pie-manager-backend:" + Version,
+			"quay.io/ltourreau/pie-manager-frontend:" + Version,
 		} {
 			fmt.Printf("  Pulling %s…\n", img)
 			pull := exec.Command("podman", "pull", img)

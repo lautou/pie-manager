@@ -74,7 +74,7 @@ services:
     restart: unless-stopped
     image: haproxy:alpine
     ports:
-      - "${APP_PORT:-14943}:80"
+      - "${APP_PORT:-14943}:8080"
     volumes:
       - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro,z
     depends_on:

@@ -362,7 +362,7 @@ func main() {
 
 	composePath := filepath.Join(target, "compose-prod.yaml")
 	logMessage("INFO: running podman compose up -d...")
-	up := exec.Command("podman", "compose", "-f", composePath, "up", "-d")
+	up := exec.Command("podman", "compose", "-f", composePath, "up", "-d", "--remove-orphans")
 	up.Env = append(os.Environ(), "PODMAN_COMPOSE_WARNING_LOGS=false")
 	up.Stdout = os.Stdout
 	up.Stderr = os.Stderr

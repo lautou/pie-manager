@@ -22,29 +22,36 @@ jobs:
           cp compose-prod.yaml installer/assets/
           cp packaging/pie-manager.desktop installer/assets/
           cp packaging/pie-manager.svg installer/assets/
-          # wrapper.py is already in installer/assets/ (version-controlled)
+          # haproxy.cfg, wrapper.py, pie-manager.ico are version-controlled in installer/assets/
 
       - name: go mod tidy
         run: cd installer && go mod tidy
 
-      - name: go vet
+      - name: go vet (Linux)
         run: cd installer && go vet ./...
+
+      - name: go vet (Windows)
+        run: cd installer && GOOS=windows GOARCH=amd64 go vet ./...
+
+      - name: go test (Linux — pure utility functions)
+        run: cd installer && go test ./...
 
       - name: Build static binaries
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           cd installer
 
-          # Versioned filenames (e.g. pie-manager-linux-amd64-1.0.2)
+          # Linux installer
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
             -ldflags="-s -w -X main.Version=${VERSION}" \
             -o "pie-manager-linux-amd64-${VERSION}" .
 
+          # Windows installer (prereq + containers)
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
             -ldflags="-s -w -X main.Version=${VERSION}" \
             -o "pie-manager-windows-amd64-${VERSION}.exe" .
 
-          # Generic aliases for curl/wget scripts (symlinks)
+          # Generic aliases
           cp "pie-manager-linux-amd64-${VERSION}" pie-manager-linux-amd64
           cp "pie-manager-windows-amd64-${VERSION}.exe" pie-manager-windows-amd64.exe
 
@@ -68,14 +75,15 @@ jobs:
           \`\`\`bash
           curl -LO https://github.com/${{ github.repository }}/releases/latest/download/pie-manager-linux-amd64
           chmod +x pie-manager-linux-amd64
-          ./pie-manager-linux-amd64 install
+          ./pie-manager-linux-amd64
           \`\`\`
 
           ### Windows 11 installation (x86_64)
-          Download \`pie-manager-windows-amd64-${VER}.exe\` and run it.
+          Download \`pie-manager-windows-amd64-${VER}.exe\` and run it as Administrator.
+          Sets up WSL2, Podman, Docker Compose, and starts all containers automatically.
 
           ### Update
-          Re-download the binary and run it again."
+          Re-download and run again — fully idempotent."
 
           gh release create "${VERSION}" \
             --repo ${{ github.repository }} \

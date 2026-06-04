@@ -1,12 +1,11 @@
+//go:build linux
+
 package main
 
 import (
 	"fmt"
 	"os"
 )
-
-// Version is injected at build time via -ldflags "-X main.Version=x.y.z"
-var Version = "dev"
 
 func main() {
 	cmd := "install"

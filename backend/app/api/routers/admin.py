@@ -8,6 +8,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from sqlalchemy import text
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from celery.result import AsyncResult
@@ -232,6 +233,19 @@ async def delete_setting(key: str, db: AsyncSession = Depends(get_db)):
     if setting:
         await db.delete(setting)
         await db.commit()
+
+
+# ── Health ────────────────────────────────────────────────────────────────
+
+@router.get("/health")
+async def health_check(db: AsyncSession = Depends(get_db)):
+    """Returns 200 when DB is reachable, 503 otherwise.
+    Probed by HAProxy active health checks every 2 s."""
+    try:
+        await db.execute(text("SELECT 1"))
+        return {"status": "healthy"}
+    except Exception:
+        raise HTTPException(status_code=503, detail="Database unavailable")
 
 
 # ── Version ───────────────────────────────────────────────────────────────

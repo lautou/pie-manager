@@ -11,6 +11,8 @@ export function usePortfolios() {
   return useQuery<User[]>({
     queryKey: ['portfolios'],
     queryFn: async () => (await apiClient.get<User[]>('/api/portfolios/')).data,
+    retry: 30,
+    retryDelay: 2000,
   });
 }
 

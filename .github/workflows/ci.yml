@@ -51,7 +51,6 @@ jobs:
           cp compose-prod.yaml installer/assets/
           cp packaging/pie-manager.desktop installer/assets/
           cp packaging/pie-manager.svg installer/assets/
-          # wrapper.py is already in installer/assets/ (version-controlled)
           cd installer && go mod tidy && go vet ./... && go test ./... && CGO_ENABLED=0 go build ./...
 
       - name: Run frontend unit tests + coverage

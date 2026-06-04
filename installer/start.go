@@ -1,3 +1,5 @@
+//go:build linux
+
 package main
 
 import (
@@ -9,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -17,10 +18,6 @@ import (
 
 // notify sends a desktop notification (best-effort, silent if notify-send is absent).
 func notify(summary, body, urgency string) {
-	if runtime.GOOS == "windows" {
-		notifyWindows(summary, body)
-		return
-	}
 	args := []string{"-a", "PIE Manager", "-u", urgency}
 	if body != "" {
 		args = append(args, summary, body)
@@ -33,11 +30,6 @@ func notify(summary, body, urgency string) {
 func runStart() {
 	home := os.Getenv("HOME")
 	target := filepath.Join(home, installDir)
-	// On Windows: ensure the Podman Machine (WSL2 VM) is running before
-	// attempting compose commands — it may be stopped after a reboot.
-	if runtime.GOOS == "windows" {
-		ensurePodmanMachineRunning()
-	}
 	composeCmd := detectComposeCmd()
 	runStartWithCompose(composeCmd, target)
 }
@@ -50,8 +42,7 @@ func readAppPort(target string) int {
 	}
 	for _, line := range strings.Split(string(data), "\n") {
 		if strings.HasPrefix(line, "APP_PORT=") {
-			val := strings.TrimPrefix(line, "APP_PORT=")
-			val = strings.TrimSpace(val)
+			val := strings.TrimSpace(strings.TrimPrefix(line, "APP_PORT="))
 			if p, err := strconv.Atoi(val); err == nil && p > 0 {
 				return p
 			}
@@ -65,18 +56,14 @@ func runStartWithCompose(composeCmd, target string) {
 	port := readAppPort(target)
 	url := fmt.Sprintf("http://localhost:%d", port)
 
-	// If the app already responds, bring existing window to front.
-	// On Windows the browser is managed by launcher.ps1 — don't open another one.
 	if resp, err := http.Get(url); err == nil { //nolint:noctx
 		resp.Body.Close()
-		if runtime.GOOS != "windows" && !focusExistingWindow() {
+		if !focusExistingWindow() {
 			openBrowser(url)
 		}
 		return
 	}
 
-	// If the saved port is no longer free (grabbed by another app since install),
-	// pick a new one and update .env so Nginx and the wrapper both use it.
 	if ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port)); err != nil {
 		newPort := findAvailablePort(port + 1)
 		fmt.Printf("Port %d is now in use, switching to %d…\n", port, newPort)
@@ -89,7 +76,6 @@ func runStartWithCompose(composeCmd, target string) {
 
 	notify("PIE Manager", "Starting…", "low")
 
-	// Pull images if missing — no authentication needed (public registry).
 	if !podmanImageExists("quay.io/ltourreau/pie-manager-backend:" + Version) {
 		notify("PIE Manager", "Downloading images…", "low")
 		for _, img := range []string{
@@ -104,44 +90,23 @@ func runStartWithCompose(composeCmd, target string) {
 		}
 	}
 
-	// On Linux: launch the WebKitGTK window immediately (animated loading screen).
-	// On Windows: the browser is opened by launcher.ps1 — skip here to avoid duplicates.
-	if runtime.GOOS != "windows" {
-		go openBrowser(url)
-	}
+	go openBrowser(url)
 
-	// Start containers.
 	notify("PIE Manager", "Starting services…", "low")
 
-	if runtime.GOOS == "windows" {
-		// On Windows: run compose inside the Podman Machine via SSH.
-		// Use `podman compose` (built-in) rather than pip-installed podman-compose.
-		wslPath := wslComposePath(composePath)
-		exec.Command("podman", "machine", "ssh", "--",
-			"podman", "compose", "-f", wslPath, "down", "--remove-orphans").Run() //nolint:errcheck
-		up := exec.Command("podman", "machine", "ssh", "--",
-			"podman", "compose", "-f", wslPath, "up", "-d")
-		up.Stdout = io.Discard
-		up.Stderr = os.Stderr
-		up.Run() //nolint:errcheck
-	} else {
 	dir := filepath.Dir(composePath)
 	parts := strings.Fields(composeCmd)
-	// Stop cleanly first (suppressed — some containers may not exist yet)
 	down := exec.Command(parts[0], append(parts[1:], "-f", composePath, "down", "--remove-orphans")...)
 	down.Dir = dir
 	down.Stdout = io.Discard
 	down.Stderr = io.Discard
 	down.Run() //nolint:errcheck
-	// Start all services fresh
 	up := exec.Command(parts[0], append(parts[1:], "-f", composePath, "up", "-d")...)
 	up.Dir = dir
 	up.Stdout = io.Discard
 	up.Stderr = os.Stderr
 	up.Run() //nolint:errcheck
-	} // end else (Linux/macOS path)
 
-	// Print terminal status while the window's loading screen polls the backend.
 	fmt.Println("Waiting for PIE Manager to be ready…")
 	statusMessages := map[int]string{
 		5:  "  → Containers started, waiting for database…",
@@ -181,19 +146,11 @@ func updateEnvPort(target string, port int) {
 }
 
 func podmanImageExists(image string) bool {
-	cmd := exec.Command("podman", "image", "exists", image)
-	return cmd.Run() == nil
+	return exec.Command("podman", "image", "exists", image).Run() == nil
 }
 
 // focusExistingWindow tries to bring the PIE Manager window to the foreground.
-// Returns true if an existing window was found and focused.
 func focusExistingWindow() bool {
-	if runtime.GOOS == "windows" {
-		ps := `$w = Get-Process | Where-Object {$_.MainWindowTitle -like '*PIE Manager*'} | Select-Object -First 1
-if ($w) { [void][System.Reflection.Assembly]::LoadWithPartialName('Microsoft.VisualBasic'); [Microsoft.VisualBasic.Interaction]::AppActivate($w.Id); exit 0 } else { exit 1 }`
-		return exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", ps).Run() == nil
-	}
-	// Linux: try wmctrl then xdotool.
 	if exec.Command("wmctrl", "-a", "PIE Manager").Run() == nil {
 		return true
 	}
@@ -201,20 +158,13 @@ if ($w) { [void][System.Reflection.Assembly]::LoadWithPartialName('Microsoft.Vis
 		pid := strings.TrimSpace(string(out))
 		return exec.Command("xdotool", "windowactivate", pid).Run() == nil
 	}
-	// If wrapper.py is running a window exists even without wmctrl.
 	return exec.Command("pgrep", "-f", "wrapper.py").Run() == nil
 }
 
 func openBrowser(url string) {
-	if runtime.GOOS == "windows" {
-		openBrowserWindows(url)
-		return
-	}
-
 	home := os.Getenv("HOME")
 	wrapperPath := filepath.Join(home, installDir, "wrapper.py")
 
-	// Prefer native WebKitGTK wrapper (no browser chrome).
 	if _, err := os.Stat(wrapperPath); err == nil {
 		cmd := exec.Command("python3", wrapperPath)
 		cmd.Stdout = io.Discard
@@ -223,7 +173,6 @@ func openBrowser(url string) {
 		return
 	}
 
-	// Fallback: Epiphany in application mode, then default browser.
 	browsers := [][]string{
 		{"epiphany", "--application-mode", url},
 		{"xdg-open", url},

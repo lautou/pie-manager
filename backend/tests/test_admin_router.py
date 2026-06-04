@@ -484,6 +484,52 @@ async def test_version_endpoint_from_app_version_fallback():
 
 
 # ---------------------------------------------------------------------------
+# Health — GET /api/admin/health
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_health_ok():
+    """GET /api/admin/health returns 200 when DB executes successfully."""
+    from app.core.database import get_db
+
+    async def working_db():
+        mock = AsyncMock()
+        mock.execute.return_value = MagicMock()
+        yield mock
+
+    fastapi_app.dependency_overrides[get_db] = working_db
+    try:
+        async with _client() as c:
+            r = await c.get("/api/admin/health")
+    finally:
+        fastapi_app.dependency_overrides.pop(get_db, None)
+
+    assert r.status_code == 200
+    assert r.json() == {"status": "healthy"}
+
+
+@pytest.mark.asyncio
+async def test_health_db_unavailable():
+    """GET /api/admin/health returns 503 when DB raises."""
+    from app.core.database import get_db
+
+    async def broken_db():
+        mock = AsyncMock()
+        mock.execute.side_effect = Exception("DB unavailable")
+        yield mock
+
+    fastapi_app.dependency_overrides[get_db] = broken_db
+    try:
+        async with _client() as c:
+            r = await c.get("/api/admin/health")
+    finally:
+        fastapi_app.dependency_overrides.pop(get_db, None)
+
+    assert r.status_code == 503
+    assert r.json()["detail"] == "Database unavailable"
+
+
+# ---------------------------------------------------------------------------
 # System settings — GET /PUT /DELETE /api/admin/settings/{key}
 # ---------------------------------------------------------------------------
 

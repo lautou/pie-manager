@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -345,6 +346,18 @@ func main() {
 	// Preserve the existing port if one is configured; otherwise find a free one.
 	envPath := filepath.Join(target, ".env")
 	port := defaultPort
+	// Stop existing containers first so the port is freed before we check
+	// availability. Without this, our own HAProxy would appear to "block" the
+	// port and force an unnecessary port change on every reinstall.
+	composePath := filepath.Join(target, "compose-prod.yaml")
+	logMessage("INFO: stopping existing containers before port check...")
+	down := exec.Command("podman", "compose", "-f", composePath, "down", "--remove-orphans")
+	down.Env = append(os.Environ(), "PODMAN_COMPOSE_WARNING_LOGS=false")
+	down.Stdout = os.Stdout
+	down.Stderr = os.Stderr
+	down.Run() //nolint:errcheck — best-effort, containers may not exist yet
+
+	// Read saved port; verify it is still free; fall back to next free port.
 	if data, err := os.ReadFile(envPath); err == nil {
 		for _, line := range strings.Split(string(data), "\n") {
 			if strings.HasPrefix(line, "APP_PORT=") {
@@ -353,14 +366,19 @@ func main() {
 				}
 			}
 		}
-	} else {
-		port = findAvailablePort(defaultPort)
 	}
+	if ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port)); err != nil {
+		newPort := findAvailablePort(port + 1)
+		logMessage(fmt.Sprintf("INFO: port %d in use by another app, switching to %d", port, newPort))
+		port = newPort
+	} else {
+		ln.Close()
+	}
+
 	envContent := fmt.Sprintf("APP_VERSION=%s\nINSTALLER_VERSION=%s\nAPP_PORT=%d\n", Version, Version, port)
 	os.WriteFile(envPath, []byte(envContent), 0644) //nolint:errcheck
 	logMessage(fmt.Sprintf("INFO: .env written (version=%s port=%d)", Version, port))
 
-	composePath := filepath.Join(target, "compose-prod.yaml")
 	logMessage("INFO: running podman compose up -d...")
 	up := exec.Command("podman", "compose", "-f", composePath, "up", "-d", "--remove-orphans")
 	up.Env = append(os.Environ(), "PODMAN_COMPOSE_WARNING_LOGS=false")

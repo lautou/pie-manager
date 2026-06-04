@@ -373,6 +373,17 @@ func main() {
 	}
 	logMessage("OK: containers started")
 
+	// Prune unused images — removes previous versions of pie-manager images,
+	// the old nginx image, and any other untagged layers no longer referenced.
+	logMessage("INFO: pruning unused images...")
+	prune := exec.Command("podman", "image", "prune", "-af")
+	prune.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: noWindow}
+	if err := prune.Run(); err != nil {
+		logMessage(fmt.Sprintf("WARN: image prune failed: %v", err))
+	} else {
+		logMessage("OK: unused images removed")
+	}
+
 	// ── Auto-start at login (Task Scheduler + wscript invisible launcher) ────────
 	// wscript.exe is a GUI-subsystem binary — it never creates a console window,
 	// unlike powershell.exe which flashes a window even with -WindowStyle Hidden.

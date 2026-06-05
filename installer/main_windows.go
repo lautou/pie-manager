@@ -415,7 +415,15 @@ func main() {
 	logMessage("INFO: registering auto-start task via Task Scheduler (wscript method)...")
 
 	vbsPath := filepath.Join(target, "start-podman.vbs")
-	vbsContent := `CreateObject("WScript.Shell").Run "podman machine start", 0, False`
+	// Retry loop: WSL2 may not be ready immediately at login.
+	// True = wait for each attempt; retries up to 5 times with 5s between attempts.
+	vbsContent := `Dim sh : Set sh = CreateObject("WScript.Shell")
+Dim i : i = 0
+Do While i < 5
+    If sh.Run("podman machine start", 0, True) = 0 Then Exit Do
+    WScript.Sleep 5000
+    i = i + 1
+Loop`
 	if err := os.WriteFile(vbsPath, []byte(vbsContent), 0644); err != nil {
 		logMessage(fmt.Sprintf("WARN: could not write VBS launcher: %v", err))
 	} else {

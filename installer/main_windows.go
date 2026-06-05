@@ -314,20 +314,22 @@ func main() {
 	}
 
 	// ── Enable podman-restart.service for auto-restart of containers ──────────
-	// The ~/.config/systemd/user directory may not exist or may lack correct
-	// ownership, which causes "Access denied" on systemctl --user enable.
-	// Fix: create the directory, ensure ownership, then enable the service.
-	// loginctl enable-linger allows user services to run without a login session.
+	// systemctl --user enable fails silently in SSH context when the
+	// default.target.wants/ directory is owned by root (Podman Machine default).
+	// Reliable fix: create the symlink directly after fixing ownership.
+	// loginctl enable-linger allows user services to survive without a login session.
 	fmt.Println("=== PIE Manager — Activation du redémarrage automatique des containers ===")
 	logMessage("INFO: configuring podman-restart.service inside Podman Machine...")
 	setupCmd := `sudo loginctl enable-linger $USER && ` +
-		`mkdir -p ~/.config/systemd/user && ` +
+		`mkdir -p ~/.config/systemd/user/default.target.wants && ` +
 		`sudo chown -R $USER:$USER ~/.config && ` +
-		`systemctl --user enable podman-restart.service`
+		`ln -sf /usr/lib/systemd/user/podman-restart.service ` +
+		`~/.config/systemd/user/default.target.wants/podman-restart.service && ` +
+		`XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user daemon-reload`
 	if err := run("podman", "machine", "ssh", "--", "bash", "-c", setupCmd); err != nil {
 		logMessage(fmt.Sprintf("WARN: could not configure podman-restart.service: %v", err))
 	} else {
-		logMessage("OK: podman-restart.service enabled — containers will auto-restart at machine start")
+		logMessage("OK: podman-restart.service enabled via symlink — containers will auto-restart at machine start")
 	}
 
 	// ── Deploy compose files and start containers ─────────────────────────────

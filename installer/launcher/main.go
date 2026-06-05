@@ -100,9 +100,13 @@ func setStatus(w webview2.WebView, msg string) {
 	w.Dispatch(func() { w.Eval(js) })
 }
 
+const noWindow = 0x08000000 // CREATE_NO_WINDOW — suppresses console window for child processes
+
 // machineIsRunning checks if the Podman Machine is running.
 func machineIsRunning() bool {
-	out, err := exec.Command("podman", "machine", "list", "--format", "{{.LastUp}}").Output()
+	cmd := exec.Command("podman", "machine", "list", "--format", "{{.LastUp}}")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: noWindow}
+	out, err := cmd.Output()
 	return err == nil && strings.Contains(strings.ToLower(string(out)), "running")
 }
 

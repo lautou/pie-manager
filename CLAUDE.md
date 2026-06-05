@@ -90,15 +90,17 @@ compose-prod.yaml
 ├── redis                             restart: unless-stopped
 ├── backend (FastAPI + Celery Beat)   restart: unless-stopped, no exposed ports
 ├── worker (Celery worker)            restart: unless-stopped
-├── frontend (Nginx serving built JS) restart: unless-stopped, no exposed ports
-└── nginx (reverse proxy)             restart: unless-stopped, port APP_PORT:80
+├── frontend (Vite dev server)        restart: unless-stopped, no exposed ports
+└── haproxy (reverse proxy)           restart: unless-stopped, port APP_PORT:8080
 ```
 
-In production, **nginx** is the single public entry point. It routes:
-- `/api/*` → `backend:8000` (FastAPI)
-- `/*` → `frontend:5173` (Vite dev server, proxied by nginx)
+In production, **HAProxy** is the single public entry point. It routes:
+- `/api/*` → `backend:8000` (FastAPI) — active health check on `/api/admin/health`
+- `/*` → `frontend:5173` (Vite dev server)
 
-Backend and frontend containers have no exposed ports — all traffic flows through nginx.
+Backend and frontend containers have no exposed ports — all traffic flows through HAProxy.
+HAProxy uses `parse-resolv-conf` + `resolve-prefer ipv4` to handle Podman's DNS correctly
+on both Docker (127.0.0.11) and Podman (gateway IP) environments.
 
 ### Port selection (production)
 
@@ -211,18 +213,18 @@ pie-manager start                 # or GNOME icon
 
 | Subcommand | Role |
 |---|---|
-| `install` (default) | Pull ghcr.io images, write config files, create `.desktop`, start services |
+| `install` (default) | Pull quay.io images, write config files, create `.desktop`, start services |
 | `start` | Read `.env` for port, start containers, open WebKitGTK window or browser |
 | `version` | Print the installed version |
 
 ### Container images
-- Published on **GitHub Container Registry** (`ghcr.io/lautou/pie-manager-*`) — **public**, no token required
-- Images are version-tagged: `ghcr.io/lautou/pie-manager-backend:1.0.0` (pinned in `.env` via `APP_VERSION`)
+- Published on **Quay.io** (`quay.io/ltourreau/pie-manager-*`) — **public**, no token required
+- Images are version-tagged: `quay.io/ltourreau/pie-manager-backend:1.0.0` (pinned in `.env` via `APP_VERSION`)
 - Build + push automated via `publish-images.yml` on tag `vX.X.X`
 
 ### Installed files (Linux)
 ```
-~/.local/share/pie-manager/   compose-prod.yaml, nginx.conf, .env, pie-manager (binary), VERSION
+~/.local/share/pie-manager/   compose-prod.yaml, haproxy.cfg, .env, pie-manager (binary), VERSION
 ~/.local/share/pie-manager/   wrapper.py (only if WebKitGTK is available)
 ~/.local/share/applications/  pie-manager.desktop
 ~/.local/share/icons/hicolor/ pie-manager.svg + .png
@@ -231,35 +233,48 @@ pie-manager start                 # or GNOME icon
 
 ### Installed files (Windows)
 ```
-%APPDATA%\pie-manager\   compose-prod.yaml, nginx.conf, .env, pie-manager.exe, VERSION
-%APPDATA%\pie-manager\   launcher.ps1, pie-manager.ico
-Start Menu\Programs\     PIE Manager.lnk  (→ powershell -File launcher.ps1)
+%APPDATA%\pie-manager\   compose-prod.yaml, haproxy.cfg, .env, VERSION
+%APPDATA%\pie-manager\   launcher.exe, start-podman.vbs
+Start Menu\Programs\     PIE Manager.lnk  (→ launcher.exe)
 ```
 
 ### Windows installation architecture
 
-On Windows, PIE Manager requires WSL2 + Podman Machine (a WSL2-backed Fedora CoreOS VM).
+On Windows, PIE Manager requires WSL2 + Podman Machine (a WSL2-backed Fedora CoreOS VM)
++ Docker Compose (installed via winget). The installer (`pie-manager-windows-amd64.exe`) is a
+single statically compiled Go binary that handles the full setup.
 
-**Compose provider:** `podman-compose` is installed inside the Podman Machine via `dnf install python3-pip && pip3 install podman-compose`. Compose commands are run via `podman machine ssh -- /home/user/.local/bin/podman-compose ...` (NOT via `wsl -d` which lacks systemd).
+**Compose provider:** `docker-compose.exe` (installed on the Windows host via winget). HAProxy
+and all containers communicate over Podman's internal Docker-compatible network.
 
-**Browser:** `launcher.ps1` opens Edge in `--app` mode (no address bar). If already open, brings it to front via `AppActivate`. The `pie-manager start` binary does NOT open the browser on Windows — the launcher handles it.
+**Launcher:** `launcher.exe` is a native Go binary using WebView2 (pre-installed on Windows 11).
+It replaces the old `launcher.ps1`/`open-app.vbs`/Edge `--app` chain. It:
+- Shows the PIE Manager icon in the Windows taskbar (AUMI belongs to our .exe)
+- Detects if a window is already open (single-instance via FindWindowW)
+- Shows a native loading screen while polling `/api/admin/version`
+- Navigates to the app in a WebView2 window once the backend is ready
 
-**VmmemWSL memory:** ~2 GB is normal — the Podman Machine VM + all containers (postgres, redis, backend, frontend, nginx).
+**Auto-start:** A Windows Task Scheduler task runs `start-podman.vbs` at login (wscript.exe,
+completely invisible). This starts the Podman Machine. Containers restart automatically via
+`podman-restart.service` inside the Fedora CoreOS VM.
+
+**VmmemWSL memory:** ~3-4 GB is normal — the Podman Machine VM + all containers.
 
 **Windows install sequence (fresh machine):**
-1. Run `.exe` → auto-installs WSL2 + Podman CLI (may reboot)
-2. Re-run `.exe` → `podman machine init` (~650 MB download) + starts machine
-3. `podman-compose` installed inside the machine via pip
-4. All 6 containers pulled and started
-5. Edge --app window opens on port 14943
+1. Run `.exe` as Administrator → installs WSL2, Podman CLI, Docker Compose (may reboot)
+2. After reboot, installer auto-resumes via RunOnce registry key
+3. `podman machine init` + start (~650 MB download)
+4. All 6 containers pulled and started via `podman compose up -d`
+5. `launcher.exe` deployed, Start Menu shortcut created, Task Scheduler registered
 
 The `.env` file written by the installer contains:
 ```
 APP_VERSION=<version>
+INSTALLER_VERSION=<version>
 APP_PORT=<port>
 ```
 
-### Native window integration (wrapper.py / WebKitGTK)
+### Native window integration (wrapper.py / WebKitGTK) — Linux only
 
 At install time, `deployWrapper()` checks whether Python 3 + WebKitGTK 2 (`gi`, `WebKit2 4.1`)
 are available. If yes, it writes `wrapper.py` to the install directory.

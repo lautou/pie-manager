@@ -23,16 +23,24 @@ Failing to update docs creates drift between code and documentation, which misle
 
 The Go installer (`installer/`) has two categories of functions:
 
-**Fully testable (must be 100% covered):** `findAvailablePort`, `readInstalledVersion`,
-`readAppPort`, `updateEnvPort`, `detectComposeCmd`, `copyFile`. These are pure utility
-functions tested in `install_test.go`.
+**Fully testable (must be 100% covered):** `findAvailablePort`, `readAppPort`,
+`readInstalledVersion`, `updateEnvPort`, `detectComposeCmd`, `copyFile`.
+These pure utility functions live in `common.go` (shared Linux/Windows) and
+`install.go`/`start.go` (Linux only), tested in `install_test.go`.
 
 **Intentionally untestable:** `runInstall`, `runStartWithCompose`, `forceRecreate`,
-`notify`, `podmanImageExists`, `focusExistingWindow`, `openBrowser`, all `windows.go`
-functions. These exec external programs (Podman, browser, OS notifications, Windows API)
-and require integration-level testing. They are covered by the CI smoke test
-(`go build + ./pie-manager version`). Overall installer coverage is ~10% — this is
-expected and acceptable for a system-interaction binary.
+`notify`, `podmanImageExists`, `focusExistingWindow`, `openBrowser`,
+all functions in `main_windows.go`. These exec external programs (Podman, browser,
+OS notifications, Windows API) and require integration-level testing. They are covered
+by the CI smoke test (`go build + ./pie-manager version`). Overall installer coverage
+is ~15% — expected and acceptable for a system-interaction binary.
+
+**Installer structure:**
+- `common.go` — shared code (no build constraint): `Version`, `defaultPort`, `findAvailablePort`, `readAppPort`
+- `main.go` — Linux CLI dispatcher (`//go:build linux`)
+- `main_windows.go` — Windows full installer (`//go:build windows`)
+- `install.go`, `start.go`, `install_test.go` — Linux only (`//go:build linux`)
+- `launcher/` — separate Go module, builds `launcher.exe` (Windows WebView2 native launcher)
 
 ## Absolute rule: refactor after every change
 
@@ -65,8 +73,9 @@ All data entry goes through the UI — no import mechanism exists.
 - **Podman only** — never use `docker` or `docker-compose`
 - **Containerfile** — never Dockerfile
 - Volumes with `:z` flag for SELinux (Fedora) — silently ignored on macOS/Windows
-- Frontend port: 5173 (Vite dev) / served through Nginx in prod
-- Backend port: **8000** (internal only in prod — not exposed, accessed via Nginx)
+- Frontend port: 5173 (Vite dev) / proxied through HAProxy in prod
+- Backend port: **8000** (internal only in prod — not exposed, accessed via HAProxy)
+- HAProxy internal port: **8080** (not 80 — rootless Podman cannot bind privileged ports < 1024)
 - **Library/framework APIs**: when searching for solutions involving a library or framework component, always check the official component documentation website first — never guess API signatures or behavior from memory.
 
 ## Container architecture
@@ -195,6 +204,22 @@ The same logic is mirrored in `brokers.py` for broker-level position display.
   returned as 0.5418 instead of 0.005418). Implemented in `app/tasks/prices.py`.
 - `Manuel` and `Fee` categories excluded from refresh
 
+## Health check endpoint
+
+- `GET /api/admin/health` — returns `{"status": "healthy"}` (200) or 503 if DB unreachable
+- Used by HAProxy active health check (`option httpchk`, `http-check send meth GET uri /api/admin/health`)
+- HAProxy probes every 2s (`inter 2s rise 2 fall 3`) independently of incoming requests
+- HAProxy config: `parse-resolv-conf` reads DNS from `/etc/resolv.conf` (portable across Docker/Podman)
+  + `resolve-prefer ipv4` prevents dual-stack IPv6 issue in rootless Podman
+  + `init-addr libc,none` allows HAProxy to start before backend is up
+
+## Frontend startup resilience
+
+`usePortfolios()` is configured with `retry: 30, retryDelay: 2000` — shows spinner for up
+to 60s while backend warms up after container restart. Without this, the portfolio selection
+page shows "Erreur lors du chargement" if the backend is still starting when the user opens
+the app.
+
 ## Distribution
 
 ### Architecture: static Go installer
@@ -273,6 +298,30 @@ APP_VERSION=<version>
 INSTALLER_VERSION=<version>
 APP_PORT=<port>
 ```
+
+### Windows gotchas (do not repeat these mistakes)
+
+**HAProxy port 80 forbidden in rootless Podman** — HAProxy must listen on port 8080 internally,
+mapped to `APP_PORT:8080` in compose. Port 80 causes `Permission denied` at startup.
+
+**`podman-restart.service` enable via SSH** — `systemctl --user enable` fails silently when
+`~/.config/systemd/user/default.target.wants/` is owned by root (Podman Machine default).
+Fix: create symlink directly:
+```bash
+podman machine ssh -- sudo chown -R user:user /home/user/.config
+podman machine ssh -- ln -s /usr/lib/systemd/user/podman-restart.service \
+  /home/user/.config/systemd/user/default.target.wants/podman-restart.service
+podman machine ssh -- bash -c "XDG_RUNTIME_DIR=/run/user/1000 systemctl --user daemon-reload"
+```
+
+**Podman machine start at login** — the Task Scheduler VBS uses `True` (wait) + retry loop
+(up to 5 attempts, 5s between) because WSL2 may not be ready immediately at login.
+
+**Image cleanup** — use targeted removal of old pie-manager versions only, never `podman image prune -af`
+which would delete images from other projects on the machine.
+
+**Fedora/RHEL short image names** — always use fully qualified names (`docker.io/library/postgres:16-alpine`)
+to avoid "short-name resolution enforced" errors in non-interactive contexts.
 
 ### Native window integration (wrapper.py / WebKitGTK) — Linux only
 
@@ -419,8 +468,8 @@ Image artifacts (500 MB × N tags) accumulate quickly against the GitHub quota.
 When deleting tags/releases (cleanup), always do all 3 actions:
 1. `gh release delete vX.Y.Z --yes` — delete the GitHub release
 2. `git tag -d vX.Y.Z && git push origin :refs/tags/vX.Y.Z` — delete the tag
-3. Obsolete ghcr.io images are purged automatically by `publish-images.yml`
-   (action `actions/delete-package-versions@v5`, keeps the last 2 versions)
+3. Quay.io images: delete manually via Quay.io UI (no automatic cleanup configured)
+   Registry: `quay.io/ltourreau/pie-manager-backend` and `quay.io/ltourreau/pie-manager-frontend`
 
 ### Frontend coverage — known limitations and solutions
 

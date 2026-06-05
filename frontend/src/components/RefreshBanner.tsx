@@ -2,9 +2,15 @@ import { useIsFetching } from '@tanstack/react-query';
 import { Spinner } from '@patternfly/react-core';
 import { useTranslation } from 'react-i18next';
 
+// Background polling queries that run silently on their own interval —
+// they should not trigger the visible refresh banner.
+const BACKGROUND_QUERY_KEYS = new Set(['github-update-status', 'sync-status']);
+
 export default function RefreshBanner() {
   const { t } = useTranslation();
-  const isFetching = useIsFetching();
+  const isFetching = useIsFetching({
+    predicate: (query) => !BACKGROUND_QUERY_KEYS.has(query.queryKey[0] as string),
+  });
   if (!isFetching) return null;
 
   return (

@@ -122,10 +122,12 @@ function CommissionManager() {
   // Transfer list derived state (computed once per render, used in tickers panel)
   const tickersAvailable = allProducts
     .filter(p => !selectedTickers.includes(p.ticker))
-    .filter(p => !tickerFilterLeft || p.ticker.includes(tickerFilterLeft.toUpperCase()) || p.name.toLowerCase().includes(tickerFilterLeft.toLowerCase()));
+    .filter(p => !tickerFilterLeft || p.ticker.includes(tickerFilterLeft.toUpperCase()) || p.name.toLowerCase().includes(tickerFilterLeft.toLowerCase()))
+    .sort((a, b) => a.ticker.localeCompare(b.ticker));
   const tickersAllowed = allProducts
     .filter(p => selectedTickers.includes(p.ticker))
-    .filter(p => !tickerFilterRight || p.ticker.includes(tickerFilterRight.toUpperCase()) || p.name.toLowerCase().includes(tickerFilterRight.toLowerCase()));
+    .filter(p => !tickerFilterRight || p.ticker.includes(tickerFilterRight.toUpperCase()) || p.name.toLowerCase().includes(tickerFilterRight.toLowerCase()))
+    .sort((a, b) => a.ticker.localeCompare(b.ticker));
   const tickersUnknown = selectedTickers.filter(t => !allProducts.find(p => p.ticker === t));
   const addTicker = (t: string) => setSelectedTickers(s => [...s, t]);
   const removeTicker = (t: string) => setSelectedTickers(s => s.filter(x => x !== t));
@@ -399,10 +401,12 @@ function CommissionManager() {
                     </div>
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
                     <button onClick={() => openEditBroker(acc)} style={{ ...btnSm }} title="Modifier nom/couleur/portfolios">✏️</button>
                     <button onClick={() => handleDeleteBroker(acc)} style={{ ...btnSm, background: '#FAEAE8', border: '1px solid #C9190B', color: '#C9190B' }} title="Supprimer le broker">🗑</button>
                     <Button variant="tertiary" size="sm" onClick={() => openEditCommission(acc.id, acc.commission_schedule)}>Commission</Button>
+                    <Button variant="tertiary" size="sm" onClick={() => { setEditingId(acc.id); setEditMode('tickers'); setSelectedTickers(acc.allowed_tickers ?? []); setTickerFilterLeft(''); setTickerFilterRight(''); }}>Produits</Button>
+                    <Button variant="tertiary" size="sm" onClick={() => { setEditingId(acc.id); setEditMode('fx'); setFxMonthlyFree(acc.monthly_free_eur != null ? String(acc.monthly_free_eur) : ''); setFxAboveRate(acc.above_monthly_rate > 0 ? String((acc.above_monthly_rate * 100).toFixed(2)) : ''); setFxWeekendRate(acc.weekend_rate != null ? String((acc.weekend_rate * 100).toFixed(2)) : ''); }}>Change FX</Button>
                   </div>
                 )}
               </td>
@@ -618,10 +622,10 @@ export default function GlobalConfigPage() {
 
       {/* ── Brokers + Commissions (tableau unifié) ── */}
       <Card style={{ marginBottom: '1.5rem' }}>
-        <CardTitle>🏦 Brokers et grilles de commission</CardTitle>
+        <CardTitle>🏦 Brokers</CardTitle>
         <CardBody>
           <p style={{ fontSize: '0.85rem', color: '#6A6E73', marginBottom: '1rem' }}>
-            Gérer les brokers et configurer leurs frais de courtage. Le bouton ✏️ modifie le nom/couleur/portfolios, le bouton Commission édite les grilles tarifaires.
+            Gérer les brokers et leur configuration : nom, couleur, portfolios associés, grilles de commissions, produits autorisés et frais de change (FX).
           </p>
           <CommissionManager />
         </CardBody>

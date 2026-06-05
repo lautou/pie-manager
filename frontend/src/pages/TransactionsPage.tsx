@@ -423,7 +423,7 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
         date: form.date,
         type: dbType,
         ticker: dbTicker,
-        currency: 'EUR',
+        currency: isDepotRetraitType ? (selectedAccount?.currency || 'EUR') : form.currency,
         exchange_rate: 1.0,
         quantity: normalizedQty,
         unit_price: isDepotRetraitType ? 1.0 : form.unit_price,
@@ -517,13 +517,33 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
         </FormSelect>
       </FormGroup>
 
-      {/* Dépôt/Retrait: no ticker dropdown, show locked label */}
+      {/* Dépôt/Retrait: no ticker dropdown, show locked label + currency + date */}
       {form.type === 'Dépôt/Retrait' ? (
-        <FormGroup fieldId="tx-depot-info" style={{ marginBottom: '1rem' }}>
-          <div style={{ padding: '6px 8px', background: '#f5f5f5', borderRadius: 4, fontSize: '0.9rem', color: '#6A6E73' }}>
-            LIQUIDITE.EURO — Liquidités EUR (EUR)
-          </div>
-        </FormGroup>
+        <>
+          <FormGroup fieldId="tx-depot-info" style={{ marginBottom: '1rem' }}>
+            <div style={{ padding: '6px 8px', background: '#f5f5f5', borderRadius: 4, fontSize: '0.9rem', color: '#6A6E73' }}>
+              {selectedAccount ? `LIQUIDITE.${selectedAccount.currency} — Liquidités ${selectedAccount.currency} (${selectedAccount.currency})` : 'LIQUIDITE.EURO — Liquidités EUR (EUR)'}
+            </div>
+          </FormGroup>
+          <FormGroup label={t('transactions.fields.currency')} isRequired fieldId="tx-depot-currency" style={{ marginBottom: '1rem' }}>
+            <TextInput
+              id="tx-depot-currency"
+              type="text"
+              value={selectedAccount?.currency || 'EUR'}
+              isDisabled
+            />
+            <div style={{ fontSize: '0.75rem', color: '#6A6E73', marginTop: '0.25rem' }}>
+              {t('transactions.fields.currencyLocked')}
+            </div>
+          </FormGroup>
+          <FormGroup label={t('transactions.fields.date')} isRequired fieldId="tx-depot-date" style={{ marginBottom: '1rem' }}>
+            <FrDatePicker
+              id="tx-depot-date"
+              value={form.date}
+              onChange={(iso) => setField('date', iso)}
+            />
+          </FormGroup>
+        </>
       ) : (
         <>
           {/* Ticker */}

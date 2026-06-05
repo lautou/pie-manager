@@ -626,7 +626,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     const delBtns = screen.getAllByText('×');
     await user.click(delBtns[0]);
     // Still renders
-    expect(screen.getByText(/Brokers et grilles/i)).toBeTruthy();
+    expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
   }, 10000);
 
   it('can add a tier row', async () => {
@@ -634,7 +634,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     render(<GlobalConfigPage />);
     await user.click(screen.getByText('Commission'));
     await user.click(screen.getByText('+ Ajouter une tranche'));
-    expect(screen.getByText(/Brokers et grilles/i)).toBeTruthy();
+    expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
   }, 10000);
 
   it('shows "Grille vide" message when no tiers', async () => {
@@ -655,7 +655,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     const selects = screen.getAllByRole('combobox');
     if (selects.length > 0) {
       await user.selectOptions(selects[0], 'percent');
-      expect(screen.getByText(/Brokers et grilles/i)).toBeTruthy();
+      expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
     }
   }, 10000);
 
@@ -677,7 +677,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     await user.click(screen.getByText('Commission'));
     const saveBtns = screen.getAllByText('Enregistrer');
     await user.click(saveBtns[saveBtns.length - 1]);
-    expect(screen.getByText(/Brokers et grilles/i)).toBeTruthy();
+    expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
     fetchSpy.mockRestore();
   }, 10000);
 
@@ -874,7 +874,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     const saveBtns = screen.getAllByText('Enregistrer');
     await user.click(saveBtns[saveBtns.length - 1]);
     // Error is caught by handleSave try/catch → sets error state
-    expect(screen.getByText(/Brokers et grilles/i)).toBeTruthy();
+    expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
     fetchSpy.mockRestore();
   }, 10000);
 
@@ -890,7 +890,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     await user.click(screen.getByText('Produits'));
     const saveBtns = screen.getAllByText('Enregistrer');
     await user.click(saveBtns[saveBtns.length - 1]);
-    expect(screen.getByText(/Brokers et grilles/i)).toBeTruthy();
+    expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
     fetchSpy.mockRestore();
   }, 10000);
 
@@ -923,7 +923,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
       await user.clear(inp);
       await user.type(inp, '1.5');
     }
-    expect(screen.getByText(/Brokers et grilles/i)).toBeTruthy();
+    expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
   }, 10000);
 
   it('in Change FX tab: onFocus triggers select (line 383)', async () => {
@@ -990,7 +990,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     await user.click(screen.getByText('Commission'));
     await user.click(screen.getByText('Change FX'));
     // With null monthly_free_eur → setFxMonthlyFree(''); above_monthly_rate=0 → ''; weekend_rate=null → ''
-    expect(screen.getByText(/Brokers et grilles/i)).toBeTruthy();
+    expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
   }, 10000);
 
   it('switching from FX tab back to Commission tab (line 285 onClick)', async () => {
@@ -1032,7 +1032,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
       fireEvent.change(el, { target: { value: '2.5' } });
       // Don't need to assert each spy, just verify no crash
     }
-    expect(screen.getByText(/Brokers et grilles/i)).toBeTruthy();
+    expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
   }, 10000);
 
   it('broker table name sort header onClick (line 225)', async () => {
@@ -1043,7 +1043,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     const nameTh = brokerTableThs.find(th => th.textContent?.includes('Broker'));
     if (nameTh) {
       await user.click(nameTh as HTMLElement);
-      expect(screen.getByText(/Brokers et grilles/i)).toBeTruthy();
+      expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
     }
   }, 10000);
 });
@@ -1349,7 +1349,7 @@ describe('GlobalConfigPage — additional branch coverage', () => {
     // Broker with null color → acc.color ?? '#6A6E73' uses fallback
     expect(screen.getAllByText('Degiro').length).toBeGreaterThan(0);
     // The page renders without crash — the dot span uses #6A6E73 as backgroundColor
-    expect(screen.getByText(/Brokers et grilles/i)).toBeTruthy();
+    expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
   });
 
   it('broker with null currency in openEditBroker uses EUR fallback (line 78 ?? branch)', async () => {
@@ -1387,7 +1387,7 @@ describe('GlobalConfigPage — additional branch coverage', () => {
         await user.click(checkboxes[0]);
       }
     }
-    expect(screen.getByText(/Brokers et grilles/i)).toBeTruthy();
+    expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
   }, 10000);
 
   it('handleSaveBroker catch without detail uses "Erreur" fallback (line 96 ?? branch)', async () => {
@@ -1485,7 +1485,7 @@ describe('GlobalConfigPage — additional branch coverage', () => {
       // Allow microtask to run
       await new Promise(resolve => setTimeout(resolve, 0));
     }
-    expect(screen.getByText(/Brokers et grilles/i)).toBeTruthy();
+    expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
     fetchSpy.mockRestore();
   }, 10000);
 

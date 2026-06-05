@@ -4,8 +4,10 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -54,7 +56,7 @@ const loadingHTMLTpl = `<!DOCTYPE html>
 <body>
   <h2>PIE Manager</h2>
   <div class="version">{{VERSION}}</div>
-  <p>Starting services, please wait…</p>
+  <p id="status">Starting services, please wait…</p>
   <div class="spinner"></div>
 </body>
 </html>`
@@ -92,6 +94,18 @@ func getAppPort() int {
 	return port
 }
 
+// setStatus updates the status message in the WebView2 page without reloading.
+func setStatus(w webview2.WebView, msg string) {
+	js := fmt.Sprintf(`document.getElementById('status').textContent = %q`, msg)
+	w.Dispatch(func() { w.Eval(js) })
+}
+
+// machineIsRunning checks if the Podman Machine is running.
+func machineIsRunning() bool {
+	out, err := exec.Command("podman", "machine", "list", "--format", "{{.LastUp}}").Output()
+	return err == nil && strings.Contains(strings.ToLower(string(out)), "running")
+}
+
 func main() {
 	// Single-instance: focus existing window and exit if already running.
 	if focusExistingWindow() {
@@ -109,10 +123,32 @@ func main() {
 	w.SetSize(1400, 900, webview2.HintNone)
 	w.SetHtml(strings.Replace(loadingHTMLTpl, "{{VERSION}}", Version, 1))
 
-	// Poll the backend in a goroutine; navigate once it responds.
 	go func() {
+		// ── Phase 1: Wait for Podman Machine (no timeout — it will always start) ──
+		if !machineIsRunning() {
+			setStatus(w, "Podman machine starting…")
+			for !machineIsRunning() {
+				time.Sleep(2 * time.Second)
+			}
+		}
+
+		// ── Phase 2: Wait for port to open (HAProxy + containers, no timeout) ──
+		setStatus(w, "Containers starting…")
+		addr := fmt.Sprintf("localhost:%d", port)
+		for {
+			conn, err := net.DialTimeout("tcp", addr, time.Second)
+			if err == nil {
+				conn.Close()
+				break
+			}
+			time.Sleep(time.Second)
+		}
+
+		// ── Phase 3: Poll /api/admin/version — 30 s max ──────────────────────────
+		setStatus(w, "Connecting to application…")
 		client := &http.Client{Timeout: 2 * time.Second}
-		for i := 0; i < 90; i++ {
+		deadline := time.Now().Add(30 * time.Second)
+		for time.Now().Before(deadline) {
 			resp, err := client.Get(apiURL)
 			if err == nil && resp.StatusCode == 200 {
 				resp.Body.Close()
@@ -121,9 +157,10 @@ func main() {
 			}
 			time.Sleep(time.Second)
 		}
-		// Timeout — show error in the same window.
+
+		// Phase 3 timed out — backend reachable but not responding correctly.
 		w.Dispatch(func() {
-			w.SetHtml(`<!DOCTYPE html><html><body style="font-family:Segoe UI;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#1a1a2e;color:#e0e0e0;flex-direction:column"><h2>PIE Manager</h2><p style="margin-top:16px;color:#ff6b6b">Backend did not respond within 90 seconds.<br>Check that the Podman machine is running.</p></body></html>`)
+			w.SetHtml(`<!DOCTYPE html><html><body style="font-family:Segoe UI;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#1a1a2e;color:#e0e0e0;flex-direction:column"><h2>PIE Manager</h2><p style="margin-top:16px;color:#ff6b6b">Application did not respond within 30 seconds.<br>HAProxy is reachable but the backend may still be starting.<br>Please try again in a few seconds.</p></body></html>`)
 		})
 	}()
 

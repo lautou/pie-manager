@@ -54,6 +54,7 @@ installer/pie-manager-linux-amd64
 installer/pie-manager-windows-amd64.exe
 installer/installer
 installer/signed/
+installer/assets/launcher.exe
 
 # installer-prereq merged into installer/ — ignore remaining local artifacts
 installer-prereq/

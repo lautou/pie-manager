@@ -18,11 +18,24 @@ jobs:
 
       - name: Copy assets for embed
         run: |
-          mkdir -p installer/assets
+          mkdir -p installer/assets installer/launcher/assets
           cp compose-prod.yaml installer/assets/
+          cp compose-prod.yaml installer/launcher/assets/
           cp packaging/pie-manager.desktop installer/assets/
           cp packaging/pie-manager.svg installer/assets/
-          # haproxy.cfg, wrapper.py, pie-manager.ico are version-controlled in installer/assets/
+          # haproxy.cfg, pie-manager.ico are version-controlled in installer/assets/
+          # haproxy.cfg, pie-manager.ico are version-controlled in installer/launcher/assets/
+
+      - name: go mod tidy (launcher)
+        run: cd installer/launcher && go mod tidy
+
+      - name: Build launcher.exe (embedded in Windows installer)
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cd installer/launcher
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
+            -ldflags="-H windowsgui -s -w -X main.Version=${VERSION}" \
+            -o ../assets/launcher.exe .
 
       - name: go mod tidy
         run: cd installer && go mod tidy

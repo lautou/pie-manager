@@ -23,8 +23,8 @@ var composeProd []byte
 //go:embed assets/haproxy.cfg
 var haproxyCfg []byte
 
-//go:embed assets/pie-manager.ico
-var iconICO []byte
+//go:embed assets/launcher.exe
+var launcherExe []byte
 
 const noWindow = 0x08000000 // CREATE_NO_WINDOW
 
@@ -445,136 +445,32 @@ Register-ScheduledTask `+
 	}
 
 	// ── Desktop integration ───────────────────────────────────────────────────
-	// launcher.ps1 : reads port from .env, focuses existing Edge window if
-	// already open, otherwise polls until the app responds, then opens Edge
-	// in --app mode (no address bar). Does NOT start containers.
-	// open-app.vbs  : runs launcher.ps1 via wscript.exe (0 = SW_HIDE) so no
-	// console window flashes when the user clicks the Start Menu icon.
+	// launcher.exe : native Go + WebView2 binary with the PIE Manager icon
+	// embedded as a Windows PE resource. Handles single-instance detection,
+	// polls until the backend is ready, then shows the app in a WebView2 window.
+	// Windows extracts the icon from the .exe automatically — no IconLocation needed.
 	fmt.Println("=== PIE Manager — Intégration bureau ===")
-	logMessage("INFO: deploying launcher and desktop shortcut...")
+	logMessage("INFO: deploying launcher.exe and desktop shortcut...")
 
-	launcherPath := filepath.Join(target, "launcher.ps1")
-	launcherContent := `# PIE Manager — open the app in the browser.
-# Containers start automatically at login; this script just opens the browser.
+	// Deploy launcher.exe — the WebView2 native Go launcher with embedded icon.
+	launcherExePath := filepath.Join(target, "launcher.exe")
+	if err := os.WriteFile(launcherExePath, launcherExe, 0755); err != nil {
+		logMessage(fmt.Sprintf("WARN: could not write launcher.exe: %v", err))
+	} else {
+		logMessage("OK: launcher.exe deployed to " + launcherExePath)
+	}
 
-# Read port from .env
-$envFile = Join-Path $PSScriptRoot ".env"
-$port = 14943
-if (Test-Path $envFile) {
-    $m = Select-String -Path $envFile -Pattern "^APP_PORT=(\d+)" | Select-Object -First 1
-    if ($m) { $port = [int]$m.Matches.Groups[1].Value }
-}
-$url = "http://localhost:$port"
-
-# Bring existing Edge window to front if already open — skip loading screen
-$eg = Get-Process msedge -ErrorAction SilentlyContinue |
-      Where-Object { $_.MainWindowTitle -like "*PIE Manager*" -or $_.MainWindowTitle -like "*localhost:$port*" } |
-      Select-Object -First 1
-if ($eg -and $eg.MainWindowHandle -ne 0) {
-    Add-Type -AssemblyName Microsoft.VisualBasic
-    [Microsoft.VisualBasic.Interaction]::AppActivate($eg.Id)
-    exit 0
-}
-
-# Show a loading window immediately so the user sees feedback right away.
-# A background runspace handles the blocking HTTP poll so the UI stays responsive.
-# The timer closes the form as soon as the API responds (or after 90 s timeout).
-Add-Type -AssemblyName System.Windows.Forms,System.Drawing
-[System.Windows.Forms.Application]::EnableVisualStyles()
-
-$form = New-Object System.Windows.Forms.Form
-$form.Text = "PIE Manager"
-$form.Size = "380,110"
-$form.StartPosition = "CenterScreen"
-$form.FormBorderStyle = "FixedDialog"
-$form.MaximizeBox = $false
-$form.MinimizeBox = $false
-$form.TopMost = $true
-
-$label = New-Object System.Windows.Forms.Label
-$label.Location = "20,15"
-$label.Size = "340,20"
-$label.Text = "PIE Manager is starting, please wait..."
-$label.Font = New-Object System.Drawing.Font("Segoe UI", 10)
-$form.Controls.Add($label)
-
-$bar = New-Object System.Windows.Forms.ProgressBar
-$bar.Location = "20,45"
-$bar.Size = "330,22"
-$bar.Style = "Marquee"
-$bar.MarqueeAnimationSpeed = 30
-$form.Controls.Add($bar)
-
-# Shared state between UI thread and background poll runspace
-$state = [hashtable]::Synchronized(@{ Done = $false })
-
-# Background runspace: polls the API without blocking the UI event loop
-$rs = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace()
-$rs.Open()
-$rs.SessionStateProxy.SetVariable('state', $state)
-$rs.SessionStateProxy.SetVariable('url', $url)
-$ps = [System.Management.Automation.PowerShell]::Create()
-$ps.Runspace = $rs
-[void]$ps.AddScript({
-    for ($i = 0; $i -lt 90; $i++) {
-        try {
-            Invoke-WebRequest -Uri "$url/api/admin/version" -TimeoutSec 1 -UseBasicParsing -EA Stop | Out-Null
-            $state.Done = $true
-            return
-        } catch { Start-Sleep 1 }
-    }
-    $state.Done = $true
-})
-$async = $ps.BeginInvoke()
-
-# Timer: check every 500 ms if poll completed, then close the loading window
-$timer = New-Object System.Windows.Forms.Timer
-$timer.Interval = 500
-$timer.Add_Tick({
-    if ($state.Done) {
-        $timer.Stop()
-        $form.Close()
-    }
-})
-$timer.Start()
-
-$form.ShowDialog() | Out-Null
-
-$ps.EndInvoke($async) | Out-Null
-$rs.Close()
-
-# Open Edge in app mode (no address bar), fallback to default browser
-$edgePaths = @(
-    "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-    "C:\Program Files\Microsoft\Edge\Application\msedge.exe"
-)
-$edge = $edgePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
-if ($edge) { Start-Process $edge "--app=$url", "--window-size=1400,900" }
-else        { Start-Process $url }
-`
-	os.WriteFile(launcherPath, []byte(launcherContent), 0644) //nolint:errcheck
-
-	icoPath := filepath.Join(target, "pie-manager.ico")
-	os.WriteFile(icoPath, iconICO, 0644) //nolint:errcheck
-
-	// open-app.vbs: launches launcher.ps1 via wscript so no console window appears
-	vbsLauncherPath := filepath.Join(target, "open-app.vbs")
-	vbsLauncherContent := fmt.Sprintf(
-		`CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""%s""", 0, False`,
-		launcherPath)
-	os.WriteFile(vbsLauncherPath, []byte(vbsLauncherContent), 0644) //nolint:errcheck
-
-	// Start Menu shortcut → wscript.exe open-app.vbs
+	// Start Menu shortcut → launcher.exe directly.
+	// Windows extracts the taskbar/Start Menu icon from the .exe PE resources —
+	// no IconLocation needed on the shortcut.
 	startMenu := filepath.Join(os.Getenv("APPDATA"), "Microsoft", "Windows", "Start Menu", "Programs")
 	shortcutPath := filepath.Join(startMenu, "PIE Manager.lnk")
 	psShortcut := fmt.Sprintf(`
 $ws = New-Object -ComObject WScript.Shell
 $s  = $ws.CreateShortcut('%s')
-$s.TargetPath   = 'wscript.exe'
-$s.Arguments    = '/B /NoLogo "%s"'
-$s.IconLocation = '%s,0'
-$s.Description  = 'PIE Manager — Portfolio Tracker'
-$s.Save()`, shortcutPath, vbsLauncherPath, icoPath)
+$s.TargetPath  = '%s'
+$s.Description = 'PIE Manager — Portfolio Tracker'
+$s.Save()`, shortcutPath, launcherExePath)
 	if _, err := runPS(psShortcut); err != nil {
 		logMessage(fmt.Sprintf("WARN: could not create shortcut: %v", err))
 	} else {
@@ -585,5 +481,4 @@ $s.Save()`, shortcutPath, vbsLauncherPath, icoPath)
 		"PIE Manager est installé et démarré.\nUtilisez le raccourci 'PIE Manager' dans le menu Démarrer.")
 
 	logMessage("=== END ===")
-	os.Exit(0)
 }

@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -34,22 +33,6 @@ func runStart() {
 	runStartWithCompose(composeCmd, target)
 }
 
-// readAppPort reads APP_PORT from the install dir's .env file, falling back to defaultPort.
-func readAppPort(target string) int {
-	data, err := os.ReadFile(filepath.Join(target, ".env"))
-	if err != nil {
-		return defaultPort
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.HasPrefix(line, "APP_PORT=") {
-			val := strings.TrimSpace(strings.TrimPrefix(line, "APP_PORT="))
-			if p, err := strconv.Atoi(val); err == nil && p > 0 {
-				return p
-			}
-		}
-	}
-	return defaultPort
-}
 
 func runStartWithCompose(composeCmd, target string) {
 	composePath := filepath.Join(target, "compose-prod.yaml")

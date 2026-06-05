@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -358,15 +357,7 @@ func main() {
 	down.Run() //nolint:errcheck — best-effort, containers may not exist yet
 
 	// Read saved port; verify it is still free; fall back to next free port.
-	if data, err := os.ReadFile(envPath); err == nil {
-		for _, line := range strings.Split(string(data), "\n") {
-			if strings.HasPrefix(line, "APP_PORT=") {
-				if p, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(line, "APP_PORT="))); err == nil && p > 0 {
-					port = p
-				}
-			}
-		}
-	}
+	port = readAppPort(target)
 	if ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port)); err != nil {
 		newPort := findAvailablePort(port + 1)
 		logMessage(fmt.Sprintf("INFO: port %d in use by another app, switching to %d", port, newPort))

@@ -63,7 +63,7 @@ func runInstall() {
 		"quay.io/ltourreau/pie-manager-frontend:" + Version,
 		"postgres:16-alpine",
 		"redis:7-alpine",
-		"haproxy:alpine",
+		"docker.io/library/haproxy:alpine",
 	}
 	for _, img := range images {
 		if podmanImageExists(img) {

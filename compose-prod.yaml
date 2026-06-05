@@ -72,7 +72,7 @@ services:
 
   haproxy:
     restart: unless-stopped
-    image: haproxy:alpine
+    image: docker.io/library/haproxy:alpine
     ports:
       - "${APP_PORT:-14943}:8080"
     volumes:

@@ -391,16 +391,28 @@ func main() {
 	}
 	logMessage("OK: containers started")
 
-	// Prune unused images — removes previous versions of pie-manager images,
-	// the old nginx image, and any other untagged layers no longer referenced.
-	logMessage("INFO: pruning unused images...")
-	prune := exec.Command("podman", "image", "prune", "-af")
-	prune.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: noWindow}
-	if err := prune.Run(); err != nil {
-		logMessage(fmt.Sprintf("WARN: image prune failed: %v", err))
-	} else {
-		logMessage("OK: unused images removed")
+	// Remove old PIE Manager image versions — only our own images, never
+	// images from other Podman projects on the same machine.
+	logMessage("INFO: removing old PIE Manager image versions...")
+	for _, repo := range []string{
+		"quay.io/ltourreau/pie-manager-backend",
+		"quay.io/ltourreau/pie-manager-frontend",
+	} {
+		cmd := exec.Command("podman", "images", repo, "--format", "{{.Tag}}")
+		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: noWindow}
+		out, err := cmd.Output()
+		if err != nil {
+			continue
+		}
+		for _, tag := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+			if tag != "" && tag != Version && tag != "latest" {
+				rmi := exec.Command("podman", "rmi", repo+":"+tag)
+				rmi.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: noWindow}
+				rmi.Run() //nolint:errcheck
+			}
+		}
 	}
+	logMessage("OK: old image versions removed")
 
 	// ── Auto-start at login (Task Scheduler + wscript invisible launcher) ────────
 	// wscript.exe is a GUI-subsystem binary — it never creates a console window,

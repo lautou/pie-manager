@@ -155,6 +155,25 @@ func runInstall() {
 	fmt.Println("\nStarting services...")
 	forceRecreate(composeCmd, filepath.Join(target, "compose-prod.yaml"))
 
+	// Remove old PIE Manager image versions — only our own images, never
+	// images from other Podman projects on the same machine.
+	fmt.Print("Removing old PIE Manager image versions... ")
+	for _, repo := range []string{
+		"quay.io/ltourreau/pie-manager-backend",
+		"quay.io/ltourreau/pie-manager-frontend",
+	} {
+		out, err := exec.Command("podman", "images", repo, "--format", "{{.Tag}}").Output()
+		if err != nil {
+			continue
+		}
+		for _, tag := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+			if tag != "" && tag != Version && tag != "latest" {
+				exec.Command("podman", "rmi", repo+":"+tag).Run() //nolint:errcheck
+			}
+		}
+	}
+	fmt.Println("OK")
+
 	fmt.Printf("\n✓ PIE Manager %s installed successfully!\n", Version)
 	fmt.Println("  Launch via the GNOME icon or: pie-manager start")
 }

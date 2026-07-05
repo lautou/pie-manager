@@ -631,6 +631,25 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     expect(screen.getByText('Transactions')).toBeTruthy();
   }, 10000);
 
+  it('handleTickerChange: forex ticker (JPYEUR=X) sets currency to the foreign currency, not product.currency', async () => {
+    // JPYEUR=X product has currency='EUR' in DB, but the held currency is JPY.
+    // The form should show JPY so the exchange rate field is editable.
+    const jpyProductEurCurrency = { ticker: 'JPYEUR=X', name: 'Yen/Euro', category: 'Cash', currency: 'EUR' };
+    mockUseAccounts.mockReturnValue({ data: [mockAccount] });
+    mockUseProducts.mockReturnValue({ data: [jpyProductEurCurrency] });
+    mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
+
+    const user = userEvent.setup({ delay: null });
+    render(<TransactionsPage />);
+
+    await user.click(screen.getByText('Nouvelle transaction'));
+    const tickerSelect = screen.getByRole('combobox', { name: 'Ticker' });
+    await user.selectOptions(tickerSelect, 'JPYEUR=X');
+
+    const currencyInput = screen.getByPlaceholderText('EUR') as HTMLInputElement;
+    expect(currencyInput.value).toBe('JPY');
+  }, 10000);
+
   it('handleCurrencyChange: changing to EUR sets exchange_rate to 1.0', async () => {
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
 

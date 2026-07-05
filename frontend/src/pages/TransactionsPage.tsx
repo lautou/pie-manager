@@ -292,6 +292,9 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
   // Auto-fill Revolut FX commission
   useEffect(() => {
     if (!isRevolutFX) return;
+    // In edit mode, only auto-fill if fees were already recorded for this transaction.
+    // Otherwise the original "no fees" state would be silently overridden.
+    if (isEditing && linkedFees.length === 0) return;
     /* v8 ignore next -- @preserve */
     const amount = Math.abs(form.quantity * form.unit_price * form.exchange_rate);
     /* v8 ignore next -- @preserve */
@@ -363,8 +366,11 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
   const handleTickerChange = (_event: React.FormEvent, value: string) => {
     /* v8 ignore next -- @preserve */
     const product = products.find((p) => p.ticker === value) ?? null;
+    // For forex positions (JPYEUR=X, USDEUR=X…), the held currency is the foreign
+    // one (JPY, USD), not the product's stored currency (EUR).
+    const forexMatch = value.match(/^([A-Z]{3})[A-Z]{3}=X$/);
     /* v8 ignore next -- @preserve */
-    const firstCurrency = product?.currency ?? '';
+    const firstCurrency = forexMatch ? forexMatch[1] : (product?.currency ?? '');
     setDirection('deposit');
     setForm((prev) => ({
       ...prev,
@@ -424,7 +430,7 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
         type: dbType,
         ticker: dbTicker,
         currency: isDepotRetraitType ? (selectedAccount?.currency || 'EUR') : form.currency,
-        exchange_rate: 1.0,
+        exchange_rate: form.exchange_rate,
         quantity: normalizedQty,
         unit_price: isDepotRetraitType ? 1.0 : form.unit_price,
         linked_transaction_id: form.linked_transaction_id,
@@ -643,7 +649,7 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
                 type="number"
                 min={0}
                 step={0.0001}
-                value={form.exchange_rate || ''}
+                value={form.exchange_rate}
                 disabled={isEurCurrency}
                 onFocus={(e) => e.target.select()}
                 onChange={(e) => {

@@ -783,6 +783,72 @@ async def test_update_transaction_auto_calculates_balance_eur_when_null(client, 
 
 
 @pytest.mark.asyncio
+async def test_update_non_eur_transaction_auto_calculates_balance_currency(client, db_session):
+    """
+    Editing and re-saving a non-EUR transaction with balance_currency=null triggers
+    auto-calculation from the previous same-currency balance.
+
+    User workflow: click pencil on JPYEUR=X transaction → save without changes
+    → balance_currency (Solde compte devise) appears.
+    """
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+    from app.models.transaction import Transaction as TxModel
+
+    portfolio = Portfolio(name=f"JpyUpdBal-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name="Revolut6", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    db_session.add(PortfolioAccount(portfolio_id=uid, broker_id=account.id))
+    await db_session.flush()
+    aid = account.id
+
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    await db_session.flush()
+
+    # Anchor: first JPY purchase with known balance_currency
+    anchor = TxModel(
+        portfolio_id=uid, account_id=aid, date=date(2025, 5, 14), type="Actif",
+        ticker="JPYEUR=X", currency="JPY", exchange_rate=0.006102,
+        quantity=117333.0, unit_price=1.0, unit_price_eur=0.006102,
+        total_amount=117333.0, total_amount_eur=716.0,
+        balance_currency=5716779.0, balance_eur=34885.44,
+    )
+    db_session.add(anchor)
+    await db_session.flush()
+
+    # Later withdrawal — balance_currency was null (created before the fix)
+    withdrawal = TxModel(
+        portfolio_id=uid, account_id=aid, date=date(2026, 5, 25), type="Actif",
+        ticker="JPYEUR=X", currency="JPY", exchange_rate=0.005387,
+        quantity=-10145.0, unit_price=1.0, unit_price_eur=0.005387,
+        total_amount=-10145.0, total_amount_eur=-54.65,
+        balance_currency=None, balance_eur=34830.79,
+    )
+    db_session.add(withdrawal)
+    await db_session.flush()
+    tx_id = withdrawal.id
+
+    # User clicks pencil → save without changes → PUT with same values
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r = await client.put(f"/api/transactions/{tx_id}", json={
+            "portfolio_id": uid, "account_id": aid,
+            "date": "2026-05-25", "type": "Actif", "ticker": "JPYEUR=X",
+            "currency": "JPY", "exchange_rate": 0.005387,
+            "quantity": -10145.0, "unit_price": 1.0,
+        })
+    assert r.status_code == 200
+
+    # balance_currency = 5716779 + (-10145) = 5706634 JPY
+    assert r.json()["balance_currency"] == pytest.approx(5706634.0, abs=0.01)
+
+
+@pytest.mark.asyncio
 async def test_update_transaction_propagates_balance_eur_to_subsequent(client, db_session):
     """
     When a transaction's amount changes, balance_eur of all SUBSEQUENT
@@ -1445,6 +1511,289 @@ async def test_create_transaction_non_eur_balance_currency_not_auto_set(client, 
     # balance_currency must NOT be auto-set from balance_eur (non-EUR currency)
     # It should be None since we didn't provide it
     assert data["balance_currency"] is None
+
+
+# ---------------------------------------------------------------------------
+# balance_currency auto-calculation for non-EUR transactions (JPYEUR=X)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_create_non_eur_transaction_auto_calculates_balance_currency(client, db_session):
+    """
+    When a non-EUR transaction is created and there is a previous transaction in
+    the same currency with a known balance_currency, balance_currency is computed
+    as prev_balance_currency + total_amount (in native currency).
+
+    Scenario: JPYEUR=X — first purchase of 117333 JPY recorded with balance_currency
+    (total JPY held = 5716779). Adding a withdrawal of 10145 JPY yields 5706634 JPY.
+    """
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+    from app.models.transaction import Transaction as TxModel
+
+    portfolio = Portfolio(name=f"JpyBal-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name="Revolut", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    db_session.add(PortfolioAccount(portfolio_id=uid, broker_id=account.id))
+    await db_session.flush()
+    aid = account.id
+
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    await db_session.flush()
+
+    # Previous JPY purchase with a known balance_currency (5716779 JPY held)
+    prev_tx = TxModel(
+        portfolio_id=uid, account_id=aid, date=date(2025, 5, 14), type="Actif",
+        ticker="JPYEUR=X", currency="JPY", exchange_rate=0.006102,
+        quantity=117333.0, unit_price=1.0, unit_price_eur=0.006102,
+        total_amount=117333.0, total_amount_eur=716.0,
+        balance_currency=5716779.0, balance_eur=34885.44,
+    )
+    db_session.add(prev_tx)
+    await db_session.flush()
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r = await client.post("/api/transactions/", json={
+            "portfolio_id": uid, "account_id": aid,
+            "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
+            "currency": "JPY", "exchange_rate": 0.005387,
+            "quantity": -10145.0, "unit_price": 1.0,
+        })
+    assert r.status_code == 201
+    data = r.json()
+
+    # total_amount = -10145 × 1 = -10145 JPY
+    # balance_currency = 5716779 + (-10145) = 5706634 JPY
+    assert data["balance_currency"] == pytest.approx(5706634.0, abs=0.01)
+    # balance_eur should also be computed (34885.44 + (-54.65) ≈ 34830.79)
+    assert data["balance_eur"] is not None
+
+
+@pytest.mark.asyncio
+async def test_create_non_eur_transaction_no_prev_currency_balance_leaves_none(client, db_session):
+    """
+    When no previous transaction of the same currency has a known balance_currency,
+    balance_currency stays null — same behaviour as balance_eur with no prior anchor.
+    """
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+
+    portfolio = Portfolio(name=f"JpyNoPrev-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name="Revolut2", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    db_session.add(PortfolioAccount(portfolio_id=uid, broker_id=account.id))
+    await db_session.flush()
+    aid = account.id
+
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    await db_session.flush()
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r = await client.post("/api/transactions/", json={
+            "portfolio_id": uid, "account_id": aid,
+            "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
+            "currency": "JPY", "exchange_rate": 0.006102,
+            "quantity": 117333.0, "unit_price": 1.0,
+        })
+    assert r.status_code == 201
+    # No prior JPY balance → balance_currency stays null
+    assert r.json()["balance_currency"] is None
+
+
+@pytest.mark.asyncio
+async def test_create_non_eur_retroactive_balance_currency_propagation(client, db_session):
+    """
+    Inserting a non-EUR transaction in the past retroactively updates balance_currency
+    for all subsequent same-currency transactions.
+
+    Scenario: later withdrawal of 10145 JPY already has balance_currency=5706634.
+    Inserting an earlier withdrawal of 1000 JPY (total_amount=-1000) must shift the
+    later balance by -1000 → 5705634.
+    """
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+    from app.models.transaction import Transaction as TxModel
+
+    portfolio = Portfolio(name=f"JpyRetro-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name="Revolut3", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    db_session.add(PortfolioAccount(portfolio_id=uid, broker_id=account.id))
+    await db_session.flush()
+    aid = account.id
+
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    await db_session.flush()
+
+    # Later withdrawal already has a computed balance_currency
+    later_tx = TxModel(
+        portfolio_id=uid, account_id=aid, date=date.today(), type="Actif",
+        ticker="JPYEUR=X", currency="JPY", exchange_rate=0.005387,
+        quantity=-10145.0, unit_price=1.0, unit_price_eur=0.005387,
+        total_amount=-10145.0, total_amount_eur=-54.65,
+        balance_currency=5706634.0, balance_eur=34830.79,
+    )
+    db_session.add(later_tx)
+    await db_session.flush()
+    later_id = later_tx.id
+
+    # Insert an earlier transaction — should shift the later balance by -1000
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r = await client.post("/api/transactions/", json={
+            "portfolio_id": uid, "account_id": aid,
+            "date": _LAST_WEEK, "type": "Actif", "ticker": "JPYEUR=X",
+            "currency": "JPY", "exchange_rate": 0.005400,
+            "quantity": -1000.0, "unit_price": 1.0,
+            # Provide balance_currency explicitly so retroactive propagation is triggered
+            "balance_currency": 5707634.0,
+        })
+    assert r.status_code == 201
+
+    # Verify the later transaction's balance_currency was shifted by -1000
+    from app.models.transaction import Transaction as TxModel2
+    refreshed = await db_session.get(TxModel2, later_id)
+    assert refreshed is not None
+    await db_session.refresh(refreshed)
+    assert refreshed.balance_currency == pytest.approx(5705634.0, abs=0.01)
+
+
+@pytest.mark.asyncio
+async def test_create_non_eur_with_explicit_balance_currency_skips_elif(client, db_session):
+    """
+    Branch 215->237: non-EUR transaction where balance_currency is explicitly provided
+    by the caller AND a previous balance_eur exists.
+
+    In this case the elif (tx.balance_currency is None) is False, so the auto-computation
+    is skipped and execution jumps directly to the retroactive update.
+    """
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+    from app.models.transaction import Transaction as TxModel
+
+    portfolio = Portfolio(name=f"JpyExplicit-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name="Revolut4", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    db_session.add(PortfolioAccount(portfolio_id=uid, broker_id=account.id))
+    await db_session.flush()
+    aid = account.id
+
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    await db_session.flush()
+
+    # Previous transaction with known balance_eur (so prev_balance is not None)
+    prev_tx = TxModel(
+        portfolio_id=uid, account_id=aid, date=date(2025, 5, 14), type="Actif",
+        ticker="JPYEUR=X", currency="JPY", exchange_rate=0.006102,
+        quantity=117333.0, unit_price=1.0, unit_price_eur=0.006102,
+        total_amount=117333.0, total_amount_eur=716.0,
+        balance_currency=5716779.0, balance_eur=34885.44,
+    )
+    db_session.add(prev_tx)
+    await db_session.flush()
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r = await client.post("/api/transactions/", json={
+            "portfolio_id": uid, "account_id": aid,
+            "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
+            "currency": "JPY", "exchange_rate": 0.005387,
+            "quantity": -10145.0, "unit_price": 1.0,
+            # Caller explicitly provides balance_currency → elif is skipped
+            "balance_currency": 5706634.0,
+        })
+    assert r.status_code == 201
+    data = r.json()
+    # balance_currency is the explicit value, not auto-computed
+    assert data["balance_currency"] == pytest.approx(5706634.0, abs=0.01)
+    # balance_eur was still auto-computed from prev
+    assert data["balance_eur"] is not None
+
+
+@pytest.mark.asyncio
+async def test_create_non_eur_fractional_sibling_auto_calculates_balance_currency(client, db_session):
+    """
+    Line 323: non-EUR fractional sibling gets balance_currency auto-computed from the
+    previous same-currency balance (prev_sib_curr_balance is not None path).
+
+    Scenario: JPYEUR=X fractional order — parent + 1 sibling execution.
+    A prior JPY transaction has balance_currency=5716779. The parent gets -10000 JPY
+    (balance_currency=5706779), the sibling gets -1000 JPY (balance_currency=5705779).
+    """
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+    from app.models.transaction import Transaction as TxModel
+
+    portfolio = Portfolio(name=f"JpyFrac-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name="Revolut5", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    db_session.add(PortfolioAccount(portfolio_id=uid, broker_id=account.id))
+    await db_session.flush()
+    aid = account.id
+
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    await db_session.flush()
+
+    # Prior JPY transaction providing the currency balance anchor
+    anchor_tx = TxModel(
+        portfolio_id=uid, account_id=aid, date=date(2025, 5, 14), type="Actif",
+        ticker="JPYEUR=X", currency="JPY", exchange_rate=0.006102,
+        quantity=117333.0, unit_price=1.0, unit_price_eur=0.006102,
+        total_amount=117333.0, total_amount_eur=716.0,
+        balance_currency=5716779.0, balance_eur=34885.44,
+    )
+    db_session.add(anchor_tx)
+    await db_session.flush()
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r = await client.post("/api/transactions/", json={
+            "portfolio_id": uid, "account_id": aid,
+            "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
+            "currency": "JPY", "exchange_rate": 0.005387,
+            "quantity": -10000.0, "unit_price": 1.0,
+            "additional_executions": [
+                {"date": _TODAY, "quantity": -1000.0, "unit_price": 1.0, "exchange_rate": 0.005387},
+            ],
+        })
+    assert r.status_code == 201
+    parent_id = r.json()["id"]
+    # Parent: balance_currency = 5716779 + (-10000) = 5706779
+    assert r.json()["balance_currency"] == pytest.approx(5706779.0, abs=0.01)
+
+    # Sibling: balance_currency = 5706779 + (-1000) = 5705779 (line 323 executed)
+    from sqlalchemy import select
+    sib_res = await db_session.execute(
+        select(TxModel).where(TxModel.fractional_parent_id == parent_id)
+    )
+    sibling = sib_res.scalar_one()
+    assert sibling.balance_currency == pytest.approx(5705779.0, abs=0.01)
 
 
 # ---------------------------------------------------------------------------

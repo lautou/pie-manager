@@ -286,7 +286,7 @@ async def get_daily_holding_values(
     if len(all_days) > max_pts:
         step = len(all_days) / max_pts
         sampled_days = [all_days[int(i * step)] for i in range(max_pts)]
-        if all_days[-1] not in sampled_days:
+        if all_days[-1] not in sampled_days:  # pragma: no branch
             sampled_days.append(all_days[-1])
     else:
         sampled_days = all_days

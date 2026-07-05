@@ -306,7 +306,7 @@ async def create_transaction(body: TransactionCreate, db: AsyncSession = Depends
             sibling.balance_eur = _no_neg_zero(round(float(prev_sib_balance) + sibling.total_amount_eur, 2))
             if sibling.currency == "EUR":
                 sibling.balance_currency = sibling.balance_eur
-            elif sibling.balance_currency is None:  # pragma: no branch — sibling is always new, balance_currency always None here
+            else:
                 prev_sib_curr = await db.execute(
                     select(Transaction.balance_currency)
                     .where(

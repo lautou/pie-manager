@@ -2641,6 +2641,84 @@ async def test_update_actif_replaces_linked_frais(client, db_session):
 
 
 @pytest.mark.asyncio
+async def test_update_actif_recreated_frais_get_balance_eur(client, db_session):
+    """
+    Regression test: editing an Actif transaction (e.g. fixing a wrong unit_price)
+    while leaving courtage/ttf unchanged deletes and recreates the linked Frais
+    transactions. Those recreated Frais must get balance_eur/balance_currency
+    computed from the parent's updated balance — otherwise they stay null and,
+    since they get the highest id for that day, mask the parent's correct
+    balance in the UI (only the highest id per date+currency displays a balance).
+    """
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+    from app.models.transaction import Transaction as TxModel
+    from sqlalchemy import select
+
+    portfolio = Portfolio(name=f"UpdateFraisBal-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name="BourseDirect", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    db_session.add(PortfolioAccount(portfolio_id=uid, broker_id=account.id))
+    await db_session.flush()
+    aid = account.id
+
+    db_session.add(Product(ticker="TTE.BALFIX", name="TotalEnergies", category="Actif", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Cash", currency="EUR"))
+    await db_session.flush()
+
+    # Anchor transaction with a known balance_eur (prior cash position)
+    anchor = TxModel(
+        portfolio_id=uid, account_id=aid, date=date(2026, 7, 5), type="Actif",
+        ticker="LIQUIDITE.EURO", currency="EUR", exchange_rate=1.0,
+        quantity=30.0, unit_price=1.0, unit_price_eur=1.0,
+        total_amount=30.0, total_amount_eur=30.0,
+        balance_eur=206.25, balance_currency=206.25,
+    )
+    db_session.add(anchor)
+    await db_session.flush()
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        # Create with a wrong unit_price (typo: 66.67 instead of 67.66)
+        r = await client.post("/api/transactions/", json={
+            "portfolio_id": uid, "account_id": aid,
+            "date": _TODAY, "type": "Actif", "ticker": "TTE.BALFIX",
+            "currency": "EUR", "exchange_rate": 1.0,
+            "quantity": -3.0, "unit_price": 66.67,
+            "courtage_eur": 0.80, "ttf_eur": 0.99,
+        })
+    assert r.status_code == 201
+    parent_id = r.json()["id"]
+
+    # Correct the unit_price, leaving courtage/ttf unchanged (frontend always sends them)
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r2 = await client.put(f"/api/transactions/{parent_id}", json={
+            "unit_price": 67.66,
+            "courtage_eur": 0.80, "ttf_eur": 0.99,
+        })
+    assert r2.status_code == 200
+    # Parent balance_eur = 206.25 - 3*67.66 = 3.27
+    assert r2.json()["balance_eur"] == pytest.approx(3.27, abs=0.01)
+
+    # Recreated Frais must each have a computed balance_eur, chained from the parent
+    res = await db_session.execute(
+        select(TxModel).where(TxModel.linked_transaction_id == parent_id).order_by(TxModel.id)
+    )
+    frais = res.scalars().all()
+    assert len(frais) == 2
+    for f in frais:
+        assert f.balance_eur is not None, f"Frais {f.ticker} ({f.total_amount_eur}€) has no balance_eur"
+    # courtage (0.80) applied first: 3.27 - 0.80 = 2.47; then ttf (0.99): 2.47 - 0.99 = 1.48
+    assert frais[0].balance_eur == pytest.approx(2.47, abs=0.01)
+    assert frais[1].balance_eur == pytest.approx(1.48, abs=0.01)
+
+
+@pytest.mark.asyncio
 async def test_update_without_frais_fields_leaves_linked_frais_unchanged(client, db_session):
     """PUT without courtage_eur/ttf_eur leaves linked Frais untouched."""
     from app.models.portfolio import Portfolio

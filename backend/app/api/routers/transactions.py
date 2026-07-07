@@ -562,6 +562,25 @@ async def update_transaction(
                 )
                 db.add(fee_tx)
                 await db.flush()
+                # Calculate balance_eur for the recreated fee transaction (same logic as
+                # auto-created fees on create_transaction) — otherwise it stays null and
+                # masks the parent's balance in the UI (highest id per day/currency wins).
+                prev_fee_result = await db.execute(
+                    select(Transaction.balance_eur)
+                    .where(
+                        Transaction.account_id == fee_tx.account_id,
+                        Transaction.balance_eur.isnot(None),
+                        Transaction.id != fee_tx.id,
+                        (Transaction.date < fee_tx.date) |
+                        ((Transaction.date == fee_tx.date) & (Transaction.id < fee_tx.id)),
+                    )
+                    .order_by(Transaction.date.desc(), Transaction.id.desc())
+                    .limit(1)
+                )
+                prev_fee_balance = prev_fee_result.scalar_one_or_none()
+                if prev_fee_balance is not None:
+                    fee_tx.balance_eur = _no_neg_zero(round(float(prev_fee_balance) - fee_amount, 2))
+                    fee_tx.balance_currency = fee_tx.balance_eur
                 await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, -fee_amount)
 
     await db.commit()

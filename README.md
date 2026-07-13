@@ -160,9 +160,15 @@ Guide détaillé : [docs/SAUVEGARDE.md](docs/SAUVEGARDE.md).
 
 ## Sécurité et signature de code
 
-Les binaires Windows sont signés par [SignPath Foundation](https://signpath.org), qui fournit gratuitement des services de signature de code aux projets open source.
+Les binaires Windows ne sont pas signés par une autorité de certification reconnue —
+[SignPath Foundation](https://signpath.org) (signature gratuite pour l'open source) a refusé
+la demande faute d'audience suffisante sur ce dépôt. Windows SmartScreen affichera donc un
+avertissement au premier lancement : cliquez sur **"Informations complémentaires" → "Exécuter
+quand même"** (voir la section Installation ci-dessus). Une signature par certificat
+auto-généré est envisagée pour une prochaine version.
 
-[![Signed by SignPath Foundation](https://signpath.org/assets/badges/signpath-oss-badge.svg)](https://signpath.org)
+Le code source est public et consultable dans son intégralité — vous pouvez vérifier ce qui
+est exécuté sur votre machine avant de l'installer.
 
 ---
 

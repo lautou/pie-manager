@@ -22,8 +22,9 @@ from app.services.price_service import (
 # ---------------------------------------------------------------------------
 
 async def _add_product(db, ticker: str, category: str = "Actif",
-                        currency: str = "EUR") -> Product:
-    p = Product(ticker=ticker, name=ticker, category=category, currency=currency)
+                        currency: str = "EUR", instrument_type: str | None = None) -> Product:
+    p = Product(ticker=ticker, name=ticker, category=category, currency=currency,
+                instrument_type=instrument_type)
     db.add(p)
     await db.flush()
     return p
@@ -47,7 +48,7 @@ async def test_get_active_tickers_returns_actif(db_session):
 async def test_get_active_tickers_excludes_manuel(db_session):
     suffix = id(db_session)
     ticker = f"MAN.{suffix}"
-    await _add_product(db_session, ticker, category="Manuel")
+    await _add_product(db_session, ticker, category="Actif", instrument_type="Or physique")
 
     tickers = await get_active_tickers(db_session)
     ticker_names = [t[0] for t in tickers]
@@ -83,7 +84,7 @@ async def test_get_active_tickers_includes_cash_category(db_session):
     """Cash category is NOT excluded (only Manuel and Frais are)."""
     suffix = id(db_session)
     ticker = f"CASH.{suffix}"
-    await _add_product(db_session, ticker, category="Cash", currency="EUR")
+    await _add_product(db_session, ticker, category="Actif", instrument_type="Cash", currency="EUR")
 
     tickers = await get_active_tickers(db_session)
     ticker_names = [t[0] for t in tickers]

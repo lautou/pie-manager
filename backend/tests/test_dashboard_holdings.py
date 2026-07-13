@@ -59,10 +59,10 @@ async def test_holdings_includes_pool_info(client, db_session):
 
 
 @pytest.mark.asyncio
-async def test_holdings_manuel_category_exposed(client, db_session):
+async def test_holdings_or_physique_instrument_type_exposed(client, db_session):
     """
-    category='Manuel' must appear in the positions response so the frontend
-    can hide Quantity and Last Price for assets like physical gold.
+    instrument_type='Or physique' must appear in the positions response so the
+    frontend can hide Quantity and Last Price for assets like physical gold.
     """
     suffix = f"manuel-pos-{id(db_session)}"
     portfolio = Portfolio(name=f"ManPos-{suffix}")
@@ -82,7 +82,7 @@ async def test_holdings_manuel_category_exposed(client, db_session):
     await db_session.flush()
 
     ticker = f"OR.{suffix}"
-    db_session.add(Product(ticker=ticker, name="Or Physique", category="Manuel", currency="EUR"))
+    db_session.add(Product(ticker=ticker, name="Or Physique", category="Actif", instrument_type="Or physique", currency="EUR"))
     await db_session.flush()
     db_session.add(PoolProduct(pool_id=pool.id, ticker=ticker))
     await db_session.flush()
@@ -102,7 +102,7 @@ async def test_holdings_manuel_category_exposed(client, db_session):
     assert r.status_code == 200
     positions = r.json()
     or_pos = next(p for p in positions if p["ticker"] == ticker)
-    assert or_pos["category"] == "Manuel"
+    assert or_pos["instrument_type"] == "Or physique"
     assert or_pos["value_eur"] == pytest.approx(32336.34, abs=0.01)
 
 
@@ -230,7 +230,7 @@ async def test_holdings_includes_cash_product(client, db_session):
 
     cash_ticker = f"CASHEUR.{suffix}"
     db_session.add(Product(ticker=cash_ticker, name="EUR Cash",
-                            category="Cash", currency="EUR"))
+                            category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
     # Positive qty = Cash held
@@ -277,7 +277,7 @@ async def test_holdings_history_cash_category(client, db_session):
     await db_session.flush()
 
     cash_ticker = f"CASHEUR2.{suffix}"
-    db_session.add(Product(ticker=cash_ticker, name="EUR Cash", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker=cash_ticker, name="EUR Cash", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
     snap_date = date(2025, 4, 1)
@@ -490,7 +490,7 @@ async def test_holdings_manuel_category_uses_price_as_total(client, db_session):
     await db_session.flush()
 
     ticker = f"GOLD.{suffix}"
-    db_session.add(Product(ticker=ticker, name="Gold", category="Manuel", currency="EUR"))
+    db_session.add(Product(ticker=ticker, name="Gold", category="Actif", instrument_type="Or physique", currency="EUR"))
     await db_session.flush()
 
     # Manuel: qty = -1 (buy convention for non-cash), price = total value
@@ -537,7 +537,7 @@ async def test_holdings_history_manuel_category(client, db_session):
     await db_session.flush()
 
     ticker = f"GOLD2.{suffix}"
-    db_session.add(Product(ticker=ticker, name="Gold2", category="Manuel", currency="EUR"))
+    db_session.add(Product(ticker=ticker, name="Gold2", category="Actif", instrument_type="Or physique", currency="EUR"))
     await db_session.flush()
 
     snap_date = date(2025, 5, 5)
@@ -585,7 +585,7 @@ async def test_holdings_history_fx_spot_rate(client, db_session):
     db_session.add(Product(ticker=ticker, name="Microsoft", category="Actif", currency="USD"))
 
     fx_ticker = f"USDEUR.{suffix}"  # use unique FX ticker to avoid conflicts
-    db_session.add(Product(ticker=fx_ticker, name="USD/EUR hist", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker=fx_ticker, name="USD/EUR hist", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
     snap_date = date(2025, 6, 2)
@@ -604,7 +604,7 @@ async def test_holdings_history_fx_spot_rate(client, db_session):
     from sqlalchemy import select as sa_select
     existing_fx2 = await db_session.execute(sa_select(Product).where(Product.ticker == usd_eur_fx))
     if not existing_fx2.scalar_one_or_none():
-        db_session.add(Product(ticker=usd_eur_fx, name="USD/EUR", category="Cash", currency="EUR"))
+        db_session.add(Product(ticker=usd_eur_fx, name="USD/EUR", category="Actif", instrument_type="Cash", currency="EUR"))
         await db_session.flush()
     db_session.add(AssetPrice(ticker=usd_eur_fx, date=snap_date,
                                price=0.93, currency="EUR", source="ecb"))
@@ -648,7 +648,7 @@ async def test_holdings_forex_deducts_foreign_currency_fees(client, db_session):
     # Products
     jpyeur_ticker = f"JPYEUR=X.{suffix}"
     fee_ticker = f"FRAIS.COURTAGE.JPY.{suffix}"
-    db_session.add(Product(ticker=jpyeur_ticker, name="JPY/EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker=jpyeur_ticker, name="JPY/EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     db_session.add(Product(ticker=fee_ticker, name="Frais JPY", category="Fee", currency="JPY"))
     await db_session.flush()
 

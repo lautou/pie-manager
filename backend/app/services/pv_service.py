@@ -7,14 +7,14 @@ Business rules:
 - Standard assets (Actif): BUY = qty < 0 / SELL = qty > 0.
 - Cash forex (JPYEUR=X etc.): sign is INVERTED — qty > 0 = holding position
   (buying JPY), qty < 0 = reducing position (selling JPY). Detected by
-  category='Cash' AND ticker does NOT start with 'LIQUIDITE.'.
+  instrument_type='Cash' AND ticker does NOT start with 'LIQUIDITE.'.
 - LIQUIDITE.* tickers (LIQUIDITE.EURO, LIQUIDITE.USD, …) are pure cash-account
   entries — not financial instruments — and are excluded entirely.
 - CUMP resets to 0 when position reaches 0 (full sell or below tolerance).
 - Realized PV per sell = (unit_price_eur - cump_at_sell) × qty_sold.
 - Cumulative realized PV is tracked across cycles (never resets).
 - Transactions of type 'Frais' and 'Revenu' are ignored.
-- Products with category='Manuel' (OR.PHYSIQUE, SICAV…) are excluded.
+- Products with instrument_type='Or physique' (OR.PHYSIQUE) are excluded.
 """
 from __future__ import annotations
 
@@ -154,9 +154,9 @@ async def compute_capital_gains(
         if tx.type in ("Frais", "Revenu"):
             continue
 
-        # Skip Manuel category products (OR.PHYSIQUE, SICAV…)
+        # Skip Or physique products (OR.PHYSIQUE) — special total-value pricing
         product = product_map.get(ticker)
-        if product is not None and product.category == "Manuel":
+        if product is not None and product.instrument_type == "Or physique":
             continue
 
         # Skip LIQUIDITE.* tickers — pure cash-account entries (deposits /
@@ -168,7 +168,7 @@ async def compute_capital_gains(
         # Determine sign convention.
         # Cash forex products (JPYEUR=X, USDEUR=X …) hold qty > 0 = position.
         # Their BUY/SELL is the opposite of standard assets.
-        is_cash_forex = (product is not None and product.category == "Cash")
+        is_cash_forex = (product is not None and product.instrument_type == "Cash")
         is_buy  = (tx.quantity > 0) if is_cash_forex else (tx.quantity < 0)
         is_sell = (tx.quantity < 0) if is_cash_forex else (tx.quantity > 0)
 

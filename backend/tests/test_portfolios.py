@@ -171,7 +171,7 @@ async def test_delete_portfolio_cascades_all_relations(client, db_session):
     from sqlalchemy import select as sa_select
     existing = await db_session.execute(sa_select(Product).where(Product.ticker == liq))
     if not existing.scalar_one_or_none():
-        db_session.add(Product(ticker=liq, name="Cash EUR", category="Cash", currency="EUR"))
+        db_session.add(Product(ticker=liq, name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
         await db_session.flush()
 
     pool = Pool(portfolio_id=uid, name="Pool", strategy="Offensive",

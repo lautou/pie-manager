@@ -298,7 +298,7 @@ async def test_twrr_endpoint_inflow_neutralised(client, db_session):
     )
     if not existing.scalar_one_or_none():
         db_session.add(Product(ticker=liq_ticker, name="Cash EUR",
-                               category="Cash", currency="EUR"))
+                               category="Actif", instrument_type="Cash", currency="EUR"))
         await db_session.flush()
 
     # Day 1: invested positions at 10k
@@ -720,7 +720,7 @@ async def test_twrr_positions_manuel_category(client, db_session):
     from app.models.product import Product as ProductModel
     db_session.add(ProductModel(
         ticker=manuel_ticker, name="Or physique TWRR",
-        category="Manuel", currency="EUR"
+        category="Actif", instrument_type="Or physique", currency="EUR"
     ))
     await db_session.flush()
 
@@ -1047,7 +1047,7 @@ async def test_twrr_cash_category_pool_product_sign(client, db_session):
     # Create a Cash-category product for the pool
     cash_ticker = f"JPYEUR.{uid}"
     db_session.add(Product(ticker=cash_ticker, name="JPY Cash",
-                            category="Cash", currency="JPY"))
+                            category="Actif", instrument_type="Cash", currency="JPY"))
     await db_session.flush()
     db_session.add(PoolProduct(pool_id=pool_id, ticker=cash_ticker))
     await db_session.flush()

@@ -24,12 +24,12 @@ async def compute_daily_snapshot(db: AsyncSession, portfolio_id: int, snap_date:
     # Build holdings: {ticker: quantity} from all transactions up to snap_date
     positions = await get_holdings(db, portfolio_id, as_of=snap_date)
 
-    # Fetch product categories for all pool tickers
+    # Fetch product instrument types for all pool tickers
     all_tickers = {pp.ticker for pool in pools for pp in pool.products}
-    cat_result = await db.execute(
-        sa_select(Product.ticker, Product.category).where(Product.ticker.in_(all_tickers))
+    itype_result = await db.execute(
+        sa_select(Product.ticker, Product.instrument_type).where(Product.ticker.in_(all_tickers))
     )
-    categories = {row.ticker: row.category for row in cat_result.all()}
+    instrument_types = {row.ticker: row.instrument_type for row in itype_result.all()}
 
     # Fetch latest FX rates (tickers like GBPEUR=X, USDEUR=X) at or before snap_date
     fx_result = await db.execute(
@@ -52,7 +52,7 @@ async def compute_daily_snapshot(db: AsyncSession, portfolio_id: int, snap_date:
 
     # Compute pool values using the shared valuation logic
     pool_values = compute_pool_values(
-        pools, tickers_by_pool, positions, prices, spot_rates, categories
+        pools, tickers_by_pool, positions, prices, spot_rates, instrument_types
     )
 
     total = sum(pool_values.values())

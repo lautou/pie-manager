@@ -479,7 +479,7 @@ async def test_create_transaction_updates_cash_balance(client, db_session):
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
     with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
@@ -515,7 +515,7 @@ async def test_delete_transaction_restores_cash_balance(client, db_session):
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
     with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
@@ -597,7 +597,7 @@ async def test_multiple_same_day_liquidite_transactions_cumulate(client, db_sess
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
     with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
@@ -644,7 +644,7 @@ async def test_create_forex_position_buy_does_not_change_cash_balance(client, db
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Actif", instrument_type="Cash", currency="JPY"))
     await db_session.flush()
 
     with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
@@ -680,7 +680,7 @@ async def test_create_forex_position_sell_does_not_change_cash_balance(client, d
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Actif", instrument_type="Cash", currency="JPY"))
     await db_session.flush()
 
     with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
@@ -716,7 +716,7 @@ async def test_fractional_sibling_forex_position_does_not_change_cash_balance(cl
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Actif", instrument_type="Cash", currency="JPY"))
     await db_session.flush()
 
     with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
@@ -739,8 +739,8 @@ async def test_fractional_sibling_forex_position_does_not_change_cash_balance(cl
 async def test_fee_linked_to_forex_position_still_changes_cash_balance(client, db_session):
     """
     A EUR-denominated fee (e.g. Revolut FX commission) linked to a JPYEUR=X buy
-    is a real cash cost and must still reduce cash_balance_eur, even though it
-    shares the parent's forex ticker for product-linkage purposes.
+    is a real cash cost and must still reduce cash_balance_eur, even though the
+    parent transaction itself is a forex position (skipped for cash purposes).
     """
     from app.models.portfolio import Portfolio
     from app.models.broker import Broker
@@ -761,7 +761,8 @@ async def test_fee_linked_to_forex_position_still_changes_cash_balance(client, d
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Actif", instrument_type="Cash", currency="JPY"))
+    db_session.add(Product(ticker="FRAIS.COURTAGE.EUR", name="Frais courtage", category="Frais", currency="EUR", fee_type="Courtage"))
     await db_session.flush()
 
     with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
@@ -781,7 +782,7 @@ async def test_fee_linked_to_forex_position_still_changes_cash_balance(client, d
     frais = result.scalars().all()
     assert len(frais) == 1
     assert frais[0].type == "Frais"
-    assert frais[0].ticker == "JPYEUR=X"
+    assert frais[0].ticker == "FRAIS.COURTAGE.EUR"
 
     # The forex buy itself contributes nothing; only the 5€ fee reduces cash
     await db_session.refresh(pa)
@@ -808,7 +809,7 @@ async def test_delete_forex_position_transaction_is_noop_on_cash_balance(client,
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Actif", instrument_type="Cash", currency="JPY"))
     await db_session.flush()
 
     with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
@@ -851,7 +852,7 @@ async def test_update_forex_position_transaction_does_not_change_cash_balance(cl
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Actif", instrument_type="Cash", currency="JPY"))
     await db_session.flush()
 
     with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
@@ -877,6 +878,244 @@ async def test_update_forex_position_transaction_does_not_change_cash_balance(cl
 
     await db_session.refresh(pa)
     assert pa.cash_balance_eur == pytest.approx(17.5, abs=0.01)
+
+
+@pytest.mark.asyncio
+async def test_create_attribution_does_not_change_cash_balance_or_get_a_running_balance(client, db_session):
+    """
+    A free share Attribution's total_amount_eur may carry a recorded fair-value
+    cost basis (used by WACOP), but no real cash changes hands: it must not touch
+    cash_balance_eur, and its own balance_eur/balance_currency must stay null so
+    the UI displays "—" instead of a bogus running balance.
+    """
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+
+    portfolio = Portfolio(name=f"AttribCreate-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name="BourseDirect PEA", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    pa = PortfolioAccount(portfolio_id=uid, broker_id=account.id, cash_balance_eur=1000.0)
+    db_session.add(pa)
+    await db_session.flush()
+    aid = account.id
+
+    db_session.add(Product(ticker="MC.ATTRIB", name="LVMH", category="Actif", instrument_type="Action", currency="EUR"))
+    await db_session.flush()
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r = await client.post("/api/transactions/", json={
+            "portfolio_id": uid, "account_id": aid,
+            "date": _TODAY, "type": "Actif", "ticker": "MC.ATTRIB",
+            "currency": "EUR", "exchange_rate": 1.0,
+            "quantity": -3.0, "unit_price": 500.0,
+            "operation": "Attribution",
+        })
+    assert r.status_code == 201
+    body = r.json()
+    assert body["balance_eur"] is None
+    assert body["balance_currency"] is None
+
+    await db_session.refresh(pa)
+    assert pa.cash_balance_eur == pytest.approx(1000.0, abs=0.01)
+
+
+@pytest.mark.asyncio
+async def test_fractional_sibling_attribution_does_not_get_a_running_balance(client, db_session):
+    """A fractional sibling execution under an Attribution parent also stays cash-neutral."""
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+    from app.models.transaction import Transaction as TxModel
+    from sqlalchemy import select
+
+    portfolio = Portfolio(name=f"AttribFrac-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name="BourseDirect PEA", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    pa = PortfolioAccount(portfolio_id=uid, broker_id=account.id, cash_balance_eur=1000.0)
+    db_session.add(pa)
+    await db_session.flush()
+    aid = account.id
+
+    db_session.add(Product(ticker="AI.ATTRIB", name="Air Liquide", category="Actif", instrument_type="Action", currency="EUR"))
+    await db_session.flush()
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r = await client.post("/api/transactions/", json={
+            "portfolio_id": uid, "account_id": aid,
+            "date": _TODAY, "type": "Actif", "ticker": "AI.ATTRIB",
+            "currency": "EUR", "exchange_rate": 1.0,
+            "quantity": -2.0, "unit_price": 170.0,
+            "operation": "Attribution",
+            "additional_executions": [
+                {"date": _TODAY, "quantity": -1.0, "unit_price": 170.0},
+            ],
+        })
+    assert r.status_code == 201
+    parent_id = r.json()["id"]
+
+    siblings = (await db_session.execute(
+        select(TxModel).where(TxModel.fractional_parent_id == parent_id)
+    )).scalars().all()
+    assert len(siblings) == 1
+    assert siblings[0].balance_eur is None
+    assert siblings[0].balance_currency is None
+
+    await db_session.refresh(pa)
+    assert pa.cash_balance_eur == pytest.approx(1000.0, abs=0.01)
+
+
+@pytest.mark.asyncio
+async def test_delete_attribution_transaction_is_noop_on_cash_balance(client, db_session):
+    """Deleting an Attribution never touched cash_balance_eur, so removing it doesn't either."""
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+
+    portfolio = Portfolio(name=f"AttribDelete-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name="BourseDirect PEA", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    initial_balance = 1000.0
+    pa = PortfolioAccount(portfolio_id=uid, broker_id=account.id, cash_balance_eur=initial_balance)
+    db_session.add(pa)
+    await db_session.flush()
+    aid = account.id
+
+    db_session.add(Product(ticker="SU.ATTRIB", name="Schneider", category="Actif", instrument_type="Action", currency="EUR"))
+    await db_session.flush()
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r = await client.post("/api/transactions/", json={
+            "portfolio_id": uid, "account_id": aid,
+            "date": _TODAY, "type": "Actif", "ticker": "SU.ATTRIB",
+            "currency": "EUR", "exchange_rate": 1.0,
+            "quantity": -5.0, "unit_price": 270.0,
+            "operation": "Attribution",
+        })
+    assert r.status_code == 201
+    tx_id = r.json()["id"]
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r_del = await client.delete(f"/api/transactions/{tx_id}")
+    assert r_del.status_code == 204
+
+    await db_session.refresh(pa)
+    assert pa.cash_balance_eur == pytest.approx(initial_balance, abs=0.01)
+
+
+@pytest.mark.asyncio
+async def test_update_attribution_amount_does_not_change_cash_balance(client, db_session):
+    """Changing an Attribution's price (same date) must not touch cash_balance_eur
+    or propagate any running-balance delta to other transactions."""
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+
+    portfolio = Portfolio(name=f"AttribUpdateAmount-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name="BourseDirect PEA", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    pa = PortfolioAccount(portfolio_id=uid, broker_id=account.id, cash_balance_eur=1000.0)
+    db_session.add(pa)
+    await db_session.flush()
+    aid = account.id
+
+    db_session.add(Product(ticker="TTE.ATTRIB", name="TotalEnergies", category="Actif", instrument_type="Action", currency="EUR"))
+    await db_session.flush()
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r_create = await client.post("/api/transactions/", json={
+            "portfolio_id": uid, "account_id": aid,
+            "date": _TODAY, "type": "Actif", "ticker": "TTE.ATTRIB",
+            "currency": "EUR", "exchange_rate": 1.0,
+            "quantity": -4.0, "unit_price": 60.0,
+            "operation": "Attribution",
+        })
+    assert r_create.status_code == 201
+    tx_id = r_create.json()["id"]
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r_update = await client.put(f"/api/transactions/{tx_id}", json={"unit_price": 65.0})
+    assert r_update.status_code == 200
+    assert r_update.json()["balance_eur"] is None
+
+    await db_session.refresh(pa)
+    assert pa.cash_balance_eur == pytest.approx(1000.0, abs=0.01)
+
+
+@pytest.mark.asyncio
+async def test_update_attribution_date_does_not_recompute_or_propagate_balance(client, db_session):
+    """Moving an Attribution to a new date must not give it a running balance or
+    shift any other transaction's balance_eur (date_changed branch)."""
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+    from app.models.transaction import Transaction as TxModel
+
+    portfolio = Portfolio(name=f"AttribUpdateDate-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name="BourseDirect PEA", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    db_session.add(PortfolioAccount(portfolio_id=uid, broker_id=account.id, cash_balance_eur=1000.0))
+    await db_session.flush()
+    aid = account.id
+
+    db_session.add(Product(ticker="MC.ATTRIBDATE", name="LVMH", category="Actif", instrument_type="Action", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
+    await db_session.flush()
+
+    # A later real cash transaction with a known balance, so we can prove it's untouched
+    later_cash = TxModel(
+        portfolio_id=uid, account_id=aid, date=date(2026, 12, 31), type="Actif",
+        ticker="LIQUIDITE.EURO", currency="EUR", exchange_rate=1.0,
+        quantity=200.0, unit_price=1.0, unit_price_eur=1.0,
+        total_amount=200.0, total_amount_eur=200.0,
+        balance_eur=1200.0, balance_currency=1200.0,
+    )
+    db_session.add(later_cash)
+    await db_session.flush()
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r_create = await client.post("/api/transactions/", json={
+            "portfolio_id": uid, "account_id": aid,
+            "date": "2026-01-01", "type": "Actif", "ticker": "MC.ATTRIBDATE",
+            "currency": "EUR", "exchange_rate": 1.0,
+            "quantity": -2.0, "unit_price": 500.0,
+            "operation": "Attribution",
+        })
+    assert r_create.status_code == 201
+    tx_id = r_create.json()["id"]
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r_update = await client.put(f"/api/transactions/{tx_id}", json={"date": "2026-06-15"})
+    assert r_update.status_code == 200
+    assert r_update.json()["balance_eur"] is None
+
+    await db_session.refresh(later_cash)
+    assert later_cash.balance_eur == pytest.approx(1200.0, abs=0.01)
 
 
 @pytest.mark.asyncio
@@ -907,7 +1146,7 @@ async def test_create_transaction_auto_calculates_balance_eur(client, db_session
 
     # Previous transaction with a known balance (e.g. imported from Sheets)
     db_session.add(Product(ticker="SU.PA.BAL", name="Schneider", category="Actif", currency="EUR"))
-    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
     with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
@@ -972,7 +1211,7 @@ async def test_create_transaction_balance_eur_scoped_per_portfolio_shared_broker
     db_session.add(PortfolioAccount(portfolio_id=pid_b, broker_id=aid))
     await db_session.flush()
 
-    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     db_session.add(Product(ticker="FRAIS.COURTAGE.EUR", name="Frais courtage", category="Frais", currency="EUR"))
     await db_session.flush()
 
@@ -1034,7 +1273,7 @@ async def test_create_transaction_no_prev_balance_leaves_balance_eur_none(client
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
     with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
@@ -1073,7 +1312,7 @@ async def test_update_transaction_auto_calculates_balance_eur_when_null(client, 
     aid = account.id
 
     db_session.add(Product(ticker="SU.PA.UPD", name="Schneider", category="Actif", currency="EUR"))
-    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
     with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
@@ -1143,7 +1382,7 @@ async def test_update_non_eur_transaction_auto_calculates_balance_currency(clien
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Actif", instrument_type="Cash", currency="JPY"))
     await db_session.flush()
 
     # Anchor: first JPY purchase with known balance_currency
@@ -1217,7 +1456,7 @@ async def test_update_transaction_propagates_balance_eur_to_subsequent(client, d
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
     def make_tx(d, qty, bal):
@@ -1279,7 +1518,7 @@ async def test_create_transaction_propagates_balance_eur_to_subsequent(client, d
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     db_session.add(Product(ticker="FRAIS.TEST", name="Frais test", category="Frais", currency="EUR"))
     await db_session.flush()
 
@@ -1341,7 +1580,7 @@ async def test_create_transaction_uses_prior_balance_not_future(client, db_sessi
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     db_session.add(Product(ticker="FRAIS.TEST.B", name="Frais test B", category="Frais", currency="EUR"))
     await db_session.flush()
 
@@ -1412,7 +1651,7 @@ async def test_update_transaction_date_change_recalculates_balance_eur(client, d
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
     def make_tx(d, qty, bal):
@@ -1497,7 +1736,7 @@ async def test_balance_eur_no_negative_zero_after_date_move(client, db_session):
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
     # T_SELL (Feb, total=+6290.09) — no balance set; T_LIQ (Feb, highest id, balance=0.0)
@@ -1563,7 +1802,7 @@ async def test_balance_eur_never_negative_zero(client, db_session):
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
     # A buy that creates a specific prev balance
@@ -1633,7 +1872,7 @@ async def test_update_transaction_date_change_backward_propagates_to_lower_id(cl
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     db_session.add(Product(ticker="FRAIS.TEST.LOW", name="Frais", category="Frais", currency="EUR"))
     await db_session.flush()
 
@@ -1719,7 +1958,7 @@ async def test_update_transaction_date_change_forward_recalculates(client, db_se
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
     def make_tx(d, qty, bal):
@@ -1882,7 +2121,7 @@ async def test_create_non_eur_transaction_auto_calculates_balance_currency(clien
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Actif", instrument_type="Cash", currency="JPY"))
     await db_session.flush()
 
     # Previous JPY purchase with a known balance_currency (5716779 JPY held)
@@ -1935,7 +2174,7 @@ async def test_create_non_eur_transaction_no_prev_currency_balance_leaves_none(c
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Actif", instrument_type="Cash", currency="JPY"))
     await db_session.flush()
 
     with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
@@ -1977,7 +2216,7 @@ async def test_create_non_eur_retroactive_balance_currency_propagation(client, d
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Actif", instrument_type="Cash", currency="JPY"))
     await db_session.flush()
 
     # Later withdrawal already has a computed balance_currency
@@ -2038,7 +2277,7 @@ async def test_create_non_eur_with_explicit_balance_currency_skips_elif(client, 
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Actif", instrument_type="Cash", currency="JPY"))
     await db_session.flush()
 
     # Previous transaction with known balance_eur (so prev_balance is not None)
@@ -2096,7 +2335,7 @@ async def test_create_non_eur_fractional_sibling_auto_calculates_balance_currenc
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Actif", instrument_type="Cash", currency="JPY"))
     await db_session.flush()
 
     # Prior JPY transaction providing the currency balance anchor
@@ -2343,7 +2582,7 @@ async def test_update_transaction_date_changed_eur_currency_sets_balance_currenc
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
     def make_tx(d, qty, bal):
@@ -2466,7 +2705,7 @@ async def test_update_transaction_no_date_change_eur_auto_calc_sets_balance_curr
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
     # Prev tx with known balance
@@ -2530,7 +2769,7 @@ async def test_update_transaction_no_date_change_delta_eur_sets_balance_currency
     await db_session.flush()
     aid = account.id
 
-    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
     # tx with known balance_eur and currency=EUR
@@ -2779,6 +3018,7 @@ async def test_create_actif_with_courtage_creates_linked_frais(client, db_sessio
     aid = account.id
 
     db_session.add(Product(ticker="TTE.CTST", name="TTE Test", category="Actif", currency="EUR"))
+    db_session.add(Product(ticker="FRAIS.COURTAGE.EUR", name="Frais courtage", category="Frais", currency="EUR", fee_type="Courtage"))
     await db_session.flush()
 
     with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
@@ -2800,7 +3040,7 @@ async def test_create_actif_with_courtage_creates_linked_frais(client, db_sessio
     assert len(frais) == 1
     f = frais[0]
     assert f.type == "Frais"
-    assert f.ticker == "TTE.CTST"
+    assert f.ticker == "FRAIS.COURTAGE.EUR"
     assert f.total_amount_eur == pytest.approx(-0.99, abs=0.001)
 
     # cash_balance_eur reduced by buy amount + courtage
@@ -2833,6 +3073,8 @@ async def test_create_actif_with_courtage_and_ttf(client, db_session):
 
     db_session.add(Product(ticker="AI.CTST", name="Air Liquide Test", category="Actif",
                            currency="EUR", is_ttf_eligible=True))
+    db_session.add(Product(ticker="FRAIS.COURTAGE.EUR", name="Frais courtage", category="Frais", currency="EUR", fee_type="Courtage"))
+    db_session.add(Product(ticker="FRAIS.TTF.EUR", name="Taxe sur les Transactions Financières", category="Frais", currency="EUR", fee_type="TTF"))
     await db_session.flush()
 
     with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
@@ -2886,6 +3128,8 @@ async def test_delete_actif_also_deletes_linked_frais(client, db_session):
     aid = account.id
 
     db_session.add(Product(ticker="SU.CTST", name="Schneider Test", category="Actif", currency="EUR"))
+    db_session.add(Product(ticker="FRAIS.COURTAGE.EUR", name="Frais courtage", category="Frais", currency="EUR", fee_type="Courtage"))
+    db_session.add(Product(ticker="FRAIS.TTF.EUR", name="Taxe sur les Transactions Financières", category="Frais", currency="EUR", fee_type="TTF"))
     await db_session.flush()
 
     with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
@@ -2990,6 +3234,8 @@ async def test_update_actif_replaces_linked_frais(client, db_session):
 
     db_session.add(Product(ticker="MC.UPDATE", name="LVMH Update", category="Actif",
                            currency="EUR", is_ttf_eligible=True))
+    db_session.add(Product(ticker="FRAIS.COURTAGE.EUR", name="Frais courtage", category="Frais", currency="EUR", fee_type="Courtage"))
+    db_session.add(Product(ticker="FRAIS.TTF.EUR", name="Taxe sur les Transactions Financières", category="Frais", currency="EUR", fee_type="TTF"))
     await db_session.flush()
 
     with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
@@ -3062,7 +3308,9 @@ async def test_update_actif_recreated_frais_get_balance_eur(client, db_session):
     aid = account.id
 
     db_session.add(Product(ticker="TTE.BALFIX", name="TotalEnergies", category="Actif", currency="EUR"))
-    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
+    db_session.add(Product(ticker="FRAIS.COURTAGE.EUR", name="Frais courtage", category="Frais", currency="EUR", fee_type="Courtage"))
+    db_session.add(Product(ticker="FRAIS.TTF.EUR", name="Taxe sur les Transactions Financières", category="Frais", currency="EUR", fee_type="TTF"))
     await db_session.flush()
 
     # Anchor transaction with a known balance_eur (prior cash position)
@@ -3133,6 +3381,7 @@ async def test_update_without_frais_fields_leaves_linked_frais_unchanged(client,
     aid = account.id
 
     db_session.add(Product(ticker="SU.UPDATE", name="SE Update", category="Actif", currency="EUR"))
+    db_session.add(Product(ticker="FRAIS.COURTAGE.EUR", name="Frais courtage", category="Frais", currency="EUR", fee_type="Courtage"))
     await db_session.flush()
 
     with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
@@ -3185,6 +3434,7 @@ async def test_create_fractional_order_creates_siblings(client, db_session):
     aid = account.id
 
     db_session.add(Product(ticker="H411.FRAC", name="H411 Frac Test", category="Actif", currency="EUR"))
+    db_session.add(Product(ticker="FRAIS.COURTAGE.EUR", name="Frais courtage", category="Frais", currency="EUR", fee_type="Courtage"))
     await db_session.flush()
 
     with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
@@ -3373,6 +3623,7 @@ async def test_fractional_with_courtage_links_to_parent(client, db_session):
     aid = account.id
 
     db_session.add(Product(ticker="IS0D.FRAC", name="IS0D Frac Test", category="Actif", currency="EUR"))
+    db_session.add(Product(ticker="FRAIS.COURTAGE.EUR", name="Frais courtage", category="Frais", currency="EUR", fee_type="Courtage"))
     await db_session.flush()
 
     with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
@@ -3435,7 +3686,7 @@ async def test_fractional_siblings_get_balance_eur(client, db_session):
     aid = account.id
 
     db_session.add(Product(ticker="DBX5.FRAC2", name="DBX5 Frac Balance", category="Actif", currency="EUR"))
-    db_session.add(Product(ticker="LIQUIDITE.FBRAC", name="Cash Frac", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.FBRAC", name="Cash Frac", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
     # Create an initial deposit so subsequent transactions get balance_eur
@@ -3498,7 +3749,7 @@ async def test_fractional_sibling_non_eur_no_balance_currency(client, db_session
     aid = account.id
 
     db_session.add(Product(ticker="XJSE.FRACTEST", name="XJSE Test", category="Actif", currency="JPY"))
-    db_session.add(Product(ticker="LIQUIDITE.FRAC2", name="Cash2", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.FRAC2", name="Cash2", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
     # Seed an initial EUR balance
@@ -3554,7 +3805,8 @@ async def test_auto_frais_get_balance_eur(client, db_session):
     aid = account.id
 
     db_session.add(Product(ticker="QDVF.BTEST", name="QDVF Balance Test", category="Actif", currency="EUR"))
-    db_session.add(Product(ticker="LIQUIDITE.BTEST", name="Cash BTest", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="LIQUIDITE.BTEST", name="Cash BTest", category="Actif", instrument_type="Cash", currency="EUR"))
+    db_session.add(Product(ticker="FRAIS.COURTAGE.EUR", name="Frais courtage", category="Frais", currency="EUR", fee_type="Courtage"))
     await db_session.flush()
 
     # Seed initial balance

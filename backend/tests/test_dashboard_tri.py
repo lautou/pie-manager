@@ -47,7 +47,7 @@ async def test_tri_no_snapshot_returns_404(client, db_session):
     existing = await db_session.get(Product, liq_ticker)
     if not existing:
         db_session.add(Product(ticker=liq_ticker, name="Liquidity EUR",
-                                category="Cash", currency="EUR"))
+                                category="Actif", instrument_type="Cash", currency="EUR"))
         await db_session.flush()
 
     db_session.add(Transaction(
@@ -82,7 +82,7 @@ async def test_tri_with_full_data(client, db_session):
     existing = await db_session.get(Product, liq_ticker)
     if not existing:
         db_session.add(Product(ticker=liq_ticker, name="Liquidity EUR",
-                                category="Cash", currency="EUR"))
+                                category="Actif", instrument_type="Cash", currency="EUR"))
         await db_session.flush()
 
     # Deposit 10000 EUR on 2025-01-01
@@ -142,7 +142,7 @@ async def test_tri_with_withdrawal(client, db_session):
     existing = await db_session.get(Product, liq_ticker)
     if not existing:
         db_session.add(Product(ticker=liq_ticker, name="Liquidity EUR",
-                                category="Cash", currency="EUR"))
+                                category="Actif", instrument_type="Cash", currency="EUR"))
         await db_session.flush()
 
     # Deposit 10000 EUR (outflow for investor → negative cf)
@@ -214,7 +214,7 @@ async def test_tri_nan_result_returns_422(client, db_session):
     existing = await db_session.get(Product, liq_ticker)
     if not existing:
         db_session.add(Product(ticker=liq_ticker, name="Liquidity EUR",
-                                category="Cash", currency="EUR"))
+                                category="Actif", instrument_type="Cash", currency="EUR"))
         await db_session.flush()
 
     # Extreme same-date flows that cause Newton oscillation / divergence
@@ -273,7 +273,7 @@ async def test_tri_near_zero_derivative_breaks_newton(client, db_session):
     existing = await db_session.get(Product, liq_ticker)
     if not existing:
         db_session.add(Product(ticker=liq_ticker, name="Liquidity EUR",
-                                category="Cash", currency="EUR"))
+                                category="Actif", instrument_type="Cash", currency="EUR"))
         await db_session.flush()
 
     # All flows on the SAME date = t0, so t = (d - t0).days / 365.25 = 0 for all.
@@ -327,7 +327,7 @@ async def test_tri_positive_return(client, db_session):
     existing = await db_session.execute(sa_select(Product).where(Product.ticker == liq))
     if not existing.scalar_one_or_none():
         db_session.add(Product(ticker=liq, name="Liquidity EUR",
-                                category="Cash", currency="EUR"))
+                                category="Actif", instrument_type="Cash", currency="EUR"))
         await db_session.flush()
 
     # Two deposits over 6 months
@@ -384,7 +384,7 @@ async def test_tri_converges_exactly(client, db_session):
     existing = await db_session.execute(sa_select(Product).where(Product.ticker == liq))
     if not existing.scalar_one_or_none():
         db_session.add(Product(ticker=liq, name="Liquidity EUR",
-                                category="Cash", currency="EUR"))
+                                category="Actif", instrument_type="Cash", currency="EUR"))
         await db_session.flush()
 
     # 10,000 invested, value after exactly 1 year = 11,000 → TRI ≈ 10%

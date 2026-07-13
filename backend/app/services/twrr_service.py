@@ -1,6 +1,6 @@
 from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func, or_, text
 from datetime import date
 from collections import defaultdict
 
@@ -54,7 +54,7 @@ async def fetch_pool_twrr_data(
     # would require multiple subqueries or explicit join chaining that is
     # harder to read and offers no correctness benefit over this flat SQL.
     tx_pool_q = await db.execute(text("""
-        SELECT t.date, pl.id AS pool_id, pl.strategy, pr.category,
+        SELECT t.date, pl.id AS pool_id, pl.strategy, pr.instrument_type,
                SUM(t.total_amount_eur) AS net_tx
         FROM transactions t
         JOIN pool_products pp ON pp.ticker = t.ticker
@@ -63,16 +63,16 @@ async def fetch_pool_twrr_data(
         WHERE pl.portfolio_id = :uid AND t.portfolio_id = pl.portfolio_id
           AND t.ticker != 'LIQUIDITE.EURO'
           AND t.type = 'Actif'
-        GROUP BY t.date, pl.id, pl.strategy, pr.category
+        GROUP BY t.date, pl.id, pl.strategy, pr.instrument_type
     """), {"uid": portfolio_id})
     pool_flows: dict[int, dict[date, float]] = {}
     strat_flows_off: dict[date, float] = {}
     strat_flows_def: dict[date, float] = {}
     for row in tx_pool_q.all():
-        pid, dt, net_tx, strat, cat = (
-            row.pool_id, row.date, row.net_tx or 0.0, row.strategy, row.category
+        pid, dt, net_tx, strat, itype = (
+            row.pool_id, row.date, row.net_tx or 0.0, row.strategy, row.instrument_type
         )
-        flow = net_tx if cat == "Cash" else -net_tx
+        flow = net_tx if itype == "Cash" else -net_tx
         pool_flows.setdefault(pid, {})[dt] = (
             pool_flows.get(pid, {}).get(dt, 0.0) + flow
         )
@@ -111,19 +111,23 @@ async def fetch_position_twrr_data(
     """
     from app.api.routers.snapshots import _compute_twrr
 
+    non_cash_non_fee = (
+        Product.category != "Frais",
+        or_(Product.instrument_type != "Cash", Product.instrument_type.is_(None)),
+    )
     pos_tickers_q = await db.execute(
-        select(Transaction.ticker, Product.category, Product.name.label("product_name"))
+        select(Transaction.ticker, Product.instrument_type, Product.name.label("product_name"))
         .join(Product, Transaction.ticker == Product.ticker)
         .where(
             Transaction.portfolio_id == portfolio_id,
             Transaction.ticker != "LIQUIDITE.EURO",
             Transaction.type == "Actif",
-            Product.category.notin_(["Cash", "Frais"]),
+            *non_cash_non_fee,
         )
         .distinct()
         .order_by(Transaction.ticker)
     )
-    pos_tickers = [(r.ticker, r.category, r.product_name) for r in pos_tickers_q.all()]
+    pos_tickers = [(r.ticker, r.instrument_type, r.product_name) for r in pos_tickers_q.all()]
 
     if not pos_tickers:
         return {}
@@ -134,14 +138,14 @@ async def fetch_position_twrr_data(
             Transaction.ticker,
             Transaction.quantity,
             Transaction.total_amount_eur,
-            Product.category,
+            Product.instrument_type,
         )
         .join(Product, Transaction.ticker == Product.ticker)
         .where(
             Transaction.portfolio_id == portfolio_id,
             Transaction.ticker != "LIQUIDITE.EURO",
             Transaction.type == "Actif",
-            Product.category.notin_(["Cash", "Frais"]),
+            *non_cash_non_fee,
         )
         .order_by(Transaction.ticker, Transaction.date)
     )
@@ -149,7 +153,7 @@ async def fetch_position_twrr_data(
     tx_by_ticker: dict[str, list] = defaultdict(list)
     pos_raw_flows: dict[str, dict[date, float]] = defaultdict(dict)
     for row in all_tx_q.all():
-        tx_by_ticker[row.ticker].append((row.date, row.quantity, row.total_amount_eur, row.category))
+        tx_by_ticker[row.ticker].append((row.date, row.quantity, row.total_amount_eur, row.instrument_type))
         f = -(row.total_amount_eur or 0.0)
         d = row.date
         pos_raw_flows[row.ticker][d] = pos_raw_flows[row.ticker].get(d, 0.0) + f
@@ -185,7 +189,7 @@ async def fetch_position_twrr_data(
     spot_rates: dict[str, float] = {row.ticker: row.price for row in fx_result.scalars().all()}
 
     twrr_positions: dict[str, list[dict]] = {}
-    for ticker, category, product_name in pos_tickers:
+    for ticker, instrument_type, product_name in pos_tickers:
         txs = tx_by_ticker.get(ticker, [])
         prices = prices_by_ticker.get(ticker, [])
         if not txs or not prices:
@@ -208,7 +212,7 @@ async def fetch_position_twrr_data(
             currency = prices[price_idx][2]
             price = _to_eur(raw_price, currency, spot_rates)
 
-            if category == "Manuel":
+            if instrument_type == "Or physique":
                 held = max(0.0, abs(cum_raw_qty)) if cum_raw_qty != 0 else 0.0
                 value = price if held > 0 else 0.0
             else:

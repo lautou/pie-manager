@@ -124,7 +124,7 @@ async def test_dashboard_manuel_category_pool(client, db_session):
     await db_session.flush()
 
     ticker = f"OR.{suffix}"
-    db_session.add(Product(ticker=ticker, name="Or", category="Manuel", currency="EUR"))
+    db_session.add(Product(ticker=ticker, name="Or", category="Actif", instrument_type="Or physique", currency="EUR"))
     await db_session.flush()
 
     pool = Pool(portfolio_id=uid, name="Or Pool", strategy="Defensive",
@@ -180,7 +180,7 @@ async def test_dashboard_pools_with_no_products_uses_empty_prices(client, db_ses
     from sqlalchemy import select as sa_select
     existing_liq = await db_session.execute(sa_select(Product).where(Product.ticker == liq_ticker))
     if not existing_liq.scalar_one_or_none():
-        db_session.add(Product(ticker=liq_ticker, name="Cash EUR", category="Cash", currency="EUR"))
+        db_session.add(Product(ticker=liq_ticker, name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
         await db_session.flush()
     db_session.add(Transaction(
         portfolio_id=uid, account_id=account.id,
@@ -235,7 +235,7 @@ async def test_dashboard_liquidite_euro_in_pool_is_skipped(client, db_session):
     existing = await db_session.execute(sa_select(Product).where(Product.ticker == liq_ticker))
     if not existing.scalar_one_or_none():
         db_session.add(Product(ticker=liq_ticker, name="Cash EUR",
-                                category="Cash", currency="EUR"))
+                                category="Actif", instrument_type="Cash", currency="EUR"))
         await db_session.flush()
 
     # Add a cash deposit so _get_liquidity_eur returns 1000
@@ -294,7 +294,7 @@ async def test_dashboard_non_eur_ticker_with_spot_rate(client, db_session):
     liq_ticker = "LIQUIDITE.EURO"
     existing = await db_session.execute(sa_select(Product).where(Product.ticker == liq_ticker))
     if not existing.scalar_one_or_none():
-        db_session.add(Product(ticker=liq_ticker, name="Cash EUR", category="Cash", currency="EUR"))
+        db_session.add(Product(ticker=liq_ticker, name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
         await db_session.flush()
 
     # USD-priced ETF
@@ -323,7 +323,7 @@ async def test_dashboard_non_eur_ticker_with_spot_rate(client, db_session):
     fx_ticker = "USDEUR=X"
     existing_fx = await db_session.execute(sa_select(Product).where(Product.ticker == fx_ticker))
     if not existing_fx.scalar_one_or_none():
-        db_session.add(Product(ticker=fx_ticker, name="USD/EUR", category="Cash", currency="EUR"))
+        db_session.add(Product(ticker=fx_ticker, name="USD/EUR", category="Actif", instrument_type="Cash", currency="EUR"))
         await db_session.flush()
 
     # Asset price in USD
@@ -431,7 +431,7 @@ async def test_liquidity_uses_account_cash_balance_not_liquidite_transactions(cl
     # Add LIQUIDITE.EURO transactions with a MUCH larger sum (the old bug)
     # Historical deposits: 100 000 € deposited over time...
     fake_liq = Product(ticker=f"LIQUIDITE.EURO", name="Cash",
-                       category="Cash", currency="EUR")
+                       category="Actif", instrument_type="Cash", currency="EUR")
     db_session.add(fake_liq)
     await db_session.flush()
     db_session.add(Transaction(

@@ -105,6 +105,8 @@ export interface ProductPayload {
   ticker: string;
   name: string;
   category: string;
+  instrument_type?: string | null;
+  fee_type?: string | null;
   currency: string;
   is_ttf_eligible?: boolean;
 }
@@ -167,6 +169,7 @@ export interface TransactionPayload {
   unit_price: number;
   balance_currency?: number;
   balance_eur?: number;
+  operation?: string;
   courtage_eur?: number;
   ttf_eur?: number;
   additional_executions?: ExecutionItem[];

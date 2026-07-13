@@ -73,8 +73,8 @@ vi.mock('../hooks/useSortable', () => ({
 import GlobalConfigPage from './GlobalConfigPage';
 
 const MOCK_PRODUCTS = [
-  { ticker: 'AAPL', name: 'Apple Inc', category: 'Actif', currency: 'USD', is_ttf_eligible: false },
-  { ticker: 'OR', name: 'Or Physique', category: 'Manuel', currency: 'EUR', is_ttf_eligible: false },
+  { ticker: 'AAPL', name: 'Apple Inc', category: 'Actif', instrument_type: 'Action', currency: 'USD', is_ttf_eligible: false },
+  { ticker: 'OR', name: 'Or Physique', category: 'Actif', instrument_type: 'Or physique', currency: 'EUR', is_ttf_eligible: false },
 ];
 
 function setupDefaultMocks() {
@@ -97,7 +97,7 @@ describe('GlobalConfigPage — ProductManager', () => {
 
   it('renders the Produits section heading', () => {
     render(<GlobalConfigPage />);
-    expect(screen.getByText(/Produits financiers/i)).toBeTruthy();
+    expect(screen.getByText(/Produits et frais financiers/i)).toBeTruthy();
   });
 
   it('TTF rate save button — clicking saves and shows ✓ (line 601 — ttfSaved=true branch)', async () => {
@@ -119,7 +119,7 @@ describe('GlobalConfigPage — ProductManager', () => {
       // After save, ttfSaved=true renders '✓ Enregistrer' (line 601 ttfSaved branch)
       // We can't easily wait for setTimeout(2000) to reset, just verify it was called
     }
-    expect(screen.getByText(/Produits financiers/i)).toBeTruthy();
+    expect(screen.getByText(/Produits et frais financiers/i)).toBeTruthy();
   }, 10000);
 
   it('TTF rate save button — isPending branch (line 601 — isPending=true)', () => {
@@ -128,7 +128,7 @@ describe('GlobalConfigPage — ProductManager', () => {
     render(<GlobalConfigPage />);
     // The button should show 'Enregistrer…'
     expect(document.body.textContent).toContain('Enregistrer');
-    expect(screen.getByText(/Produits financiers/i)).toBeTruthy();
+    expect(screen.getByText(/Produits et frais financiers/i)).toBeTruthy();
   });
 
   it('shows product count', () => {
@@ -266,9 +266,97 @@ describe('GlobalConfigPage — ProductManager', () => {
     if (newBtn) {
       await user.click(newBtn);
       const catSelect = screen.getByRole('combobox', { name: /catégorie/i });
-      await user.selectOptions(catSelect, 'Manuel');
-      expect((catSelect as HTMLSelectElement).value).toBe('Manuel');
+      await user.selectOptions(catSelect, 'Frais');
+      expect((catSelect as HTMLSelectElement).value).toBe('Frais');
     }
+  }, 10000);
+
+  it('can select an instrument type when category is Actif', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    const newBtn = screen.getAllByRole('button').find(b => b.textContent?.includes('Nouveau produit'));
+    if (newBtn) {
+      await user.click(newBtn);
+      const typeSelect = screen.getByRole('combobox', { name: /type d'instrument/i });
+      await user.selectOptions(typeSelect, 'ETF');
+      expect((typeSelect as HTMLSelectElement).value).toBe('ETF');
+    }
+  }, 10000);
+
+  it('can select a fee type when category is Frais', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    const newBtn = screen.getAllByRole('button').find(b => b.textContent?.includes('Nouveau produit'));
+    if (newBtn) {
+      await user.click(newBtn);
+      const catSelect = screen.getByRole('combobox', { name: /catégorie/i });
+      await user.selectOptions(catSelect, 'Frais');
+      const feeSelect = screen.getByRole('combobox', { name: /type de frais/i });
+      await user.selectOptions(feeSelect, 'Courtage');
+      expect((feeSelect as HTMLSelectElement).value).toBe('Courtage');
+    }
+  }, 10000);
+
+  it('creating a Frais product with a fee type sends fee_type and null instrument_type', async () => {
+    const { createProduct } = await import('../api/queries');
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    const newBtn = screen.getAllByRole('button').find(b => b.textContent?.includes('Nouveau produit'));
+    if (newBtn) {
+      await user.click(newBtn);
+      await user.type(screen.getByRole('textbox', { name: /ticker/i }), 'FRAIS.TEST');
+      await user.type(screen.getByRole('textbox', { name: /nom/i }), 'Frais Test');
+      await user.selectOptions(screen.getByRole('combobox', { name: /catégorie/i }), 'Frais');
+      await user.selectOptions(screen.getByRole('combobox', { name: /type de frais/i }), 'Courtage');
+      const modal = screen.getByTestId('modal');
+      await user.click(within(modal).getByText('Enregistrer'));
+      expect(createProduct).toHaveBeenCalledWith(expect.objectContaining({
+        instrument_type: null, fee_type: 'Courtage',
+      }));
+    }
+  }, 10000);
+
+  it('creating a Frais product without a fee type sends fee_type null', async () => {
+    const { createProduct } = await import('../api/queries');
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    const newBtn = screen.getAllByRole('button').find(b => b.textContent?.includes('Nouveau produit'));
+    if (newBtn) {
+      await user.click(newBtn);
+      await user.type(screen.getByRole('textbox', { name: /ticker/i }), 'FRAIS.TEST2');
+      await user.type(screen.getByRole('textbox', { name: /nom/i }), 'Frais Test 2');
+      await user.selectOptions(screen.getByRole('combobox', { name: /catégorie/i }), 'Frais');
+      const modal = screen.getByTestId('modal');
+      await user.click(within(modal).getByText('Enregistrer'));
+      expect(createProduct).toHaveBeenCalledWith(expect.objectContaining({
+        instrument_type: null, fee_type: null,
+      }));
+    }
+  }, 10000);
+
+  it('Type column shows fee_type for a Frais product and — when neither is set', () => {
+    mockUseProducts.mockReturnValue({
+      data: [
+        { ticker: 'FRAIS.X', name: 'Frais X', category: 'Frais', fee_type: 'Courtage', currency: 'EUR', is_ttf_eligible: false },
+        { ticker: 'MYST', name: 'Mystery', category: 'Actif', currency: 'EUR', is_ttf_eligible: false },
+      ],
+      refetch: vi.fn(),
+    });
+    render(<GlobalConfigPage />);
+    expect(screen.getByText('Courtage')).toBeTruthy();
+    expect(screen.getByText('—')).toBeTruthy();
+  });
+
+  it('editing a product without instrument_type/fee_type pre-fills empty selects', async () => {
+    mockUseProducts.mockReturnValue({
+      data: [{ ticker: 'MYST', name: 'Mystery', category: 'Actif', currency: 'EUR', is_ttf_eligible: false }],
+      refetch: vi.fn(),
+    });
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByRole('button', { name: /Modifier MYST/i }));
+    const typeSelect = screen.getByRole('combobox', { name: /type d'instrument/i });
+    expect((typeSelect as HTMLSelectElement).value).toBe('');
   }, 10000);
 
   it('shows edit modal when clicking edit button for a product', async () => {
@@ -419,7 +507,7 @@ describe('GlobalConfigPage — ProductManager', () => {
     const ths = Array.from(container.querySelectorAll('th'));
     const categorieTh = ths.find(th => th.textContent?.includes('Catégorie'));
     if (categorieTh) await user.click(categorieTh);
-    expect(screen.getByText(/Produits financiers/i)).toBeTruthy();
+    expect(screen.getByText(/Produits et frais financiers/i)).toBeTruthy();
   }, 10000);
 
   it('toggleSort: clicking Devise header', async () => {
@@ -428,7 +516,7 @@ describe('GlobalConfigPage — ProductManager', () => {
     const ths = Array.from(container.querySelectorAll('th'));
     const deviseTh = ths.find(th => th.textContent?.includes('Devise'));
     if (deviseTh) await user.click(deviseTh);
-    expect(screen.getByText(/Produits financiers/i)).toBeTruthy();
+    expect(screen.getByText(/Produits et frais financiers/i)).toBeTruthy();
   }, 10000);
 
   it('TTF checkbox onChange calls updateProduct (line 506)', async () => {
@@ -452,7 +540,7 @@ describe('GlobalConfigPage — ProductManager', () => {
         await user.click(th as HTMLElement);
       }
     }
-    expect(screen.getByText(/Produits financiers/i)).toBeTruthy();
+    expect(screen.getByText(/Produits et frais financiers/i)).toBeTruthy();
   }, 10000);
 });
 
@@ -1554,7 +1642,7 @@ describe('GlobalConfigPage — additional branch coverage', () => {
     mockUseSystemSetting.mockReturnValue({ data: undefined, isError: false });
     render(<GlobalConfigPage />);
     // Default ttfRate is '0.40' (not overwritten since ttfSetting?.value is undefined)
-    expect(screen.getByText(/Produits financiers/i)).toBeTruthy();
+    expect(screen.getByText(/Produits et frais financiers/i)).toBeTruthy();
   });
 
   it('handleSave catch with non-Error uses "Valeur invalide" fallback (line 164 false branch)', async () => {

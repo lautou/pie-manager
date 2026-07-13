@@ -1,7 +1,7 @@
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,10 +20,11 @@ def r2(val: float) -> float:
 
 
 async def get_active_tickers(db: AsyncSession) -> list[tuple[str, str]]:
-    """Returns list of (ticker, currency) for non-manual, non-cash products."""
+    """Returns list of (ticker, currency) for non-manual, non-fee products."""
     result = await db.execute(
         select(Product.ticker, Product.currency).where(
-            Product.category.notin_(["Manuel", "Frais"]),
+            Product.category != "Frais",
+            or_(Product.instrument_type != "Or physique", Product.instrument_type.is_(None)),
         )
     )
     tickers = []

@@ -38,6 +38,8 @@ class TransactionCreate(BaseModel):
     balance_currency: Optional[float] = None
     balance_eur: Optional[float] = None
     linked_transaction_id: Optional[int] = None
+    # Sub-classification for type='Actif': Achat / Vente / Attribution (free grant)
+    operation: Optional[str] = None
     # Auto-created linked fee transactions (brokerage + TTF); ignored for non-Actif types
     courtage_eur: float = 0.0
     ttf_eur: float = 0.0
@@ -68,6 +70,8 @@ class TransactionUpdate(BaseModel):
     balance_currency: Optional[float] = None
     balance_eur: Optional[float] = None
     linked_transaction_id: Optional[int] = None
+    # Sub-classification for type='Actif': Achat / Vente / Attribution (free grant)
+    operation: Optional[str] = None
     # When provided, linked fee transactions (brokerage + TTF) are replaced with new values
     courtage_eur: Optional[float] = None
     ttf_eur: Optional[float] = None
@@ -94,6 +98,7 @@ class TransactionOut(BaseModel):
     balance_eur: Optional[float]
     fractional_parent_id: Optional[int]
     linked_transaction_id: Optional[int]
+    operation: Optional[str] = None
 
     @field_validator("balance_eur", "balance_currency", mode="before")
     @classmethod
@@ -114,8 +119,8 @@ def _trigger_snapshot_recompute(portfolio_id: int, from_date: Date):
 def _is_forex_position(tx_type: str, ticker: str) -> bool:
     """True for a currency-pair position transaction (JPYEUR=X, USDEUR=X, ...) that is
     NOT a fee. These track a forex position's EUR-equivalent value for WACOP/PV purposes
-    (see pv_service.py's category='Cash' AND ticker not LIKE 'LIQUIDITE.%' distinction),
-    not a real EUR cash flow — the EUR side of a conversion is captured separately by a
+    (see pv_service.py's instrument_type='Cash' AND ticker not LIKE 'LIQUIDITE.%'
+    distinction), not a real EUR cash flow — the EUR side of a conversion is captured separately by a
     manually-entered LIQUIDITE.EUR transaction. Fee transactions are excluded from this
     check even when they share the parent's forex ticker (e.g. a EUR-denominated Revolut
     FX commission), since fees are always a real cash cost. See CLAUDE.md's
@@ -124,8 +129,23 @@ def _is_forex_position(tx_type: str, ticker: str) -> bool:
     return ticker.endswith("EUR=X") and tx_type != "Frais"
 
 
+def _contributes_to_ledger(operation: Optional[str]) -> bool:
+    """False for a free share Attribution — it never moves any cash or running-balance
+    ledger even though total_amount_eur may carry a recorded fair-value cost basis for
+    WACOP (pv_service.py). True for everything else (Achat/Vente/None for Frais/Revenu).
+
+    Uses the transaction's CURRENT operation value everywhere (not an old/new split) —
+    same level of rigor this file already applies to tx_type/ticker changes. Reclassifying
+    an existing transaction's operation (e.g. Achat -> Attribution) in the same edit as an
+    amount/date change is a rare correction scenario; the ledger delta in that edge case
+    may be imprecise, matching the existing behavior for type/ticker changes.
+    """
+    return operation != "Attribution"
+
+
 async def _update_account_cash_balance(
-    db: AsyncSession, account_id: int, portfolio_id: int, delta: float, tx_type: str, ticker: str
+    db: AsyncSession, account_id: int, portfolio_id: int, delta: float, tx_type: str, ticker: str,
+    operation: Optional[str] = None,
 ) -> None:
     """Update portfolio_accounts.cash_balance_eur by adding delta (positive or negative).
 
@@ -134,9 +154,10 @@ async def _update_account_cash_balance(
     - Buying assets: negative total_amount_eur → cash decreases
     - Selling assets, dividends, deposits: positive → cash increases
     - Fees: negative → cash decreases
-    Forex-position transactions (see _is_forex_position) are skipped entirely.
+    Forex-position transactions (see _is_forex_position) and free share Attributions
+    (see _contributes_to_ledger) are skipped entirely.
     """
-    if _is_forex_position(tx_type, ticker):
+    if _is_forex_position(tx_type, ticker) or not _contributes_to_ledger(operation):
         return
     result = await db.execute(
         select(PortfolioAccount).where(
@@ -205,8 +226,11 @@ async def create_transaction(body: TransactionCreate, db: AsyncSession = Depends
 
     # Auto-calculate balance_eur (Contrevaleur solde EUR) when not provided.
     # Find the most recent transaction for this account that has a known balance,
-    # then add the current transaction's amount on top.
-    if tx.balance_eur is None:
+    # then add the current transaction's amount on top. A free share Attribution
+    # never gets a balance_eur/balance_currency — it never moved any cash, even
+    # though total_amount_eur may carry a recorded fair-value cost basis for WACOP
+    # (see _contributes_to_ledger). It stays None and displays "—" in the UI.
+    if tx.balance_eur is None and _contributes_to_ledger(tx.operation):
         prev_result = await db.execute(
             select(Transaction.balance_eur)
             .where(
@@ -253,7 +277,7 @@ async def create_transaction(body: TransactionCreate, db: AsyncSession = Depends
     # Use case: adding a missing transaction from the past (e.g. a fee entered
     # after the fact). The subsequent balance_eur values must shift by the same delta.
     from sqlalchemy import update as sa_update
-    if tx.total_amount_eur != 0:
+    if tx.total_amount_eur != 0 and _contributes_to_ledger(tx.operation):
         await db.execute(
             sa_update(Transaction)
             .where(
@@ -268,7 +292,7 @@ async def create_transaction(body: TransactionCreate, db: AsyncSession = Depends
         )
     # Retroactive update for non-EUR balance_currency: propagate to subsequent
     # transactions in the same currency on the same account.
-    if tx.currency != "EUR" and tx.balance_currency is not None and tx.total_amount != 0:
+    if tx.currency != "EUR" and tx.balance_currency is not None and tx.total_amount != 0 and _contributes_to_ledger(tx.operation):
         await db.execute(
             sa_update(Transaction)
             .where(
@@ -284,7 +308,7 @@ async def create_transaction(body: TransactionCreate, db: AsyncSession = Depends
         )
 
     # Any transaction affects the account cash balance (deposit, buy, sell, fee, dividend)
-    await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, tx.total_amount_eur, tx.type, tx.ticker)
+    await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, tx.total_amount_eur, tx.type, tx.ticker, tx.operation)
 
     # Auto-create fractional sibling executions
     for exec_item in body.additional_executions:
@@ -295,6 +319,7 @@ async def create_transaction(body: TransactionCreate, db: AsyncSession = Depends
             date=exec_item.date,
             type=tx.type,
             ticker=tx.ticker,
+            operation=tx.operation,
             currency=tx.currency,
             exchange_rate=rate,
             quantity=exec_item.quantity,
@@ -306,55 +331,63 @@ async def create_transaction(body: TransactionCreate, db: AsyncSession = Depends
         )
         db.add(sibling)
         await db.flush()
-        # Calculate balance_eur for the sibling (same logic as main transaction)
-        prev_sib = await db.execute(
-            select(Transaction.balance_eur)
-            .where(
-                Transaction.account_id == sibling.account_id,
-                Transaction.portfolio_id == sibling.portfolio_id,
-                Transaction.balance_eur.isnot(None),
-                Transaction.id != sibling.id,
-                (Transaction.date < sibling.date) |
-                ((Transaction.date == sibling.date) & (Transaction.id < sibling.id)),
-            )
-            .order_by(Transaction.date.desc(), Transaction.id.desc())
-            .limit(1)
-        )
-        prev_sib_balance = prev_sib.scalar_one_or_none()
-        if prev_sib_balance is not None:
-            sibling.balance_eur = _no_neg_zero(round(float(prev_sib_balance) + sibling.total_amount_eur, 2))
-            if sibling.currency == "EUR":
-                sibling.balance_currency = sibling.balance_eur
-            else:
-                prev_sib_curr = await db.execute(
-                    select(Transaction.balance_currency)
-                    .where(
-                        Transaction.account_id == sibling.account_id,
-                        Transaction.portfolio_id == sibling.portfolio_id,
-                        Transaction.currency == sibling.currency,
-                        Transaction.balance_currency.isnot(None),
-                        Transaction.id != sibling.id,
-                        (Transaction.date < sibling.date) |
-                        ((Transaction.date == sibling.date) & (Transaction.id < sibling.id)),
-                    )
-                    .order_by(Transaction.date.desc(), Transaction.id.desc())
-                    .limit(1)
+        # Calculate balance_eur for the sibling (same logic as main transaction).
+        # A sibling of an Attribution parent never gets a balance_eur either (see
+        # _contributes_to_ledger).
+        if _contributes_to_ledger(sibling.operation):
+            prev_sib = await db.execute(
+                select(Transaction.balance_eur)
+                .where(
+                    Transaction.account_id == sibling.account_id,
+                    Transaction.portfolio_id == sibling.portfolio_id,
+                    Transaction.balance_eur.isnot(None),
+                    Transaction.id != sibling.id,
+                    (Transaction.date < sibling.date) |
+                    ((Transaction.date == sibling.date) & (Transaction.id < sibling.id)),
                 )
-                prev_sib_curr_balance = prev_sib_curr.scalar_one_or_none()
-                if prev_sib_curr_balance is not None:
-                    sibling.balance_currency = _no_neg_zero(round(float(prev_sib_curr_balance) + sibling.total_amount, 2))
-        await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, sibling.total_amount_eur, sibling.type, sibling.ticker)
+                .order_by(Transaction.date.desc(), Transaction.id.desc())
+                .limit(1)
+            )
+            prev_sib_balance = prev_sib.scalar_one_or_none()
+            if prev_sib_balance is not None:
+                sibling.balance_eur = _no_neg_zero(round(float(prev_sib_balance) + sibling.total_amount_eur, 2))
+                if sibling.currency == "EUR":
+                    sibling.balance_currency = sibling.balance_eur
+                else:
+                    prev_sib_curr = await db.execute(
+                        select(Transaction.balance_currency)
+                        .where(
+                            Transaction.account_id == sibling.account_id,
+                            Transaction.portfolio_id == sibling.portfolio_id,
+                            Transaction.currency == sibling.currency,
+                            Transaction.balance_currency.isnot(None),
+                            Transaction.id != sibling.id,
+                            (Transaction.date < sibling.date) |
+                            ((Transaction.date == sibling.date) & (Transaction.id < sibling.id)),
+                        )
+                        .order_by(Transaction.date.desc(), Transaction.id.desc())
+                        .limit(1)
+                    )
+                    prev_sib_curr_balance = prev_sib_curr.scalar_one_or_none()
+                    if prev_sib_curr_balance is not None:
+                        sibling.balance_currency = _no_neg_zero(round(float(prev_sib_curr_balance) + sibling.total_amount, 2))
+        await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, sibling.total_amount_eur, sibling.type, sibling.ticker, sibling.operation)
 
-    # Auto-create linked fee transactions (brokerage + TTF) for Actif buys/sells
+    # Auto-create linked fee transactions (brokerage + TTF) for Actif buys/sells.
+    # Dedicated FRAIS.* tickers (not the parent asset's ticker) so fee_type can be
+    # derived uniformly from the product, matching historical pre-regression data.
     if body.type == "Actif":
-        for fee_amount in (body.courtage_eur, body.ttf_eur):
+        for fee_amount, fee_ticker in (
+            (body.courtage_eur, "FRAIS.COURTAGE.EUR"),
+            (body.ttf_eur, "FRAIS.TTF.EUR"),
+        ):
             if fee_amount > 0:
                 fee_tx = Transaction(
                     portfolio_id=tx.portfolio_id,
                     account_id=tx.account_id,
                     date=tx.date,
                     type="Frais",
-                    ticker=tx.ticker,
+                    ticker=fee_ticker,
                     currency="EUR",
                     exchange_rate=1.0,
                     quantity=-1,
@@ -384,7 +417,7 @@ async def create_transaction(body: TransactionCreate, db: AsyncSession = Depends
                 if prev_fee_balance is not None:
                     fee_tx.balance_eur = _no_neg_zero(round(float(prev_fee_balance) - fee_amount, 2))
                     fee_tx.balance_currency = fee_tx.balance_eur
-                await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, -fee_amount, fee_tx.type, fee_tx.ticker)
+                await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, -fee_amount, fee_tx.type, fee_tx.ticker, fee_tx.operation)
 
     await db.commit()
     await db.refresh(tx)
@@ -426,8 +459,10 @@ async def update_transaction(
         await db.flush()
 
         # Undo the old position: remove this tx's amount from all transactions that
-        # were after it (date > old_date, or same old_date with higher id).
-        if old_total_eur != 0:
+        # were after it (date > old_date, or same old_date with higher id). Uses the
+        # CURRENT operation (not an old/new split) — same rigor this file already
+        # applies to tx_type/ticker changes; see _contributes_to_ledger.
+        if old_total_eur != 0 and _contributes_to_ledger(tx.operation):
             await db.execute(
                 sa_update(Transaction)
                 .where(
@@ -442,33 +477,34 @@ async def update_transaction(
                 .execution_options(synchronize_session=False)
             )
 
-        # Recalculate this tx's balance_eur at its new date position
-        prev_result = await db.execute(
-            select(Transaction.balance_eur)
-            .where(
-                Transaction.account_id == tx.account_id,
-                Transaction.portfolio_id == tx.portfolio_id,
-                Transaction.balance_eur.isnot(None),
-                Transaction.id != tx.id,
-                (Transaction.date < tx.date) |
-                ((Transaction.date == tx.date) & (Transaction.id < tx.id)),
+        # Recalculate this tx's balance_eur at its new date position. A free share
+        # Attribution never gets one (see _contributes_to_ledger) — always None.
+        tx.balance_eur = None
+        tx.balance_currency = None
+        if _contributes_to_ledger(tx.operation):
+            prev_result = await db.execute(
+                select(Transaction.balance_eur)
+                .where(
+                    Transaction.account_id == tx.account_id,
+                    Transaction.portfolio_id == tx.portfolio_id,
+                    Transaction.balance_eur.isnot(None),
+                    Transaction.id != tx.id,
+                    (Transaction.date < tx.date) |
+                    ((Transaction.date == tx.date) & (Transaction.id < tx.id)),
+                )
+                .order_by(Transaction.date.desc(), Transaction.id.desc())
+                .limit(1)
             )
-            .order_by(Transaction.date.desc(), Transaction.id.desc())
-            .limit(1)
-        )
-        prev_balance = prev_result.scalar_one_or_none()
-        if prev_balance is not None:
-            tx.balance_eur = _no_neg_zero(round(float(prev_balance) + tx.total_amount_eur, 2))
-            if tx.currency == "EUR":
-                tx.balance_currency = tx.balance_eur
-        else:
-            tx.balance_eur = None
-            tx.balance_currency = None
+            prev_balance = prev_result.scalar_one_or_none()
+            if prev_balance is not None:
+                tx.balance_eur = _no_neg_zero(round(float(prev_balance) + tx.total_amount_eur, 2))
+                if tx.currency == "EUR":
+                    tx.balance_currency = tx.balance_eur
 
         # Apply the new position: add this tx's amount to all transactions after it.
         # Propagate regardless of tx.balance_eur — downstream running balances must shift
         # even when the moved tx itself has no prior to derive its own balance from.
-        if tx.total_amount_eur != 0:
+        if tx.total_amount_eur != 0 and _contributes_to_ledger(tx.operation):
             await db.execute(
                 sa_update(Transaction)
                 .where(
@@ -489,10 +525,10 @@ async def update_transaction(
         # branch below does.
         cash_delta = tx.total_amount_eur - old_total_eur
         if cash_delta != 0:
-            await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, cash_delta, tx.type, tx.ticker)
+            await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, cash_delta, tx.type, tx.ticker, tx.operation)
     else:
         # Auto-calculate balance_eur when still null (e.g. transaction created before this fix)
-        if tx.balance_eur is None:
+        if tx.balance_eur is None and _contributes_to_ledger(tx.operation):
             prev_result = await db.execute(
                 select(Transaction.balance_eur)
                 .where(
@@ -536,7 +572,10 @@ async def update_transaction(
 
         delta = tx.total_amount_eur - old_total_eur
 
-        if delta != 0:
+        # A free share Attribution never touches any running balance or the account
+        # cash balance (see _contributes_to_ledger) — skip the whole block, using
+        # CURRENT operation (same rigor already applied to tx_type/ticker changes).
+        if delta != 0 and _contributes_to_ledger(tx.operation):
             # Update balance_eur of this transaction itself
             if tx.balance_eur is not None:
                 tx.balance_eur = _no_neg_zero(round(tx.balance_eur + delta, 2))
@@ -557,7 +596,7 @@ async def update_transaction(
                 .execution_options(synchronize_session=False)
             )
 
-            await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, delta, tx.type, tx.ticker)
+            await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, delta, tx.type, tx.ticker, tx.operation)
 
     # Update linked fee transactions (brokerage + TTF) if new values are provided
     # Skip if transaction is a fractional sibling (it never owns fees)
@@ -573,17 +612,21 @@ async def update_transaction(
             select(Transaction).where(Transaction.linked_transaction_id == tx.id)
         )
         for child in children_result.scalars().all():
-            await _update_account_cash_balance(db, child.account_id, child.portfolio_id, -child.total_amount_eur, child.type, child.ticker)
+            await _update_account_cash_balance(db, child.account_id, child.portfolio_id, -child.total_amount_eur, child.type, child.ticker, child.operation)
             await db.delete(child)
-        # Recreate with new values
-        for fee_amount in (body.courtage_eur or 0, body.ttf_eur or 0):
+        # Recreate with new values. Dedicated FRAIS.* tickers (not the parent asset's
+        # ticker) so fee_type can be derived uniformly from the product.
+        for fee_amount, fee_ticker in (
+            (body.courtage_eur or 0, "FRAIS.COURTAGE.EUR"),
+            (body.ttf_eur or 0, "FRAIS.TTF.EUR"),
+        ):
             if fee_amount > 0:
                 fee_tx = Transaction(
                     portfolio_id=tx.portfolio_id,
                     account_id=tx.account_id,
                     date=tx.date,
                     type="Frais",
-                    ticker=tx.ticker,
+                    ticker=fee_ticker,
                     currency="EUR",
                     exchange_rate=1.0,
                     quantity=-1,
@@ -615,7 +658,7 @@ async def update_transaction(
                 if prev_fee_balance is not None:
                     fee_tx.balance_eur = _no_neg_zero(round(float(prev_fee_balance) - fee_amount, 2))
                     fee_tx.balance_currency = fee_tx.balance_eur
-                await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, -fee_amount, fee_tx.type, fee_tx.ticker)
+                await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, -fee_amount, fee_tx.type, fee_tx.ticker, fee_tx.operation)
 
     await db.commit()
     await db.refresh(tx)
@@ -630,14 +673,14 @@ async def delete_transaction(transaction_id: int, db: AsyncSession = Depends(get
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
     portfolio_id, tx_date, account_id = tx.portfolio_id, tx.date, tx.account_id
-    tx_type, tx_ticker = tx.type, tx.ticker
+    tx_type, tx_ticker, tx_operation = tx.type, tx.ticker, tx.operation
 
     # Delete fractional siblings first (they share the brokerage fee of the parent)
     siblings_result = await db.execute(
         select(Transaction).where(Transaction.fractional_parent_id == transaction_id)
     )
     for sibling in siblings_result.scalars().all():
-        await _update_account_cash_balance(db, sibling.account_id, sibling.portfolio_id, -sibling.total_amount_eur, sibling.type, sibling.ticker)
+        await _update_account_cash_balance(db, sibling.account_id, sibling.portfolio_id, -sibling.total_amount_eur, sibling.type, sibling.ticker, sibling.operation)
         await db.delete(sibling)
 
     # Explicitly delete linked fee transactions (brokerage/TTF) so their cash balance is also reversed
@@ -645,14 +688,14 @@ async def delete_transaction(transaction_id: int, db: AsyncSession = Depends(get
         select(Transaction).where(Transaction.linked_transaction_id == transaction_id)
     )
     for child in children_result.scalars().all():
-        await _update_account_cash_balance(db, child.account_id, child.portfolio_id, -child.total_amount_eur, child.type, child.ticker)
+        await _update_account_cash_balance(db, child.account_id, child.portfolio_id, -child.total_amount_eur, child.type, child.ticker, child.operation)
         await db.delete(child)
 
     delta = -tx.total_amount_eur  # reverting the parent transaction's cash impact
     await db.delete(tx)
 
     # Any deleted transaction restores the cash balance
-    await _update_account_cash_balance(db, account_id, portfolio_id, delta, tx_type, tx_ticker)
+    await _update_account_cash_balance(db, account_id, portfolio_id, delta, tx_type, tx_ticker, tx_operation)
 
     await db.commit()
     _trigger_snapshot_recompute(portfolio_id, tx_date)

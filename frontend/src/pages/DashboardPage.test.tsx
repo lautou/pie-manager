@@ -687,7 +687,7 @@ describe('DashboardPage — coverage for uncovered branches', () => {
   // ── StalePriceWarning tests ───────────────────────────────────────────────
 
   it('shows stale-price warning when a Manuel product has no prices', () => {
-    const manuelProduct = { ticker: 'GOLD', name: 'Or physique', category: 'Manuel', currency: 'EUR' };
+    const manuelProduct = { ticker: 'GOLD', name: 'Or physique', category: 'Actif', instrument_type: 'Or physique', currency: 'EUR' };
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseProducts.mockReturnValue({ data: [manuelProduct] });
     // Empty prices array → no latestDate → isStale = true
@@ -698,7 +698,7 @@ describe('DashboardPage — coverage for uncovered branches', () => {
   });
 
   it('shows stale-price warning when a Manuel product price is older than 30 days', () => {
-    const manuelProduct = { ticker: 'GOLD', name: 'Or physique', category: 'Manuel', currency: 'EUR' };
+    const manuelProduct = { ticker: 'GOLD', name: 'Or physique', category: 'Actif', instrument_type: 'Or physique', currency: 'EUR' };
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseProducts.mockReturnValue({ data: [manuelProduct] });
     // Price dated 2024-01-01 is well over 30 days ago
@@ -708,7 +708,7 @@ describe('DashboardPage — coverage for uncovered branches', () => {
   });
 
   it('does not show stale-price warning when Manuel product price is recent', () => {
-    const manuelProduct = { ticker: 'GOLD', name: 'Or physique', category: 'Manuel', currency: 'EUR' };
+    const manuelProduct = { ticker: 'GOLD', name: 'Or physique', category: 'Actif', instrument_type: 'Or physique', currency: 'EUR' };
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseProducts.mockReturnValue({ data: [manuelProduct] });
     // Price dated today → 0 days ago → not stale
@@ -728,7 +728,7 @@ describe('DashboardPage — coverage for uncovered branches', () => {
   });
 
   it('does not show stale-price warning while prices are still loading (data undefined)', () => {
-    const manuelProduct = { ticker: 'GOLD', name: 'Or physique', category: 'Manuel', currency: 'EUR' };
+    const manuelProduct = { ticker: 'GOLD', name: 'Or physique', category: 'Actif', instrument_type: 'Or physique', currency: 'EUR' };
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseProducts.mockReturnValue({ data: [manuelProduct] });
     // prices data undefined = still loading → ManuelProductStalenessCheck returns null
@@ -738,8 +738,8 @@ describe('DashboardPage — coverage for uncovered branches', () => {
   });
 
   it('shows stale-price warning listing multiple stale products', () => {
-    const gold = { ticker: 'GOLD', name: 'Or physique', category: 'Manuel', currency: 'EUR' };
-    const sicav = { ticker: 'SICAV1', name: 'SICAV Prudent', category: 'Manuel', currency: 'EUR' };
+    const gold = { ticker: 'GOLD', name: 'Or physique', category: 'Actif', instrument_type: 'Or physique', currency: 'EUR' };
+    const sicav = { ticker: 'SICAV1', name: 'SICAV Prudent', category: 'Actif', instrument_type: 'Or physique', currency: 'EUR' };
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseProducts.mockReturnValue({ data: [gold, sicav] });
     mockUsePrices.mockReturnValue({ data: [] }); // both stale
@@ -761,7 +761,7 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     //   1. onStale called first → name added to staleNames
     //   2. onFresh called with same name and idx !== -1 → filter runs
     // We achieve this by: first render with empty prices (stale), then re-render with today's prices (fresh)
-    const manuelProduct = { ticker: 'GOLD', name: 'Or physique', category: 'Manuel', currency: 'EUR' };
+    const manuelProduct = { ticker: 'GOLD', name: 'Or physique', category: 'Actif', instrument_type: 'Or physique', currency: 'EUR' };
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseProducts.mockReturnValue({ data: [manuelProduct] });
 
@@ -1172,7 +1172,7 @@ describe('DashboardPage — additional branch coverage', () => {
     // To exercise handleStale's `prev.includes(name) ? prev : ...` true branch,
     // we need the same product name to be reported stale while already in staleNames.
     // This happens when a stale product's ManuelProductStalenessCheck re-runs onStale.
-    const manuelProduct = { ticker: 'GOLD', name: 'Or physique', category: 'Manuel', currency: 'EUR' };
+    const manuelProduct = { ticker: 'GOLD', name: 'Or physique', category: 'Actif', instrument_type: 'Or physique', currency: 'EUR' };
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseProducts.mockReturnValue({ data: [manuelProduct] });
     // Stale price → onStale fires once

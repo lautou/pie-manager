@@ -229,7 +229,7 @@ export default function ManualPricePage() {
   const { data: products, isLoading, isError } = useProducts();
 
   const manualProducts: Product[] = (products ?? []).filter(
-    (p) => p.category === 'Manuel',
+    (p) => p.instrument_type === 'Or physique',
   );
 
   if (isLoading) {

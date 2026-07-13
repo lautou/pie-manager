@@ -93,6 +93,15 @@ All data entry goes through the UI — no import mechanism exists.
 
 ## Container architecture
 
+**`backend/Containerfile` runs Python 3.14** (matches CI's `integration-tests` job — see
+"Backend tests" below). Bumping the Python version here is not risk-free just because CI's
+test job already passes on that version: CI's job does a bare `pip install` on the GitHub
+runner (which ships a lot of build tooling already), it never builds this Containerfile.
+When `psycopg2-binary` was pinned to a version with no prebuilt wheel for 3.14, CI stayed
+green while `podman build` failed outright trying to compile it from source. Always verify a
+Python-version bump by actually running `podman build -f backend/Containerfile backend/`,
+not just by trusting CI.
+
 ### Development (compose.yaml)
 
 ```
@@ -148,6 +157,11 @@ podman logs pie-manager_backend_1
 podman exec pie-manager_postgres_1 psql -U pie -d pie_db
 ```
 
+**`pie-manager_postgres_1` holds real personal portfolio data — never experiment against it.**
+Beyond a read-only `SELECT`, use an isolated throwaway container instead (see "Testing a
+data-migrating Alembic revision" below). Exception: a one-time manual correction after the
+user has explicitly confirmed the target value (e.g. fixing one wrong `cash_balance_eur` row).
+
 ### Removing a single container fails with "has dependent containers"
 
 When swapping one container for a locally-built image (e.g. testing a fixed `backend`/`worker`
@@ -180,25 +194,91 @@ services reach by name) instead of relying on `podman-compose`'s implicit shared
   - `_get_liquidity_eur()` → `SUM(portfolio_accounts.cash_balance_eur) WHERE portfolio_id=X`
 
 - `portfolios` — portfolios (Portfolio 1 / Portfolio 2, separate tax households)
-- `transactions` — all transactions (Asset/Fee/Income)
+- `transactions` — all transactions (Actif/Frais/Revenu)
   - `account_id` FK → `brokers.id` (column name kept for compatibility)
   - `linked_transaction_id`: nullable self-referencing FK
-- `products` — financial instruments with `category` (Asset/Cash/Fee/Manuel)
+  - `operation`: nullable, `Achat`/`Vente`/`Attribution` — sub-classification for `type='Actif'`
+    (see "Product/Transaction typology" below)
+- `products` — financial instruments — see "Product/Transaction typology" below for the
+  `category`/`instrument_type`/`fee_type` fields
 - `pools` — investment strategies (Offensive/Defensive)
 - `pool_products` — pool ↔ ticker association
 - `asset_prices` — historical prices (yfinance + manual)
 - `daily_snapshots` — daily valuation snapshot
 - `monthly_snapshots` — monthly snapshot with performance/index
 
+## Product/Transaction typology
+
+`Product.category` is deliberately coarse: exactly `Actif` (any financial instrument,
+including cash) or `Frais` (fee line item). It is **not** an instrument-type field — do not
+add checks like `category == "Cash"` or `category == "Manuel"` anywhere; those values no
+longer exist. Two dedicated sub-classification fields carry that detail instead:
+
+- `Product.instrument_type` (nullable, meaningful when `category='Actif'`): `ETF` /
+  `SICAV/FCP` / `Action` / `Obligation` / `Or physique` / `Cash`. This is what all
+  business logic now checks — `product.instrument_type == "Cash"`,
+  `product.instrument_type == "Or physique"` — never `category` for this purpose.
+- `Product.fee_type` (nullable, meaningful when `category='Frais'`): `Courtage` /
+  `Tenue de compte` / `Intérêts négatifs` / `Bourse` / `TTF` / `Impôts` / `Conversion`.
+  `TTF` is specifically the French Financial Transaction Tax (`FRAIS.TTF.EUR`); generic
+  tax/duty tickers (`FRAIS.TAXE.EUR`/`FRAIS.TAXE.GBP`) are `Impôts`, a distinct value — do
+  not conflate the two. This **supersedes, for Products, the old "typed tickers"
+  convention** below — `fee_type` is now the queryable classification; the ticker itself no
+  longer needs to encode the fee nature for reporting purposes (though existing fee tickers
+  like `FRAIS.TAXE.EUR` / `FRAIS.COURTAGE.EUR` are kept as-is and just got a matching
+  `fee_type`).
+- `Transaction.operation` (nullable, meaningful when `type='Actif'`): `Achat` / `Vente` /
+  `Attribution`. `Attribution` is a share grant — `unit_price` defaults to 0 but stays
+  editable (some grants carry a fair-value price worth recording), while courtage/TTF are
+  always forced to 0 and locked (a grant never incurs a brokerage commission). In
+  `TransactionsPage.tsx`, `recomputeFees` must skip its auto-commission calculation
+  entirely for `operationType==='grant'`, not just disable the courtage/TTF inputs — it
+  used to compute courtage from the trade amount regardless of operation type, so typing a
+  non-zero grant price produced a spurious commission estimate. The existing WACOP formula
+  in `pv_service.py` already dilutes CUMP correctly whether the recorded cost is zero or
+  not, so `operation` itself is purely descriptive/UI-facing; no business logic reads it.
+
+**Cash is a financial asset in this app** — `LIQUIDITE.EURO`, `LIQUIDITE.USD`, `JPYEUR=X`
+etc. all have `category='Actif', instrument_type='Cash'`. There is no separate "Cash"
+category value.
+
+**Auto-linked fee transactions use dedicated `FRAIS.*` tickers, not the parent's ticker.**
+`create_transaction`/`update_transaction` in `transactions.py` create linked courtage/TTF
+`Frais` rows with `ticker='FRAIS.COURTAGE.EUR'` / `ticker='FRAIS.TTF.EUR'` (not
+`ticker=tx.ticker`). This was a regression at some point (git history predates the public
+squash, exact commit unknown) — 2024 production data already used dedicated tickers; a
+window of transactions created after the regression reused the parent asset's ticker.
+Migration `mm66nn77oo88` retargets the affected historical rows (verified: exactly 9 rows,
+8 parent transactions — 7 single-fee = courtage only, 1 two-fee = courtage then TTF, in
+that creation order). **If you ever touch that retargeting SQL again**: compute all target
+`(id, new_ticker)` pairs from a single snapshot of the *original* unmutated rows (e.g. a
+temp table) before issuing any UPDATE — three sequential UPDATEs against the live table is
+wrong, because the 2nd UPDATE's `ticker NOT LIKE 'FRAIS.%'` filter changes what the 3rd
+UPDATE's `GROUP BY ... HAVING COUNT(*) = 2` sees, silently dropping the 2-fee group down to
+1 match and skipping the TTF leg — see "Testing a data-migrating Alembic revision" below for
+how this was caught and how to verify any future migration like it.
+
 ## Transaction conventions
 
 - **Buy**: `quantity < 0`, `total_amount < 0`
 - **Sell**: `quantity > 0`, `total_amount > 0`
-- **LIQUIDITE.EURO**: deposit = `quantity > 0`, withdrawal = `quantity < 0`
-  - UI toggle "Deposit/Withdrawal" when `product.currency === account.currency` (direct Cash product)
-- **Manuel category** (OR.PHYSIQUE, SICAV BNP): `price` = total value (not unit price)
-- **JPYEUR=X**: `quantity > 0` = held position (inverted convention vs Assets)
-- **Fees**: typed tickers — `FRAIS.TAXE.EUR`, `FRAIS.COURTAGE.EUR`, etc. (do not add a subcategory field)
+- **Cash instrument_type** (`LIQUIDITE.EURO`, `JPYEUR=X`, any `instrument_type='Cash'`
+  product): **inverted** — deposit/acquire = `quantity > 0`, withdrawal/reduce =
+  `quantity < 0`. Covers both a direct account balance (LIQUIDITE.EURO) and a forex
+  position (JPYEUR=X) — the sign convention is the same for both, only the UI differs
+  (see below).
+  - UI toggle "Deposit/Withdrawal" when `product.currency === account.currency` (direct Cash
+    product on an account of the same currency, e.g. LIQUIDITE.EURO on a EUR account)
+  - For a forex position where currencies differ (e.g. JPYEUR=X on a EUR account), the same
+    Deposit/Withdrawal toggle still applies via `isCashDirectDeposit` in practice, since
+    `Product.currency` for these tickers is stored as `EUR` (the reference currency), not the
+    held foreign currency — see `TransactionsPage.tsx`'s `handleTickerChange`.
+- **Or physique instrument_type** (OR.PHYSIQUE, SICAV BNP): `price` = total value (not unit
+  price)
+- **Fees**: typed tickers — `FRAIS.TAXE.EUR`, `FRAIS.COURTAGE.EUR`, etc., now paired with a
+  `fee_type` on the Product (see "Product/Transaction typology" above). Do not add a
+  `subcategory` field on `Transaction` — that was tried and reverted (see "Fee subcategory"
+  design decision below); the typing lives on `Product`, not `Transaction`.
 
 ## Forex fee adjustment — critical business rule
 
@@ -257,7 +337,7 @@ from the real EUR cash position.
 fee transactions (`type='Frais'`) sharing that ticker for product-linkage, which still do (a
 EUR-denominated Revolut FX commission is a real cash cost). Rationale: a forex buy/sell tracks a
 *currency conversion* (EUR wallet → JPY holding, valued for WACOP/PV via
-`pv_service.py`'s `category='Cash' AND ticker not LIKE 'LIQUIDITE.%'` distinction), not a real EUR
+`pv_service.py`'s `instrument_type='Cash' AND ticker not LIKE 'LIQUIDITE.%'` distinction), not a real EUR
 cash flow — the EUR side of that conversion is already captured by the separate, manually-entered
 `LIQUIDITE.EUR` deposit/withdrawal pair. See `_is_forex_position()` next to
 `_update_account_cash_balance` for the exact rule.
@@ -302,10 +382,31 @@ without re-deriving the exact intended formula first). This is separate from
 `portfolio_accounts.cash_balance_eur`, which IBKR's has always been accurate and Revolut's is
 now individually corrected (see the forex-position fix above).
 
-**Separate, still-open gap noticed while implementing the forex-position fix (not fixed, out of
-scope):** `update_transaction`'s `date_changed` branch never calls `_update_account_cash_balance`
-at all — if a transaction's date AND amount change in the same edit, the amount delta's cash
-impact is silently dropped. Worth a dedicated fix later.
+**Gap noticed while implementing the forex-position fix — now fixed:** `update_transaction`'s
+`date_changed` branch used to never call `_update_account_cash_balance` at all, so if a
+transaction's date AND amount changed in the same edit, the amount delta's cash impact was
+silently dropped. Fixed: the `date_changed` branch now computes
+`cash_delta = tx.total_amount_eur - old_total_eur` and calls `_update_account_cash_balance`
+when non-zero, exactly like the non-date-move branch below it does.
+
+## Rebalancing — "après %" denominator depends on simulation mode
+
+`RebalancingPage.tsx` has 3 simulation modes: `contribution` (injection only), `hybrid`
+(injection + sells if needed), `hard` (Rééquilibrage complet — sells overweight pools and
+reinvests into underweight ones, **no external injection**). The displayed post-trade
+percentage for a pool (`afterPct = afterValue / afterTotal * 100`) must use a
+**mode-dependent denominator**:
+- `contribution`/`hybrid`: `rebalData.total_after` (current + available liquidity + external
+  injection) — correct, since these modes actually grow the portfolio total.
+- `hard`: `total_current` — the backend's `rebalance_amount` for this mode is computed
+  against `total_current` alone (no injection), so dividing by `total_after` instead (which
+  still includes any leftover uninvested cash) inflates the denominator and makes every pool
+  appear to land below its target even when the underlying trade amounts are correct (e.g.
+  displaying 24.2% instead of 25.0% with a spurious "-0.8%" gap, for trades that were
+  actually exactly on target).
+
+Guard `afterTotal > 0 ? afterValue / afterTotal * 100 : 0` — a zero denominator (empty
+portfolio with a pending injection) must fall back to 0%, not NaN/Infinity.
 
 ## Daily snapshot logic
 
@@ -527,32 +628,60 @@ only update path → desynchronization is impossible in the current workflow.
 
 → Do not re-propose this improvement.
 
-### Fee subcategory — design decision: DO NOT IMPLEMENT
+### Fee subcategory on Transaction — design decision: DO NOT IMPLEMENT
 
-**Retained convention: typed tickers for fees.**
+**Retained convention: typed tickers for fees, classified via `Product.fee_type`.**
 
-`Fee` type products use explicit tickers that encode the nature of the fee:
-`FRAIS.TAXE.EUR`, `FRAIS.COURTAGE.EUR`, `FRAIS.GARDE.EUR`, etc.
+`Frais` type products use explicit tickers that encode the nature of the fee:
+`FRAIS.TAXE.EUR`, `FRAIS.COURTAGE.EUR`, `FRAIS.GARDE.EUR`, etc. — and each such Product now
+also carries a `fee_type` (Courtage/Tenue de compte/Intérêts négatifs/Bourse/TTF/Impôts/Conversion,
+see "Product/Transaction typology" above) for structured querying.
 
 A `subcategory` field on `Transaction` was implemented then **removed** as redundant with
-this convention. Do not reintroduce it.
+the typed-ticker convention. Do not reintroduce it — this decision still stands even after
+adding `fee_type`, because `fee_type` lives on `Product`, not `Transaction`. A fee's type is
+a property of *what it is* (the product/ticker), not of the individual transaction row.
 
-→ To distinguish fee types: use different tickers.
+→ To distinguish fee types: use different tickers + `Product.fee_type`, never a field on
+`Transaction`.
 
 ## Test environment
 
 ### Backend tests
 
-Backend tests require a running PostgreSQL instance. Two options:
+Backend tests require a running PostgreSQL instance.
 
-1. **CI (recommended for full suite)**: `ci.yml` job `integration-tests` spins up an ephemeral
-   PostgreSQL 16 container and runs `alembic upgrade head` before pytest.
-2. **Local with container**: `podman compose up -d postgres` then export `DATABASE_URL` and run pytest.
+**Never point `DATABASE_URL` at `compose.yaml`'s `postgres` service.** `compose.yaml` (dev)
+and the production installer's `compose-prod.yaml` (`~/.local/share/pie-manager/`) both
+resolve to the same podman-compose volume, `pie-manager_postgres_data` (verified via `podman
+volume ls`) — since both directories share the basename `pie-manager` and neither sets an
+explicit project name. Testing against it risks mounting the **real personal-data database**,
+and `conftest.py`'s `engine` fixture does `drop_all()`/`create_all()`/`drop_all()`
+unconditionally, which would wipe it. Use CI (`ci.yml`'s `integration-tests` job, fully
+isolated) or a manually-named, differently-ported throwaway `postgres:16-alpine` container.
 
-```bash
-export DATABASE_URL=postgresql+asyncpg://pie:pie_password@localhost:5432/pie_db
-cd backend && python -m pytest tests/ --cov=app --cov-report=term-missing --cov-branch -q
-```
+**Match CI's Python version (3.14) when testing locally in a container — mismatches
+silently under-report coverage, they don't fail.** Verified: running the exact same tests
+against the exact same DB under Python 3.12 (with 3.14 elsewhere identical — same
+`coverage`/`greenlet` versions) dropped `app/api/routers/transactions.py` from 100% to 47%,
+while pure-sync files were unaffected. The cause is greenlet-crossing async DB code (every
+`await db.execute(...)`) not registering with coverage.py's tracer consistently across
+Python minor versions.
+
+### Testing a data-migrating Alembic revision (backfills, retargeting UPDATEs)
+
+`pytest` never runs Alembic at all — `conftest.py` builds the schema straight from the
+current models via `Base.metadata.create_all`. So a migration's `op.execute("UPDATE ...")`
+logic can be broken while the suite stays green at 100%. For any revision beyond
+`add_column`/`create_table`: apply it for real against a throwaway container seeded with
+synthetic rows covering the edge cases the SQL assumes (multi-row groupings, ordering,
+count thresholds), then inspect the result with `psql` — don't just check it didn't raise.
+
+This is exactly how migration `mm66nn77oo88` was caught: 3 sequential `UPDATE`s meant to
+retarget historical fee transactions each recomputed their `WHERE`/`GROUP BY` against the
+*already partially-mutated* table, so the 2nd UPDATE's rename silently broke the 3rd
+UPDATE's `HAVING COUNT(*) = 2` filter and dropped a whole group. Fixed by computing all 3
+target sets from a single snapshot of the original rows before issuing any UPDATE.
 
 ### Frontend tests
 
@@ -696,7 +825,7 @@ See `frontend/tests/utils/react-query-wrapper.tsx`.
 `GET /api/pv/?portfolio_id=X&account_id=Y` — returns WACOP, unrealized/realized PV per ticker.
 Service: `app/services/pv_service.py`. Router: `app/api/routers/pv.py`.
 
-### WACOP convention by product category
+### WACOP convention by instrument type
 
 **Asset (ETFs, stocks)**: BUY = `quantity < 0` / SELL = `quantity > 0`
 
@@ -707,7 +836,7 @@ Service: `app/services/pv_service.py`. Router: `app/api/routers/pv.py`.
 
 ### Products excluded from PV calculation
 - `LIQUIDITE.*` (LIQUIDITE.EURO, LIQUIDITE.USD…) — pure cash, not a financial asset
-- `category='Manuel'` (OR.PHYSIQUE, SICAV…) — special valuation logic
+- `instrument_type='Or physique'` (OR.PHYSIQUE, SICAV…) — special valuation logic
 - `type='Fee'` and `type='Income'` — do not affect WACOP
 
 ### WACOP reset

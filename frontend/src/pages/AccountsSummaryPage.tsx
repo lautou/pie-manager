@@ -169,17 +169,17 @@ function AccountDetailCard({
                     </Td>
                     <Td>{pos.product_name}</Td>
                     <Td>
-                      {pos.category === 'Manuel'
+                      {pos.instrument_type === 'Or physique'
                         ? '—'
                         : pos.quantity.toLocaleString('fr-FR', { maximumFractionDigits: 4 })}
                     </Td>
                     <Td>
-                      {pos.category === 'Manuel' ? '—' : (
+                      {pos.instrument_type === 'Or physique' ? '—' : (
                         formatUnitPrice(pos.last_price, pos.currency || 'EUR')
                       )}
                     </Td>
                     <Td>
-                      {pos.currency !== 'EUR' && pos.last_price > 0 && pos.category !== 'Manuel'
+                      {pos.currency !== 'EUR' && pos.last_price > 0 && pos.instrument_type !== 'Or physique'
                         ? new Intl.NumberFormat('fr-FR', {
                             minimumFractionDigits: 0,
                             maximumFractionDigits: 0,
@@ -188,7 +188,7 @@ function AccountDetailCard({
                     </Td>
                     <Td>
                       {formatEUR(pos.value_eur)}
-                      {pos.category === 'Manuel' && pos.last_price_date && (
+                      {pos.instrument_type === 'Or physique' && pos.last_price_date && (
                         <div style={{ fontSize: '0.8rem', color: 'var(--pf-v5-global--Color--200)' }}>
                           {pos.last_price_date}
                         </div>

@@ -254,7 +254,7 @@ async def test_current_year_pv_excludes_jpyeur(client, db_session):
         text("UPDATE brokers SET is_cto = TRUE WHERE id = :id"), {"id": acc_id}
     )
 
-    await create_product(client, "JPYEUR=X", name="JPY / EUR", category="Cash")
+    await create_product(client, "JPYEUR=X", name="JPY / EUR", category="Actif", instrument_type="Cash")
 
     from datetime import date
     current_year = date.today().year

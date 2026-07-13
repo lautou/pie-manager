@@ -111,7 +111,7 @@ const mockPositions = [
 ];
 
 const mockManuelPosition = {
-  ticker: 'OR.PHYSIQUE', product_name: 'Or Physique (auCoffre)', category: 'Manuel',
+  ticker: 'OR.PHYSIQUE', product_name: 'Or Physique (auCoffre)', category: 'Actif', instrument_type: 'Or physique',
   pool_id: 2, pool_name: 'Or',
   quantity: 72, last_price: 32336.34, last_price_date: '2026-05-16',
   last_price_source: 'manual', value_eur: 32336.34, currency: 'EUR',

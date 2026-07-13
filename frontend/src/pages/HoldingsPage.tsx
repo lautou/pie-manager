@@ -169,12 +169,12 @@ function PoolHoldingsTable({ holdings, poolName, failedTickers, pvMap }: {
               </Td>
               <Td>{h.product_name}</Td>
               <Td>
-                {h.category === 'Manuel' ? '—' : h.quantity.toLocaleString('fr-FR', {
+                {h.instrument_type === 'Or physique' ? '—' : h.quantity.toLocaleString('fr-FR', {
                   maximumFractionDigits: 4,
                 })}
               </Td>
               <Td>
-                {h.category === 'Manuel' ? '—' : (
+                {h.instrument_type === 'Or physique' ? '—' : (
                   <>
                     {formatUnitPrice(h.last_price, currency)}
                     {isStale && h.last_price_date && (
@@ -190,7 +190,7 @@ function PoolHoldingsTable({ holdings, poolName, failedTickers, pvMap }: {
               </Td>
               <Td>
                 {formatEUR(h.value_eur)}
-                {h.category === 'Manuel' && h.last_price_date && (
+                {h.instrument_type === 'Or physique' && h.last_price_date && (
                   <div style={{ fontSize: '0.78rem', color: 'var(--pf-v5-global--Color--200)', marginTop: '2px' }}>
                     {h.last_price_date}
                   </div>

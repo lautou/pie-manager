@@ -16,6 +16,8 @@ class ProductCreate(BaseModel):
     ticker: str
     name: str
     category: Optional[str] = None
+    instrument_type: Optional[str] = None
+    fee_type: Optional[str] = None
     currency: Optional[str] = None
     isin: Optional[str] = None
     notes: Optional[str] = None
@@ -24,6 +26,8 @@ class ProductCreate(BaseModel):
 class ProductUpdate(BaseModel):
     name: Optional[str] = None
     category: Optional[str] = None
+    instrument_type: Optional[str] = None
+    fee_type: Optional[str] = None
     currency: Optional[str] = None
     isin: Optional[str] = None
     notes: Optional[str] = None
@@ -36,6 +40,8 @@ class ProductOut(BaseModel):
     ticker: str
     name: str
     category: Optional[str]
+    instrument_type: Optional[str] = None
+    fee_type: Optional[str] = None
     currency: Optional[str]
     isin: Optional[str]
     notes: Optional[str]

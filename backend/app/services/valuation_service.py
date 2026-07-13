@@ -22,16 +22,16 @@ def compute_pool_values(
     positions: dict[str, float],
     prices: dict[str, tuple[float, str]],
     spot_rates: dict[str, float],
-    product_categories: dict[str, str],
+    product_instrument_types: dict[str, str],
 ) -> dict[int, float]:
     """
     Compute {pool_id: value_eur} from pre-loaded price and position data.
 
     Rules:
     - LIQUIDITE.EURO is skipped (tracked separately via account cash balances).
-    - Manuel category: price in asset_prices IS the total value of the asset
-      (physical gold, SICAVs), not a per-unit price.
-    - All other categories: value = qty * price_eur.
+    - Or physique instrument type: price in asset_prices IS the total value of the
+      asset (physical gold), not a per-unit price.
+    - All other instrument types: value = qty * price_eur.
     - Tickers with no price data are skipped (contribute 0).
 
     Args:
@@ -40,7 +40,8 @@ def compute_pool_values(
         positions: {ticker: units_held} as positive numbers.
         prices: {ticker: (price, currency)} — latest prices, pre-loaded.
         spot_rates: {ticker: rate} for forex conversion (e.g. GBPEUR=X).
-        product_categories: {ticker: category} — e.g. "Manuel", "Actif", "Cash".
+        product_instrument_types: {ticker: instrument_type} — e.g. "Or physique",
+            "ETF", "Cash".
 
     Returns:
         {pool_id: total_eur_value}
@@ -51,13 +52,13 @@ def compute_pool_values(
         for ticker in tickers_by_pool.get(pool.id, []):
             if ticker == "LIQUIDITE.EURO":
                 continue  # Liquidity tracked separately via account cash balances
-            category = product_categories.get(ticker, "")
+            instrument_type = product_instrument_types.get(ticker, "")
             price_tuple = prices.get(ticker)
             if price_tuple is None:
                 continue
             price, price_currency = price_tuple
             price_eur = _to_eur(price, price_currency, spot_rates)
-            if category == "Manuel":
+            if instrument_type == "Or physique":
                 # Price stores the TOTAL value of the physical asset (not per unit)
                 pool_val += price_eur
             else:

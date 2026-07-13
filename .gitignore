@@ -64,3 +64,6 @@ installer/launcher/*.png
 # installer-prereq merged into installer/ — ignore remaining local artifacts
 installer-prereq/
 VERSION
+
+# Playwright MCP manual-testing artifacts — may capture real personal data from the QA env
+.playwright-mcp/

@@ -74,11 +74,13 @@ async def _setup_base(db):
     return portfolio.id, account.id
 
 
-async def _ensure_product(db, ticker: str, name: str, category: str = "Actif") -> None:
+async def _ensure_product(db, ticker: str, name: str, category: str = "Actif",
+                           instrument_type: str | None = None) -> None:
     from sqlalchemy import select
     existing = await db.execute(select(Product).where(Product.ticker == ticker))
     if not existing.scalar_one_or_none():
-        db.add(Product(ticker=ticker, name=name, category=category, currency="EUR"))
+        db.add(Product(ticker=ticker, name=name, category=category, currency="EUR",
+                        instrument_type=instrument_type))
         await db.flush()
 
 
@@ -287,7 +289,7 @@ async def test_manuel_category_excluded(db_session):
     pid, aid = await _setup_base(db_session)
     gold_ticker = f"OR.PHYS.{pid}"
     etf_ticker = f"ETF.NORM.{pid}"
-    await _ensure_product(db_session, gold_ticker, "Or Physique", category="Manuel")
+    await _ensure_product(db_session, gold_ticker, "Or Physique", category="Actif", instrument_type="Or physique")
     await _ensure_product(db_session, etf_ticker, "ETF Normal")
 
     # Gold — should be ignored
@@ -508,8 +510,8 @@ async def test_liquidite_tickers_excluded(db_session):
     excluded from PV calculation — they are pure cash entries, not assets.
     """
     pid, aid = await _setup_base(db_session)
-    await _ensure_product(db_session, "LIQUIDITE.EURO", "Cash EUR", category="Cash")
-    await _ensure_product(db_session, "LIQUIDITE.USD", "Cash USD", category="Cash")
+    await _ensure_product(db_session, "LIQUIDITE.EURO", "Cash EUR", category="Actif", instrument_type="Cash")
+    await _ensure_product(db_session, "LIQUIDITE.USD", "Cash USD", category="Actif", instrument_type="Cash")
 
     # Cash deposit (qty > 0) and withdrawal (qty < 0) — both must be ignored
     db_session.add(_tx(pid, aid, "LIQUIDITE.EURO",  45000.0, 1.0, date(2024, 1, 1)))
@@ -537,7 +539,7 @@ async def test_cash_forex_inverted_sign_convention(db_session):
     Expected realized PV = (0.007 - 0.006) × 500 000 = 500 EUR.
     """
     pid, aid = await _setup_base(db_session)
-    await _ensure_product(db_session, "JPYEUR=X", "JPY/EUR", category="Cash")
+    await _ensure_product(db_session, "JPYEUR=X", "JPY/EUR", category="Actif", instrument_type="Cash")
 
     # Buy 1 000 000 JPY @ 0.006 EUR/JPY (qty > 0 = buy for Cash forex)
     db_session.add(_tx(pid, aid, "JPYEUR=X", 1_000_000.0, 0.006, date(2024, 1, 1)))

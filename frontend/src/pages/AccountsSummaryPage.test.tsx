@@ -93,7 +93,7 @@ const mockAccountSummaryManualSource = {
     {
       ticker: 'GOLD',
       product_name: 'Or physique',
-      category: 'Manuel',
+      category: 'Actif', instrument_type: 'Or physique',
       quantity: 72,
       last_price: 32336.34,
       last_price_date: '2026-05-16',

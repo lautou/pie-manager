@@ -678,6 +678,78 @@ async def test_create_transaction_auto_calculates_balance_eur(client, db_session
 
 
 @pytest.mark.asyncio
+async def test_create_transaction_balance_eur_scoped_per_portfolio_shared_broker(client, db_session):
+    """
+    Regression test: a broker (account_id) shared by two portfolios must NOT
+    leak balance_eur between them when computing the running balance.
+
+    Scenario (real bug): Degiro used by both Lolo (portfolio 1) and Katiuska
+    (portfolio 2). Lolo's most recent transaction has balance_eur=35.56€.
+    Katiuska's own last known balance is 0.94€. Depositing 2210€ into
+    Katiuska's Degiro account must yield 0.94 + 2210 = 2210.94€ — NOT
+    35.56 + 2210 = 2245.56€ (Lolo's balance leaking into Katiuska).
+    """
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+    from app.models.transaction import Transaction as TxModel
+
+    portfolio_a = Portfolio(name=f"SharedBrokerA-{id(db_session)}")
+    portfolio_b = Portfolio(name=f"SharedBrokerB-{id(db_session)}")
+    db_session.add_all([portfolio_a, portfolio_b])
+    await db_session.flush()
+    pid_a, pid_b = portfolio_a.id, portfolio_b.id
+
+    # Single broker shared by both portfolios (matches the Broker/Compte model)
+    broker = Broker(name="SharedDegiro", currency="EUR")
+    db_session.add(broker)
+    await db_session.flush()
+    aid = broker.id
+    db_session.add(PortfolioAccount(portfolio_id=pid_a, broker_id=aid))
+    db_session.add(PortfolioAccount(portfolio_id=pid_b, broker_id=aid))
+    await db_session.flush()
+
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker="FRAIS.COURTAGE.EUR", name="Frais courtage", category="Frais", currency="EUR"))
+    await db_session.flush()
+
+    # Portfolio A (Lolo-like): larger, more recent balance on the shared broker
+    db_session.add(TxModel(
+        portfolio_id=pid_a, account_id=aid, date=date(2026, 6, 3), type="Frais",
+        ticker="FRAIS.COURTAGE.EUR", currency="EUR", exchange_rate=1.0,
+        quantity=-1, unit_price=3.0, unit_price_eur=3.0,
+        total_amount=-3.0, total_amount_eur=-3.0,
+        balance_eur=35.56, balance_currency=35.56,
+    ))
+    # Portfolio B (Katiuska-like): smaller, older balance on the SAME broker
+    db_session.add(TxModel(
+        portfolio_id=pid_b, account_id=aid, date=date(2026, 3, 16), type="Frais",
+        ticker="FRAIS.COURTAGE.EUR", currency="EUR", exchange_rate=1.0,
+        quantity=-1, unit_price=3.0, unit_price_eur=3.0,
+        total_amount=-3.0, total_amount_eur=-3.0,
+        balance_eur=0.94, balance_currency=0.94,
+    ))
+    await db_session.flush()
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r = await client.post("/api/transactions/", json={
+            "portfolio_id": pid_b, "account_id": aid,
+            "date": _TODAY, "type": "Actif", "ticker": "LIQUIDITE.EURO",
+            "currency": "EUR", "exchange_rate": 1.0,
+            "quantity": 2210.0, "unit_price": 1.0,
+        })
+    assert r.status_code == 201
+    data = r.json()
+
+    # Must use portfolio B's own 0.94€ baseline, not portfolio A's 35.56€
+    assert data["balance_eur"] == pytest.approx(2210.94, abs=0.01), (
+        f"Expected balance_eur=2210.94 (0.94 + 2210, scoped to portfolio B), "
+        f"got {data['balance_eur']} — balance_eur is leaking across portfolios "
+        f"sharing the same broker."
+    )
+
+
+@pytest.mark.asyncio
 async def test_create_transaction_no_prev_balance_leaves_balance_eur_none(client, db_session):
     """
     When no previous transaction has a known balance_eur, balance_eur stays null.

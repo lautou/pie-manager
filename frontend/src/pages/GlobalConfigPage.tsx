@@ -269,7 +269,14 @@ function CommissionManager() {
                 {acc.commission_sale_rate > 0 ? (
                   <input type="number" min={0} step={0.001} value={acc.commission_sale_rate}
                     onFocus={(e) => e.target.select()}
-                    onChange={async (e) => { await putCommissionSaleRate(acc.id, parseFloat(e.target.value) || 0); qc.invalidateQueries({ queryKey: ['brokers'] }); }}
+                    onChange={async (e) => {
+                      try {
+                        await putCommissionSaleRate(acc.id, parseFloat(e.target.value) || 0);
+                        qc.invalidateQueries({ queryKey: ['brokers'] });
+                      } catch (err) {
+                        alert(err instanceof Error ? err.message : 'Erreur lors de la mise à jour du taux de vente');
+                      }
+                    }}
                     style={{ width: '70px', padding: '2px 6px', border: '1px solid #ccc', borderRadius: 4, fontSize: '0.85rem' }}
                     title={`${(acc.commission_sale_rate * 100).toFixed(1)}% sur les ventes`} />
                 ) : acc.commission_schedule ? (

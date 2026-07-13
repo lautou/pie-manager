@@ -292,7 +292,12 @@ export default function RebalancingPage() {
                     : rebalMode === 'hybrid' ? (p.hybrid_net ?? 0)
                     : (p.rebalance_net ?? 0);
                     const afterValue = p.current_value + amount;
-                    const afterPct = afterValue / rebalData.total_after * 100;
+                    // "hard" (Rééquilibrage complet) never injects liquidity — rebalance_amount
+                    // is computed against total_current, so the resulting % must be too.
+                    // total_after (which includes uninvested cash) only applies when this
+                    // mode's amount actually grows the total (contribution/hybrid).
+                    const afterTotal = rebalMode === 'hard' ? totalCurrent : rebalData.total_after;
+                    const afterPct = afterTotal > 0 ? afterValue / afterTotal * 100 : 0;
                     const targetPct = p.target_pct * 100;
                     const currentPct = p.current_pct;
                     const isSell = amount < -0.01;

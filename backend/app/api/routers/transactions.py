@@ -482,6 +482,14 @@ async def update_transaction(
                 .values(balance_eur=sa_func.round(cast(Transaction.balance_eur + tx.total_amount_eur, Numeric), 2))
                 .execution_options(synchronize_session=False)
             )
+
+        # A date move can be combined with an amount change in the same edit (date
+        # plus quantity/unit_price/exchange_rate all provided at once) — the cash
+        # balance must reflect that amount delta too, exactly like the non-date-move
+        # branch below does.
+        cash_delta = tx.total_amount_eur - old_total_eur
+        if cash_delta != 0:
+            await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, cash_delta, tx.type, tx.ticker)
     else:
         # Auto-calculate balance_eur when still null (e.g. transaction created before this fix)
         if tx.balance_eur is None:

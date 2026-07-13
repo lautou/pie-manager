@@ -2256,6 +2256,61 @@ async def test_update_transaction_date_changed_zero_old_amount_skips_undo(client
     assert subsequent.balance_eur == pytest.approx(200.0, abs=0.01)
 
 
+@pytest.mark.asyncio
+async def test_update_transaction_date_change_with_amount_change_updates_cash_balance(client, db_session):
+    """
+    Changing BOTH date and amount (quantity/unit_price/exchange_rate) in the same
+    edit takes the date_changed branch, which must still apply the amount delta
+    to cash_balance_eur — it used to be silently dropped there (only the non-date-
+    move branch called _update_account_cash_balance).
+    """
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+
+    portfolio = Portfolio(name=f"DateAndAmount-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name="PEA", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    pa = PortfolioAccount(portfolio_id=uid, broker_id=account.id, cash_balance_eur=500.0)
+    db_session.add(pa)
+    await db_session.flush()
+    aid = account.id
+
+    db_session.add(Product(ticker="ETF.DATEAMT", name="Date+Amount ETF", category="Actif", currency="EUR"))
+    await db_session.flush()
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r_create = await client.post("/api/transactions/", json={
+            "portfolio_id": uid, "account_id": aid,
+            "date": "2025-02-03", "type": "Actif", "ticker": "ETF.DATEAMT",
+            "currency": "EUR", "exchange_rate": 1.0,
+            "quantity": -5.0, "unit_price": 50.0,
+        })
+    assert r_create.status_code == 201
+    tx_id = r_create.json()["id"]
+
+    # total_amount_eur was -250 (5*50); cash_balance_eur = 500 - 250 = 250
+    await db_session.refresh(pa)
+    assert pa.cash_balance_eur == pytest.approx(250.0, abs=0.01)
+
+    # Change both the date AND the quantity in the same PUT
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r_update = await client.put(f"/api/transactions/{tx_id}", json={
+            "date": "2025-03-10", "quantity": -8.0,
+        })
+    assert r_update.status_code == 200
+
+    # New total_amount_eur = -8*50 = -400; delta = -400 - (-250) = -150
+    # cash_balance_eur must reflect the delta: 250 + (-150) = 100
+    await db_session.refresh(pa)
+    assert pa.cash_balance_eur == pytest.approx(100.0, abs=0.01)
+
+
 # ---------------------------------------------------------------------------
 # Branch coverage — update date_changed: prev_balance is None after move (273->282 else)
 # ---------------------------------------------------------------------------

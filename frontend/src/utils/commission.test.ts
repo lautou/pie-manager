@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeCommission, TTF_RATE, isWeekendNewYork, computeRevolutFXCommission } from './commission';
+import { computeCommission, TTF_RATE, isWeekendNewYork, computeRevolutFXCommission, computeMonthlyLimitFXCommission } from './commission';
 import type { CommissionTier } from '../types';
 
 const DEGIRO: CommissionTier[] = [
@@ -140,5 +140,13 @@ describe('computeRevolutFXCommission', () => {
   it('weekend → always 1% regardless of monthly volume', () => {
     expect(computeRevolutFXCommission(500, 0, true)).toBe(5.00);
     expect(computeRevolutFXCommission(500, 200, true)).toBe(5.00);
+  });
+});
+
+describe('computeMonthlyLimitFXCommission', () => {
+  it('null weekendRate falls back to aboveRate on a weekend', () => {
+    // No dedicated weekend rate configured → weekend trades use the standard above-limit rate
+    expect(computeMonthlyLimitFXCommission(500, 0, true, 1000, 0.02, null))
+      .toBe(computeMonthlyLimitFXCommission(500, 0, true, 1000, 0.02, 0.02));
   });
 });

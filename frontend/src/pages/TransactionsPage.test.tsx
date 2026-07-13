@@ -1096,6 +1096,22 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     expect(screen.getByText('Transactions')).toBeTruthy();
   }, 10000);
 
+  it('Dépôt/Retrait type: changing the date field updates form.date', async () => {
+    mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
+
+    const user = userEvent.setup({ delay: null });
+    const { container } = render(<TransactionsPage />);
+
+    await user.click(screen.getByText('Nouvelle transaction'));
+    const typeSelect = screen.getByRole('combobox', { name: 'Type' });
+    await user.selectOptions(typeSelect, 'Dépôt/Retrait');
+
+    const dateInput = container.querySelector('#tx-depot-date') as HTMLInputElement;
+    expect(dateInput).toBeTruthy();
+    fireEvent.change(dateInput, { target: { value: '2024-06-15' } });
+    expect(dateInput.value).toBe('2024-06-15');
+  }, 10000);
+
   it('Dépôt/Retrait amount input onFocus selects content', async () => {
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
 

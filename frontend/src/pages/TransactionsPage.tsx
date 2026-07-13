@@ -32,6 +32,7 @@ import {
 } from '../api/queries';
 import type { Transaction } from '../types';
 import FrDatePicker from '../components/FrDatePicker';
+import ConfirmModal from '../components/ConfirmModal';
 import { formatEUR, formatEUR3, formatQty as fmtQty, formatNativeCurrency } from '../utils/format';
 import { computeCommission, TTF_RATE, isWeekendNewYork, computeMonthlyLimitFXCommission } from '../utils/commission';
 import { localDateStr } from '../utils/format';
@@ -1056,6 +1057,7 @@ export default function TransactionsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showDevise, setShowDevise] = useState(true);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null);
 
   const { data: transactions = [], isLoading, isError } = useTransactions(portfolioId!, {
     date_from: dateFrom || undefined,
@@ -1121,9 +1123,14 @@ export default function TransactionsPage() {
     setIsModalOpen(true);
   };
 
-  const handleDeleteClick = async (tx: Transaction) => {
-    if (!window.confirm(t('transactions.deleteConfirm'))) return;
-    await deleteMutation.mutateAsync({ id: tx.id, portfolio_id: Number(portfolioId) });
+  const handleDeleteClick = (tx: Transaction) => {
+    setDeleteTarget(tx);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    await deleteMutation.mutateAsync({ id: deleteTarget.id, portfolio_id: Number(portfolioId) });
+    setDeleteTarget(null);
   };
 
   const handleModalClose = () => {
@@ -1387,6 +1394,15 @@ export default function TransactionsPage() {
           onClose={handleModalClose}
         />
       )}
+
+      <ConfirmModal
+        isOpen={!!deleteTarget}
+        title={t('common.confirmDeleteTitle')}
+        message={t('transactions.deleteConfirm')}
+        isLoading={deleteMutation.isPending}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </PageSection>
   );
 }

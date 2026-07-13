@@ -589,8 +589,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     }
   }, 10000);
 
-  it('handleDeleteClick: confirm returns false — no delete', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
+  it('handleDeleteClick: cancel in confirm modal — no delete', async () => {
     const mockDelete = vi.fn().mockResolvedValue(undefined);
     mockUseDeleteTransaction.mockReturnValue({ mutateAsync: mockDelete, isPending: false });
     mockUseTransactions.mockReturnValue({ data: [mockTransaction], isLoading: false, isError: false });
@@ -601,6 +600,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     const trashBtns = screen.getAllByRole('button').filter(b => b.textContent?.includes('trash'));
     if (trashBtns.length > 0) {
       await user.click(trashBtns[0]);
+      await user.click(screen.getByText('Annuler'));
       expect(mockDelete).not.toHaveBeenCalled();
     }
   }, 10000);
@@ -714,8 +714,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     expect(screen.getByText('Transactions')).toBeTruthy();
   });
 
-  it('handleDeleteClick: confirm returns true and deletes (line 447)', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
+  it('handleDeleteClick: confirm in modal deletes (line 447)', async () => {
     const mockDelete = vi.fn().mockResolvedValue(undefined);
     mockUseDeleteTransaction.mockReturnValue({ mutateAsync: mockDelete, isPending: false });
     mockUseTransactions.mockReturnValue({ data: [mockTransaction], isLoading: false, isError: false });
@@ -726,6 +725,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     const trashBtns = screen.getAllByRole('button').filter(b => b.textContent?.includes('trash'));
     if (trashBtns.length > 0) {
       await user.click(trashBtns[0]);
+      await user.click(screen.getByText('Supprimer'));
       expect(mockDelete).toHaveBeenCalledWith({ id: mockTransaction.id, portfolio_id: 1 });
     }
   }, 10000);

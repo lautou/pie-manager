@@ -16,6 +16,7 @@ import { useSystemSetting, useSetSystemSetting, useAllBrokers, usePortfolios,
   createBrokerAPI, updateBrokerAPI, deleteBrokerAPI, updateBrokerPortfoliosAPI,
   useProducts, createProduct, updateProduct, deleteProduct } from '../api/queries';
 import { useSortable } from '../hooks/useSortable';
+import ConfirmModal from '../components/ConfirmModal';
 import type { Broker, CommissionTier, Product } from '../types';
 import { computeCommission } from '../utils/commission';
 
@@ -69,6 +70,8 @@ function CommissionManager() {
   const [brokerSaving, setBrokerSaving] = useState(false);
   const [brokerError, setBrokerError] = useState('');
   const [brokerEditingId, setBrokerEditingId] = useState<number | null>(null);
+  const [brokerDeleteTarget, setBrokerDeleteTarget] = useState<Broker | null>(null);
+  const [isDeletingBroker, setIsDeletingBroker] = useState(false);
 
   const openNewBroker = () => {
     setBrokerForm({ portfolio_ids: portfolios.map(p => p.id), name: '', currency: 'EUR', color: '#1890FF' });
@@ -99,10 +102,20 @@ function CommissionManager() {
     } catch (e: any) { setBrokerError(e?.response?.data?.detail ?? 'Erreur'); }
     finally { setBrokerSaving(false); }
   };
-  const handleDeleteBroker = async (acc: Broker) => {
-    if (!window.confirm(t('brokers.deleteConfirm', { name: acc.name }))) return;
-    try { await deleteBrokerAPI(acc.id); qc.invalidateQueries({ queryKey: ['brokers'] }); }
-    catch (e: any) { alert(e?.response?.data?.detail ?? 'Impossible de supprimer'); }
+  const handleDeleteBroker = (acc: Broker) => {
+    setBrokerDeleteTarget(acc);
+  };
+
+  const handleConfirmDeleteBroker = async () => {
+    /* v8 ignore next -- @preserve */
+    if (!brokerDeleteTarget) return;
+    setIsDeletingBroker(true);
+    try {
+      await deleteBrokerAPI(brokerDeleteTarget.id);
+      qc.invalidateQueries({ queryKey: ['brokers'] });
+      setBrokerDeleteTarget(null);
+    } catch (e: any) { alert(e?.response?.data?.detail ?? 'Impossible de supprimer'); }
+    finally { setIsDeletingBroker(false); }
   };
 
   // ── Commission state ────────────────────────────────────────────────────
@@ -414,6 +427,15 @@ function CommissionManager() {
           ))}
         </tbody>
       </table>
+
+      <ConfirmModal
+        isOpen={!!brokerDeleteTarget}
+        title={t('common.confirmDeleteTitle')}
+        message={brokerDeleteTarget ? t('brokers.deleteConfirm', { name: brokerDeleteTarget.name }) : ''}
+        isLoading={isDeletingBroker}
+        onConfirm={handleConfirmDeleteBroker}
+        onCancel={() => setBrokerDeleteTarget(null)}
+      />
     </div>
   );
 }
@@ -435,6 +457,8 @@ function ProductManager() {
   const [form, setForm] = useState<ProductForm>(EMPTY_FORM);
   const [formError, setFormError] = useState('');
   const [deleteError, setDeleteError] = useState<{ ticker: string; message: string } | null>(null);
+  const [productDeleteTarget, setProductDeleteTarget] = useState<Product | null>(null);
+  const [isDeletingProduct, setIsDeletingProduct] = useState(false);
   const [sortCol, setSortCol] = useState<ProductSortCol>('ticker');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
@@ -471,14 +495,23 @@ function ProductManager() {
     }
   };
 
-  const handleDelete = async (p: Product) => {
+  const handleDelete = (p: Product) => {
     setDeleteError(null);
-    if (!window.confirm(t('configGenerale.deleteProductConfirm', { name: `${p.ticker} — ${p.name}` }))) return;
+    setProductDeleteTarget(p);
+  };
+
+  const handleConfirmDeleteProduct = async () => {
+    /* v8 ignore next -- @preserve */
+    if (!productDeleteTarget) return;
+    setIsDeletingProduct(true);
     try {
-      await deleteProduct(p.ticker); refetch(); qc.invalidateQueries({ queryKey: ['products'] });
+      await deleteProduct(productDeleteTarget.ticker);
+      refetch();
+      qc.invalidateQueries({ queryKey: ['products'] });
+      setProductDeleteTarget(null);
     } catch (e: any) {
-      setDeleteError({ ticker: p.ticker, message: e?.response?.data?.detail ?? 'Erreur lors de la suppression' });
-    }
+      setDeleteError({ ticker: productDeleteTarget.ticker, message: e?.response?.data?.detail ?? 'Erreur lors de la suppression' });
+    } finally { setIsDeletingProduct(false); }
   };
 
   const inputSt: React.CSSProperties = { padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', fontSize: '0.9rem', width: '100%' };
@@ -559,6 +592,17 @@ function ProductManager() {
           {formError && <div style={{ color: '#C9190B', fontSize: '0.85rem' }}>{formError}</div>}
         </div>
       </Modal>
+
+      <ConfirmModal
+        isOpen={!!productDeleteTarget}
+        title={t('common.confirmDeleteTitle')}
+        message={productDeleteTarget
+          ? t('configGenerale.deleteProductConfirm', { name: `${productDeleteTarget.ticker} — ${productDeleteTarget.name}` })
+          : ''}
+        isLoading={isDeletingProduct}
+        onConfirm={handleConfirmDeleteProduct}
+        onCancel={() => setProductDeleteTarget(null)}
+      />
     </div>
   );
 }

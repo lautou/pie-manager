@@ -331,50 +331,50 @@ describe('GlobalConfigPage — ProductManager', () => {
   }, 10000);
 
   it('can delete a product with confirm', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const { deleteProduct } = await import('../api/queries');
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByRole('button', { name: /Supprimer AAPL/i }));
+    await user.click(screen.getByText('Supprimer'));
     expect(deleteProduct).toHaveBeenCalledWith('AAPL');
   }, 10000);
 
   it('delete cancelled by user does not call deleteProduct', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
     const { deleteProduct } = await import('../api/queries');
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByRole('button', { name: /Supprimer AAPL/i }));
+    await user.click(screen.getByText('Annuler'));
     expect(deleteProduct).not.toHaveBeenCalled();
   }, 10000);
 
   it('delete blocked by transactions shows danger alert', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const { deleteProduct } = await import('../api/queries');
     vi.mocked(deleteProduct).mockRejectedValueOnce({ response: { data: { detail: 'Ce produit est utilisé dans 3 transaction(s).' } } });
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByRole('button', { name: /Supprimer AAPL/i }));
+    await user.click(screen.getByText('Supprimer'));
     await rtlWaitFor(() => expect(screen.getByText(/Ce produit est utilisé dans 3 transaction/i)).toBeTruthy());
   }, 10000);
 
   it('delete error without detail shows fallback message', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const { deleteProduct } = await import('../api/queries');
     vi.mocked(deleteProduct).mockRejectedValueOnce(new Error('Unknown error'));
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByRole('button', { name: /Supprimer AAPL/i }));
+    await user.click(screen.getByText('Supprimer'));
     await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de la suppression/i)).toBeTruthy());
   }, 10000);
 
   it('delete error without any response shows fallback message', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const { deleteProduct } = await import('../api/queries');
     vi.mocked(deleteProduct).mockRejectedValueOnce({});
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByRole('button', { name: /Supprimer AAPL/i }));
+    await user.click(screen.getByText('Supprimer'));
     await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de la suppression/i)).toBeTruthy());
   }, 10000);
 
@@ -1233,32 +1233,31 @@ describe('GlobalConfigPage — CommissionManager broker CRUD', () => {
     }
   }, 10000);
 
-  it('clicking 🗑 button confirms and calls deleteBrokerAPI', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
+  it('clicking 🗑 button then confirming in modal calls deleteBrokerAPI', async () => {
     const { deleteBrokerAPI } = await import('../api/queries');
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     const deleteBtns = screen.getAllByRole('button').filter((b: HTMLElement) => b.textContent?.includes('🗑'));
     if (deleteBtns.length > 0) {
       await user.click(deleteBtns[0]);
+      await user.click(screen.getByText('Supprimer'));
       expect(deleteBrokerAPI).toHaveBeenCalled();
     }
   }, 10000);
 
-  it('clicking 🗑 button cancelled does not call deleteBrokerAPI', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
+  it('clicking 🗑 button then cancelling in modal does not call deleteBrokerAPI', async () => {
     const { deleteBrokerAPI } = await import('../api/queries');
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     const deleteBtns = screen.getAllByRole('button').filter((b: HTMLElement) => b.textContent?.includes('🗑'));
     if (deleteBtns.length > 0) {
       await user.click(deleteBtns[0]);
+      await user.click(screen.getByText('Annuler'));
       expect(deleteBrokerAPI).not.toHaveBeenCalled();
     }
   }, 10000);
 
   it('delete broker API error shows alert', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
     const { deleteBrokerAPI } = await import('../api/queries');
     vi.mocked(deleteBrokerAPI).mockRejectedValueOnce({ response: { data: { detail: 'Has transactions' } } });
@@ -1267,6 +1266,7 @@ describe('GlobalConfigPage — CommissionManager broker CRUD', () => {
     const deleteBtns = screen.getAllByRole('button').filter((b: HTMLElement) => b.textContent?.includes('🗑'));
     if (deleteBtns.length > 0) {
       await user.click(deleteBtns[0]);
+      await user.click(screen.getByText('Supprimer'));
       expect(alertSpy).toHaveBeenCalled();
     }
     alertSpy.mockRestore();
@@ -1413,7 +1413,6 @@ describe('GlobalConfigPage — additional branch coverage', () => {
   }, 10000);
 
   it('handleDeleteBroker catch without detail uses "Impossible de supprimer" fallback (line 102 ?? branch)', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
     const { deleteBrokerAPI } = await import('../api/queries');
     vi.mocked(deleteBrokerAPI).mockRejectedValueOnce(new Error('Generic error'));
@@ -1422,6 +1421,7 @@ describe('GlobalConfigPage — additional branch coverage', () => {
     const deleteBtns = screen.getAllByRole('button').filter((b: HTMLElement) => b.textContent?.includes('🗑'));
     if (deleteBtns.length > 0) {
       await user.click(deleteBtns[0]);
+      await user.click(screen.getByText('Supprimer'));
       expect(alertSpy).toHaveBeenCalledWith('Impossible de supprimer');
     }
     alertSpy.mockRestore();

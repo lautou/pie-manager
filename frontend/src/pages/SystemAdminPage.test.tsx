@@ -270,11 +270,12 @@ describe('SystemAdminPage — additional coverage', () => {
     vi.restoreAllMocks();
   });
 
-  it('handleRestoreFile: file selected, confirm accepted → calls apiClient.post restore', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
+  it('handleRestoreFile: file selected, confirm in modal → calls apiClient.post restore', async () => {
+    const apiClientMock = (await import('../api/client')).default;
     (globalThis as any).URL.createObjectURL = vi.fn().mockReturnValue('blob:test');
     (globalThis as any).URL.revokeObjectURL = vi.fn();
 
+    const user = userEvent.setup({ delay: null });
     const { container } = render(<SystemAdminPage />);
 
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
@@ -287,12 +288,16 @@ describe('SystemAdminPage — additional coverage', () => {
     });
 
     fireEvent.change(fileInput);
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    await user.click(screen.getByText('Confirmer'));
+    expect(apiClientMock.post).toHaveBeenCalledWith(
+      '/api/admin/restore', expect.any(FormData), expect.anything()
+    );
   }, 10000);
 
-  it('handleRestoreFile: file selected, confirm rejected → does not call restore', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
+  it('handleRestoreFile: file selected, cancel in modal → does not call restore', async () => {
+    const apiClientMock = (await import('../api/client')).default;
 
+    const user = userEvent.setup({ delay: null });
     const { container } = render(<SystemAdminPage />);
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
     expect(fileInput).toBeTruthy();
@@ -304,7 +309,8 @@ describe('SystemAdminPage — additional coverage', () => {
     });
 
     fireEvent.change(fileInput);
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    await user.click(screen.getByText('Annuler'));
+    expect(apiClientMock.post).not.toHaveBeenCalledWith('/api/admin/restore', expect.anything(), expect.anything());
   }, 10000);
 
   it('handleRestoreFile: restore API throws error → shows danger alert', async () => {
@@ -313,8 +319,7 @@ describe('SystemAdminPage — additional coverage', () => {
       response: { data: { detail: 'DB restore failed' } },
     });
 
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-
+    const user = userEvent.setup({ delay: null });
     const { container } = render(<SystemAdminPage />);
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
     expect(fileInput).toBeTruthy();
@@ -326,7 +331,8 @@ describe('SystemAdminPage — additional coverage', () => {
     });
 
     fireEvent.change(fileInput);
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    await user.click(screen.getByText('Confirmer'));
+    await screen.findByText('DB restore failed');
   }, 10000);
 
   it('handleRestoreFile: no file selected → returns early', async () => {
@@ -616,7 +622,10 @@ describe('SystemAdminPage — direct state rendering coverage', () => {
 // ── handleManualSync setTimeout callback (lines 54-55) ───────────────────────
 
 describe('SystemAdminPage — handleManualSync setTimeout (lines 54-55)', () => {
-  beforeEach(() => { vi.clearAllMocks(); });
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseSyncStatus.mockReturnValue({ data: { status: 'success', failed_tickers: [], started_at: null, finished_at: null, total_tickers: 5, succeeded: 5 } });
+  });
 
   it('handleManualSync: setTimeout fires after 4s, invalidates queries, sets isSyncing false', async () => {
     const { act: actRtl } = await import('@testing-library/react');
@@ -634,7 +643,7 @@ describe('SystemAdminPage — handleManualSync setTimeout (lines 54-55)', () => 
       await Promise.resolve();
     });
 
-    // Advance 4000ms → the setTimeout callback fires (lines 54-55)
+    // Advance 4000ms → the setTimeout callback fires (lines 56-57)
     await actRtl(async () => {
       vi.advanceTimersByTime(4000);
       await Promise.resolve();

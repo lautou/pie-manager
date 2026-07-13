@@ -21,6 +21,8 @@ export interface Product {
   ticker: string;
   name: string;
   category: string;
+  instrument_type?: string | null;
+  fee_type?: string | null;
   currency: string;
   isin?: string | null;
   notes?: string | null;
@@ -49,6 +51,7 @@ export interface AccountPosition {
   ticker: string;
   product_name: string;
   category: string | null;
+  instrument_type?: string | null;
   quantity: number;
   last_price: number;
   last_price_date: string | null;
@@ -85,6 +88,7 @@ export interface Transaction {
   balance_eur: number | null;
   linked_transaction_id: number | null;
   fractional_parent_id: number | null;
+  operation?: string | null;
 }
 
 export interface Pool {
@@ -157,6 +161,7 @@ export interface Holding {
   ticker: string;
   product_name: string;
   category: string | null;
+  instrument_type?: string | null;
   pool_id: number | null;
   pool_name: string | null;
   quantity: number;

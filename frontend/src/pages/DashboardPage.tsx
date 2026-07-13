@@ -203,7 +203,7 @@ export default function DashboardPage() {
   const [selectedPool, setSelectedPool] = useState<string | null>(null);
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
 
-  const manuelProducts = (products ?? []).filter((p) => p.category === 'Manuel');
+  const manuelProducts = (products ?? []).filter((p) => p.instrument_type === 'Or physique');
 
   if (isLoading) {
     return (

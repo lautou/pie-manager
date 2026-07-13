@@ -83,15 +83,15 @@ async def get_dashboard(
 
     last_updated = latest_snapshot.date if latest_snapshot else None
 
-    # Fetch product categories to handle Manuel assets (price = total value directly)
+    # Fetch instrument types to handle Or physique assets (price = total value directly)
     products_result = await db.execute(
-        select(Product.ticker, Product.category).where(Product.ticker.in_(all_tickers))
+        select(Product.ticker, Product.instrument_type).where(Product.ticker.in_(all_tickers))
     )
-    product_categories = {row.ticker: row.category for row in products_result.all()}
+    product_instrument_types = {row.ticker: row.instrument_type for row in products_result.all()}
 
     # Always compute pool values fresh from positions + latest prices
     pool_values = compute_pool_values(
-        pools, tickers_by_pool, positions, prices, spot_rates, product_categories
+        pools, tickers_by_pool, positions, prices, spot_rates, product_instrument_types
     )
 
     total_eur = sum(pool_values.values()) + liquidity_eur

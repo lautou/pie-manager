@@ -2,7 +2,7 @@
  * Tests for TransactionsPage
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import { pfCoreStubs, pfTableStubs, pfIconStubs } from '../../tests/utils/patternfly-mocks';
@@ -120,7 +120,7 @@ const mockTransaction = {
 };
 
 const mockAccount = { id: 1, portfolio_id: 1, name: 'Degiro', currency: 'EUR' };
-const mockProduct = { ticker: 'AAPL', name: 'Apple', category: 'Action', currency: 'USD' };
+const mockProduct = { ticker: 'AAPL', name: 'Apple', category: 'Actif', instrument_type: 'Action', currency: 'USD' };
 
 import TransactionsPage from './TransactionsPage';
 
@@ -298,6 +298,31 @@ describe('TransactionsPage', () => {
     mockUseTransactions.mockReturnValue({ data: [fractionalTx], isLoading: false, isError: false });
     render(<TransactionsPage />);
     expect(screen.getByText('BTC')).toBeTruthy();
+  });
+
+  it('Sens column shows Achat for an Actif transaction with operation=Achat', () => {
+    const achatTx = { ...mockTransaction, operation: 'Achat' };
+    mockUseTransactions.mockReturnValue({ data: [achatTx], isLoading: false, isError: false });
+    render(<TransactionsPage />);
+    expect(screen.getByText('Achat')).toBeTruthy();
+  });
+
+  it('Sens column shows Vente for an Actif transaction with operation=Vente', () => {
+    const venteTx = { ...mockTransaction, operation: 'Vente' };
+    mockUseTransactions.mockReturnValue({ data: [venteTx], isLoading: false, isError: false });
+    render(<TransactionsPage />);
+    expect(screen.getByText('Vente')).toBeTruthy();
+  });
+
+  it('Sens column shows Dépôt/Retrait for LIQUIDITE.EURO transactions, and — for Frais/Revenu', () => {
+    const depositTx = { ...mockTransaction, id: 10, ticker: 'LIQUIDITE.EURO', quantity: 500, operation: null };
+    const withdrawalTx = { ...mockTransaction, id: 11, ticker: 'LIQUIDITE.EURO', quantity: -200, operation: null };
+    const feeTx = { ...mockTransaction, id: 12, type: 'Frais', ticker: 'FRAIS.COURTAGE.EUR', operation: null };
+    mockUseTransactions.mockReturnValue({ data: [depositTx, withdrawalTx, feeTx], isLoading: false, isError: false });
+    render(<TransactionsPage />);
+    expect(screen.getByText('Dépôt')).toBeTruthy();
+    expect(screen.getByText('Retrait')).toBeTruthy();
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
 
   it('submit form with create mutation', async () => {
@@ -483,6 +508,24 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     expect(dashCells.length).toBeGreaterThan(0);
   });
 
+  it('editing a transaction with operation Attribution initializes operationType to grant (line 188)', async () => {
+    const grantTx = { ...mockTransaction, operation: 'Attribution' };
+    mockUseTransactions.mockReturnValue({ data: [grantTx], isLoading: false, isError: false });
+
+    const user = userEvent.setup({ delay: null });
+    render(<TransactionsPage />);
+
+    const editButtons = screen.getAllByRole('button');
+    const editBtn = editButtons.find(b => b.textContent?.includes('edit'));
+    if (editBtn) {
+      await user.click(editBtn);
+      // Courtage/TTF stay locked to 0 for a grant (unlike unit_price, which is
+      // editable — see the dedicated Attribution tests above)
+      const courtageInput = document.getElementById('tx-courtage') as HTMLInputElement;
+      expect(courtageInput.disabled).toBe(true);
+    }
+  }, 10000);
+
   it('transaction with balance_eur shows EUR balance (line 644 branch)', () => {
     // endOfDayCurrencyIds includes this tx, currency is EUR, balance_eur is set
     const eurTxWithBalance = {
@@ -634,7 +677,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
   it('handleTickerChange: forex ticker (JPYEUR=X) sets currency to the foreign currency, not product.currency', async () => {
     // JPYEUR=X product has currency='EUR' in DB, but the held currency is JPY.
     // The form should show JPY so the exchange rate field is editable.
-    const jpyProductEurCurrency = { ticker: 'JPYEUR=X', name: 'Yen/Euro', category: 'Cash', currency: 'EUR' };
+    const jpyProductEurCurrency = { ticker: 'JPYEUR=X', name: 'Yen/Euro', category: 'Actif', instrument_type: 'Cash', currency: 'EUR' };
     mockUseAccounts.mockReturnValue({ data: [mockAccount] });
     mockUseProducts.mockReturnValue({ data: [jpyProductEurCurrency] });
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
@@ -748,6 +791,27 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
       fireEvent.change(unitPriceInput, { target: { value: '175.50' } });
     }
     expect(screen.getByText('Transactions')).toBeTruthy();
+  }, 10000);
+
+  it('unit_price onChange when isCash does not call setField (line 988 skip branch)', async () => {
+    const cashProduct = { ticker: 'JPYEUR=X', name: 'Yen/Euro', category: 'Actif', instrument_type: 'Cash', currency: 'EUR' };
+    mockUseAccounts.mockReturnValue({ data: [mockAccount] });
+    mockUseProducts.mockReturnValue({ data: [cashProduct] });
+    mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
+
+    const user = userEvent.setup({ delay: null });
+    render(<TransactionsPage />);
+
+    await user.click(screen.getByText('Nouvelle transaction'));
+    const tickerSelect = screen.getByRole('combobox', { name: 'Ticker' });
+    await user.selectOptions(tickerSelect, 'JPYEUR=X');
+
+    const unitPriceInput = document.getElementById('tx-unit-price') as HTMLInputElement;
+    expect(unitPriceInput.disabled).toBe(true);
+    // Fired via fireEvent (bypasses the disabled attribute in jsdom) — the
+    // isCash guard must still skip the update
+    fireEvent.change(unitPriceInput, { target: { value: '999' } });
+    expect(unitPriceInput.value).toBe('1');
   }, 10000);
 
   it('shows Quantité text for Actif type in modal', async () => {
@@ -1477,6 +1541,108 @@ describe('TransactionsPage — fractional order executions (lines 854-885)', () 
     expect(screen.getByText('Transactions')).toBeTruthy();
   }, 10000);
 
+  it('clicking Attribution button switches to grant mode, defaults price to 0 but keeps it editable, and locks courtage/TTF to 0', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<TransactionsPage />);
+
+    await user.click(screen.getByText('Nouvelle transaction'));
+    const grantBtn = screen.getByText(/🎁.*Attribution/i);
+    await user.click(grantBtn);
+
+    // Unit price defaults to 0 (free grant) but remains editable — some
+    // attributions carry a fair-value price the user wants to record
+    const unitPriceInput = document.getElementById('tx-unit-price') as HTMLInputElement;
+    expect(unitPriceInput.disabled).toBe(false);
+    const courtageInput = document.getElementById('tx-courtage') as HTMLInputElement;
+    expect(courtageInput.disabled).toBe(true);
+    const ttfInput = document.getElementById('tx-ttf') as HTMLInputElement;
+    expect(ttfInput.disabled).toBe(true);
+  }, 10000);
+
+  it('typing a price for an Attribution does not auto-compute courtage from the account commission schedule', async () => {
+    // Regression: recomputeFees used to compute courtage from the amount alone,
+    // ignoring operationType — a free grant with a fair-value price entered
+    // would show a spurious commission estimate even though courtage/TTF are
+    // locked to 0 for a grant.
+    const accountWithCommission = {
+      ...mockAccount,
+      commission_schedule: [{ up_to: null, type: 'flat', value: 2.9 }],
+    };
+    mockUseAccounts.mockReturnValue({ data: [accountWithCommission] });
+    mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
+
+    const user = userEvent.setup({ delay: null });
+    render(<TransactionsPage />);
+
+    await user.click(screen.getByText('Nouvelle transaction'));
+    const tickerSelect = screen.getByRole('combobox', { name: 'Ticker' });
+    await user.selectOptions(tickerSelect, 'AAPL');
+
+    const grantBtn = screen.getByText(/🎁.*Attribution/i);
+    await user.click(grantBtn);
+
+    const unitPriceInput = document.getElementById('tx-unit-price') as HTMLInputElement;
+    fireEvent.change(unitPriceInput, { target: { value: '500' } });
+
+    const courtageInput = document.getElementById('tx-courtage') as HTMLInputElement;
+    expect(courtageInput.value).toBe('');
+  }, 10000);
+
+  it('handleSubmit: Attribution grant submits with operation="Attribution" (line 434 grant branch)', async () => {
+    const mockCreate = vi.fn().mockResolvedValue({ id: 102, portfolio_id: 1 });
+    mockUseCreateTransaction.mockReturnValue({ mutateAsync: mockCreate, isPending: false });
+    mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
+
+    const user = userEvent.setup({ delay: null });
+    render(<TransactionsPage />);
+
+    await user.click(screen.getByText('Nouvelle transaction'));
+    const modal = screen.getByTestId('modal');
+
+    const grantBtn = screen.getByText(/🎁.*Attribution/i);
+    await user.click(grantBtn);
+
+    // Unit price remains editable for a grant — some attributions carry a
+    // fair-value price the user wants to record, even though it defaults to 0
+    const unitPriceInput = document.getElementById('tx-unit-price') as HTMLInputElement;
+    fireEvent.change(unitPriceInput, { target: { value: '999' } });
+    expect(unitPriceInput.value).toBe('999');
+
+    const allModalBtns = Array.from(modal.querySelectorAll('button'));
+    const modalSubmitBtn = allModalBtns.find(b => b.textContent === 'Ajouter');
+    if (modalSubmitBtn) await user.click(modalSubmitBtn as HTMLElement);
+
+    expect(mockCreate).toHaveBeenCalled();
+    const payload = mockCreate.mock.calls[0][0];
+    expect(payload.operation).toBe('Attribution');
+    expect(payload.unit_price).toBe(999);
+  }, 10000);
+
+  it('Revenu type with a Cash-instrument ticker (JPYEUR=X) shows the plain quantity field, not the Dépôt/Retrait toggle', async () => {
+    // Regression: isCashDirectDeposit is computed purely from the selected product/account,
+    // independent of form.type — the Dépôt/Retrait toggle used to render for Revenu too
+    // whenever a Cash-instrument ticker was selected, even though "deposit/withdrawal"
+    // means nothing for an income transaction (e.g. interest paid in JPY).
+    const cashProduct = { ticker: 'JPYEUR=X', name: 'Yen/Euro', category: 'Actif', instrument_type: 'Cash', currency: 'EUR' };
+    mockUseAccounts.mockReturnValue({ data: [mockAccount] });
+    mockUseProducts.mockReturnValue({ data: [cashProduct] });
+    mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
+
+    const user = userEvent.setup({ delay: null });
+    render(<TransactionsPage />);
+
+    await user.click(screen.getByText('Nouvelle transaction'));
+    const typeSelect = screen.getByRole('combobox', { name: 'Type' });
+    await user.selectOptions(typeSelect, 'Revenu');
+    const tickerSelect = screen.getByRole('combobox', { name: 'Ticker' });
+    await user.selectOptions(tickerSelect, 'JPYEUR=X');
+
+    expect(screen.queryByText('Dépôt')).toBeNull();
+    expect(screen.queryByText('Retrait')).toBeNull();
+    expect(screen.getByText(/Revenu positif/i)).toBeTruthy();
+    expect(document.getElementById('tx-quantity')).toBeTruthy();
+  }, 10000);
+
   it('filteredProducts: account with allowed_tickers filters products (lines 313-314)', async () => {
     // Account with allowed_tickers set → filteredProducts uses allowedSet (lines 313-314)
     // filteredProducts is computed inside TransactionModal when selectedAccount.allowed_tickers is set
@@ -1548,7 +1714,7 @@ describe('TransactionsPage — isCashDirectDeposit section (lines 692-711)', () 
   };
 
   const eurAccount = { id: 1, portfolio_id: 1, name: 'Degiro', currency: 'EUR', portfolio_ids: [1] };
-  const cashProduct = { ticker: 'LIQUIDITE.EURO', name: 'Liquidités EUR', category: 'Cash', currency: 'EUR' };
+  const cashProduct = { ticker: 'LIQUIDITE.EURO', name: 'Liquidités EUR', category: 'Actif', instrument_type: 'Cash', currency: 'EUR' };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1625,6 +1791,28 @@ describe('TransactionsPage — isCashDirectDeposit section (lines 692-711)', () 
     expect(screen.getByText('Transactions')).toBeTruthy();
   }, 10000);
 
+  it('editing a cash-direct withdrawal transaction preserves negative quantity on submit (line 186 withdrawal branch)', async () => {
+    const withdrawalTx = { ...cashDepotTx, id: 100, quantity: -50 };
+    const mockUpdate = vi.fn().mockResolvedValue({});
+    mockUseTransactions.mockReturnValue({ data: [withdrawalTx], isLoading: false, isError: false });
+    mockUseUpdateTransaction.mockReturnValue({ mutateAsync: mockUpdate, isPending: false });
+
+    const user = userEvent.setup({ delay: null });
+    render(<TransactionsPage />);
+
+    const editButtons = screen.getAllByRole('button');
+    const editBtn = editButtons.find(b => b.textContent?.includes('edit'));
+    if (editBtn) {
+      await user.click(editBtn);
+      const modal = screen.getByTestId('modal');
+      const submitBtn = Array.from(modal.querySelectorAll('button')).find(b => b.textContent === 'Enregistrer');
+      if (submitBtn) await user.click(submitBtn);
+      expect(mockUpdate).toHaveBeenCalled();
+      const payload = mockUpdate.mock.calls[0][0];
+      expect(payload.quantity).toBeLessThan(0);
+    }
+  }, 10000);
+
   it('Dépôt/Retrait retrait: frais de retrait input onFocus/onChange (lines 636-637)', async () => {
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
@@ -1680,7 +1868,9 @@ describe('TransactionsPage — isCashDirectDeposit section (lines 692-711)', () 
     const typeSelect = screen.getByRole('combobox', { name: 'Type' });
     await user.selectOptions(typeSelect, 'Dépôt/Retrait');
 
-    const retraitBtn = screen.queryByText('Retrait');
+    // Scoped to the modal: the transactions table's new "Sens" column can also
+    // render "Retrait" for a withdrawal row, which would otherwise collide
+    const retraitBtn = modal ? within(modal).queryByText('Retrait') : null;
     if (retraitBtn) await user.click(retraitBtn as HTMLElement);
 
     // withdrawal_first_free=true + monthWithdrawals has quantity<0 → '2ème retrait+ du mois'
@@ -1785,7 +1975,7 @@ describe('TransactionsPage — isRevolutFX section (line 985)', () => {
     unit_price_eur: 0.0064, total_amount: 320, total_amount_eur: 320,
     balance_currency: null, balance_eur: null,
   };
-  const jpyProduct = { ticker: 'JPYEUR=X', name: 'Yen/Euro', category: 'Cash', currency: 'JPY' };
+  const jpyProduct = { ticker: 'JPYEUR=X', name: 'Yen/Euro', category: 'Actif', instrument_type: 'Cash', currency: 'JPY' };
 
   beforeEach(() => {
     vi.clearAllMocks();

@@ -10,6 +10,10 @@ class Transaction(Base):
     __tablename__ = "transactions"
     __table_args__ = (
         CheckConstraint("type IN ('Actif', 'Frais', 'Revenu')", name="ck_transaction_type"),
+        CheckConstraint(
+            "operation IN ('Achat', 'Vente', 'Attribution') OR operation IS NULL",
+            name="ck_transaction_operation",
+        ),
         # NOTE: transaction.portfolio_id == account.portfolio_id consistency is enforced
         # at the application layer (transactions POST, HTTP 400), not at DB level.
         # A composite FK would require accounts(id, portfolio_id) to have a unique
@@ -23,6 +27,10 @@ class Transaction(Base):
 
     # Type: "Actif" (buy/sell/cash deposit), "Frais" (fees), "Revenu" (dividends)
     type: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Sub-classification when type == "Actif": Achat / Vente / Attribution
+    # (free share grant — zero cost, dilutes WACOP like a normal buy). Not
+    # applicable (null) for Frais/Revenu.
+    operation: Mapped[str | None] = mapped_column(String(20), nullable=True)
     ticker: Mapped[str] = mapped_column(ForeignKey("products.ticker"), nullable=False)
     currency: Mapped[str] = mapped_column(String(10), nullable=False)
 

@@ -134,11 +134,13 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
   // on a EUR account). Agnostic to currency — works for any cash product.
   const [direction, setDirection] = useState<'deposit' | 'withdrawal'>('deposit');
 
-  // Achat/Vente toggle for Actif type — user enters absolute quantity, sign applied on submit
-  const [operationType, setOperationType] = useState<'buy' | 'sell'>(() =>
+  // Achat/Vente/Attribution toggle for Actif type — user enters absolute quantity, sign applied on submit
+  const [operationType, setOperationType] = useState<'buy' | 'sell' | 'grant'>(() => {
     /* v8 ignore next -- @preserve */
-    editingTx?.type === 'Actif' && editingTx.ticker !== LIQUIDITE_TICKER && (editingTx.quantity ?? 0) > 0 ? 'sell' : 'buy'
-  );
+    if (editingTx?.operation === 'Attribution') return 'grant';
+    /* v8 ignore next -- @preserve */
+    return editingTx?.type === 'Actif' && editingTx.ticker !== LIQUIDITE_TICKER && (editingTx.quantity ?? 0) > 0 ? 'sell' : 'buy';
+  });
 
   // Helper: is the editing tx a deposit/withdrawal (LIQUIDITE.EURO Actif)?
   const isDepotRetrait = (tx: Transaction | null) =>
@@ -180,9 +182,12 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
     if (editingTx) {
       const product = products.find((p) => p.ticker === editingTx.ticker);
       const account = accounts.find((a) => a.id === editingTx.account_id);
-      const isCashDirect = product?.category === 'Cash' && product?.currency === account?.currency;
+      const isCashDirect = product?.instrument_type === 'Cash' && product?.currency === account?.currency;
       setDirection(isCashDirect && editingTx.quantity < 0 ? 'withdrawal' : 'deposit');
-      setOperationType(editingTx.type === 'Actif' && editingTx.ticker !== LIQUIDITE_TICKER && editingTx.quantity > 0 ? 'sell' : 'buy');
+      setOperationType(
+        editingTx.operation === 'Attribution' ? 'grant'
+          : editingTx.type === 'Actif' && editingTx.ticker !== LIQUIDITE_TICKER && editingTx.quantity > 0 ? 'sell' : 'buy'
+      );
       setForm({
         date: editingTx.date,
         account_id: String(editingTx.account_id),
@@ -209,13 +214,16 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
     qty: number,
     price: number,
     rate: number,
-    opType: 'buy' | 'sell',
+    opType: 'buy' | 'sell' | 'grant',
     accId: string,
     type: string,
     ticker: string,
     extraExecs: ExecutionRow[],
   ) => {
-    if (type !== 'Actif') return;
+    // A free share grant never incurs brokerage or TTF — skip auto-calculation
+    // entirely so a manually-entered fair-value price doesn't produce a
+    // spurious courtage estimate (the inputs stay locked at 0 either way).
+    if (type !== 'Actif' || opType === 'grant') return;
     const firstAmount = Math.abs(qty * price * rate);
     const extraAmount = extraExecs.reduce(
       (sum, e) => sum + Math.abs(e.quantity * e.unit_price * rate), 0
@@ -336,7 +344,7 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
     return byType.filter((p) => allowedSet.has(p.ticker));
   }, [products, form.type, selectedAccount]);
 
-  const isCash = selectedProduct?.category === 'Cash';
+  const isCash = selectedProduct?.instrument_type === 'Cash';
   // Show Deposit/Withdrawal toggle when the cash product's currency matches the
   // account currency — i.e. it's a direct account balance movement, not a
   // forex position (e.g. JPYEUR=X on an EUR account is NOT isCashDirectDeposit).
@@ -378,7 +386,7 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
       ticker: value,
       currency: firstCurrency,
       exchange_rate: firstCurrency === 'EUR' ? 1.0 : prev.exchange_rate,
-      unit_price: product?.category === 'Cash' ? 1.0 : prev.unit_price,
+      unit_price: product?.instrument_type === 'Cash' ? 1.0 : prev.unit_price,
     }));
   };
 
@@ -396,7 +404,7 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
       // Deposit/Withdrawal (direct cash) → sign driven by direction toggle
       // Frais  → quantity always negative
       // Revenu → quantity always positive
-      // Actif  → sign determined by Buy/Sell toggle
+      // Actif  → sign determined by Buy/Sell/Grant toggle (Buy and Grant both negative)
       // Forex Cash → user controls sign (inverted convention)
       const isDepotRetraitType = form.type === 'Dépôt/Retrait';
       const normalizedQty = isDepotRetraitType
@@ -417,12 +425,17 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
           : form.type === 'Revenu'
           ? Math.abs(form.quantity)
           : form.type === 'Actif'
-          ? (operationType === 'buy' ? -Math.abs(form.quantity) : Math.abs(form.quantity))
+          ? (operationType === 'sell' ? Math.abs(form.quantity) : -Math.abs(form.quantity))
           : /* v8 ignore next -- @preserve */ form.quantity;
 
       const dbType = isDepotRetraitType ? 'Actif' : form.type;
       const dbTicker = isDepotRetraitType ? LIQUIDITE_TICKER : form.ticker;
       const withdrawalFee = isDepotRetraitType && direction === 'withdrawal' ? form.courtage_eur : 0;
+      // Achat/Vente/Attribution only applies to real financial instruments (not
+      // cash direct movements or Dépôt/Retrait, which use the direction toggle)
+      const operation = form.type === 'Actif' && !isCashDirectDeposit
+        ? (operationType === 'sell' ? 'Vente' : operationType === 'grant' ? 'Attribution' : 'Achat')
+        : undefined;
 
       const payload = {
         portfolio_id: Number(portfolioId),
@@ -435,6 +448,7 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
         quantity: normalizedQty,
         unit_price: isDepotRetraitType ? 1.0 : form.unit_price,
         linked_transaction_id: form.linked_transaction_id,
+        operation,
         // Never send courtage/ttf for fractional transactions (parent with siblings or sibling)
         courtage_eur: isDepotRetraitType ? withdrawalFee
           : (form.type === 'Actif' && !editingTx?.fractional_parent_id ? form.courtage_eur : 0),
@@ -443,7 +457,7 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
         additional_executions: form.type === 'Actif' && form.fractional_order && !isEditing
           ? form.additional_executions.map(e => ({
               date: e.date,
-              quantity: operationType === 'buy' ? -Math.abs(e.quantity) : Math.abs(e.quantity),
+              quantity: operationType === 'sell' ? Math.abs(e.quantity) : -Math.abs(e.quantity),
               unit_price: e.unit_price,
               /* v8 ignore next -- @preserve */
               exchange_rate: e.exchange_rate || form.exchange_rate,
@@ -590,7 +604,7 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
             )}
           </FormGroup>
 
-          {/* Sens — Achat/Vente pour Actif, placé avant Taux */}
+          {/* Sens — Achat/Vente/Attribution pour Actif, placé avant Taux */}
           {form.type === 'Actif' && !isCashDirectDeposit && (
             <FormGroup label={t('transactions.fields.direction')} isRequired fieldId="tx-sens-inline" style={{ marginBottom: '1rem' }}>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -598,6 +612,11 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
                   onClick={() => setOperationType('buy')}>📉 {t('transactions.direction.buy')}</Button>
                 <Button variant={operationType === 'sell' ? 'primary' : 'control'} size="sm"
                   onClick={() => setOperationType('sell')}>📈 {t('transactions.direction.sell')}</Button>
+                <Button variant={operationType === 'grant' ? 'primary' : 'control'} size="sm"
+                  onClick={() => {
+                    setOperationType('grant');
+                    setForm((prev) => ({ ...prev, unit_price: 0, courtage_eur: 0, ttf_eur: 0 }));
+                  }}>🎁 {t('transactions.direction.grant')}</Button>
               </div>
             </FormGroup>
           )}
@@ -745,7 +764,7 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
       >
         {
           /* v8 ignore next 28 -- @preserve */
-          isCashDirectDeposit ? (
+          form.type === 'Actif' && isCashDirectDeposit ? (
           <>
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
               <Button
@@ -987,9 +1006,10 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
                 min={0}
                 step={0.01}
                 value={form.courtage_eur || ''}
+                disabled={operationType === 'grant'}
                 onFocus={(e) => e.target.select()}
                 onChange={(e) => setField('courtage_eur', parseFloat(e.target.value) || 0)}
-                style={{ width: '100px', padding: '6px 8px', border: '1px solid #ccc', borderRadius: 4, fontSize: '1rem' }}
+                style={{ width: '100px', padding: '6px 8px', border: '1px solid #ccc', borderRadius: 4, fontSize: '1rem', opacity: operationType === 'grant' ? 0.5 : 1 }}
               />
             </FormGroup>
             <FormGroup label={t('transactions.fields.ttf')} fieldId="tx-ttf" style={{ margin: 0 }}>
@@ -999,10 +1019,10 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
                 min={0}
                 step={0.01}
                 value={form.ttf_eur || ''}
-                disabled={operationType === 'sell'}
+                disabled={operationType === 'sell' || operationType === 'grant'}
                 onFocus={(e) => e.target.select()}
                 onChange={(e) => setField('ttf_eur', parseFloat(e.target.value) || 0)}
-                style={{ width: '100px', padding: '6px 8px', border: '1px solid #ccc', borderRadius: 4, fontSize: '1rem', opacity: operationType === 'sell' ? 0.5 : 1 }}
+                style={{ width: '100px', padding: '6px 8px', border: '1px solid #ccc', borderRadius: 4, fontSize: '1rem', opacity: (operationType === 'sell' || operationType === 'grant') ? 0.5 : 1 }}
               />
             </FormGroup>
             <div style={{ fontSize: '0.85rem', color: '#6A6E73', paddingBottom: '0.35rem' }}>
@@ -1265,6 +1285,7 @@ export default function TransactionsPage() {
                 <Th>{t('transactions.fields.date')}</Th>
                 <Th>{t('transactions.fields.account')}</Th>
                 <Th>{t('transactions.fields.type')}</Th>
+                <Th>{t('transactions.fields.direction')}</Th>
                 <Th>{t('transactions.fields.ticker')}</Th>
                 <Th modifier="nowrap">{t('transactions.fields.quantity')}</Th>
                 {showDevise && <Th modifier="nowrap">{t('transactions.fields.unitPriceCurrency')}</Th>}
@@ -1279,7 +1300,7 @@ export default function TransactionsPage() {
             <Tbody>
               {paginated.length === 0 ? (
                 <Tr>
-                  <Td colSpan={showDevise ? 12 : 9} style={{ textAlign: 'center', color: 'var(--pf-v5-global--Color--200)' }}>
+                  <Td colSpan={showDevise ? 13 : 10} style={{ textAlign: 'center', color: 'var(--pf-v5-global--Color--200)' }}>
                     {t('transactions.noTransactions')}
                   </Td>
                 </Tr>
@@ -1289,11 +1310,22 @@ export default function TransactionsPage() {
                     EUR: '#fff', JPY: '#FFFDE7', GBP: '#FCE4EC', USD: '#E3F2FD',
                   };
                   const rowBg = CURRENCY_BG[tx.currency] ?? '#f9f9f9';
+                  // Dépôt/Retrait (the LIQUIDITE.EURO pseudo-type) shows its own
+                  // direction; other Actif transactions show operation
+                  // (Achat/Vente/Attribution); Frais/Revenu have no "sens".
+                  const sens = tx.type !== 'Actif' ? '—'
+                    : tx.ticker === LIQUIDITE_TICKER
+                    ? (tx.quantity > 0 ? t('transactions.direction.deposit') : t('transactions.direction.withdrawal'))
+                    : tx.operation === 'Achat' ? t('transactions.direction.buy')
+                    : tx.operation === 'Vente' ? t('transactions.direction.sell')
+                    : tx.operation === 'Attribution' ? t('transactions.direction.grant')
+                    : '—';
                   return (
                   <Tr key={tx.id} style={{ backgroundColor: rowBg }}>
                     <Td dataLabel="Date">{tx.date}</Td>
                     <Td dataLabel="Compte">{accountMap.get(tx.account_id) ?? tx.account_id}</Td>
                     <Td dataLabel="Type">{tx.type}</Td>
+                    <Td dataLabel="Sens">{sens}</Td>
                     <Td dataLabel="Ticker">
                       {productNameMap.has(tx.ticker) ? (
                         <Tooltip content={productNameMap.get(tx.ticker)}>

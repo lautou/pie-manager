@@ -131,6 +131,7 @@
     "direction": {
       "buy": "Buy",
       "sell": "Sell",
+      "grant": "Grant",
       "deposit": "Deposit",
       "withdrawal": "Withdrawal"
     },
@@ -424,23 +425,20 @@
     "newProduct": "New product",
     "editProduct": "Edit",
     "deleteProductConfirm": "Delete product \"{{name}}\"?",
-    "noManualProducts": "No products of category \"Manuel\" found",
+    "noManualProducts": "No manually-priced products found",
     "validation": {
       "tickerRequired": "Ticker is required",
       "nameRequired": "Name is required",
       "currencyRequired": "Currency is required"
-    },
-    "categories": {
-      "asset": "Asset",
-      "cash": "Cash",
-      "fees": "Fees",
-      "manual": "Manual"
     },
     "fields": {
       "ticker": "Ticker",
       "name": "Product name",
       "currency": "Currency",
       "category": "Category",
+      "type": "Type",
+      "instrumentType": "Instrument type",
+      "feeType": "Fee type",
       "isin": "ISIN"
     }
   },

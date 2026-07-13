@@ -59,6 +59,7 @@ async def create_product(
     name: str | None = None,
     category: str = "Actif",
     currency: str = "EUR",
+    instrument_type: str | None = None,
 ) -> None:
     """POST /api/products/ (201 or 409 if already exists)."""
     r = await client.post("/api/products/", json={
@@ -66,6 +67,7 @@ async def create_product(
         "name": name or ticker,
         "category": category,
         "currency": currency,
+        "instrument_type": instrument_type,
     })
     assert r.status_code in (201, 409), r.text
 
@@ -117,7 +119,7 @@ async def full_dashboard_setup(db, suffix: str) -> dict:
     liq_ticker = "LIQUIDITE.EURO"
     existing_liq = await db.execute(_sa_select(Product).where(Product.ticker == liq_ticker))
     if not existing_liq.scalar_one_or_none():
-        db.add(Product(ticker=liq_ticker, name="Cash EUR", category="Cash", currency="EUR"))
+        db.add(Product(ticker=liq_ticker, name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
         await db.flush()
 
     ticker_off = f"OFF.{suffix}"

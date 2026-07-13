@@ -84,6 +84,7 @@ class AccountHoldingOut(BaseModel):
     ticker: str
     product_name: str
     category: Optional[str]
+    instrument_type: Optional[str] = None
     quantity: float
     last_price: float
     last_price_date: Optional[date]
@@ -348,7 +349,7 @@ async def get_accounts_summary(
                 Transaction.portfolio_id == portfolio_id,
                 Transaction.type == "Actif",
                 Transaction.currency != "EUR",
-                Product.category == "Cash",
+                Product.instrument_type == "Cash",
             )
             .distinct()
         )
@@ -365,11 +366,11 @@ async def get_accounts_summary(
         all_tickers.update(tickers.keys())
 
     products_result = await db.execute(
-        select(Product.ticker, Product.name, Product.category)
+        select(Product.ticker, Product.name, Product.category, Product.instrument_type)
         .where(Product.ticker.in_(all_tickers))
     )
-    product_meta: dict[str, tuple[str, str]] = {
-        r.ticker: (r.name, r.category) for r in products_result.all()
+    product_meta: dict[str, tuple[str, str, str]] = {
+        r.ticker: (r.name, r.category, r.instrument_type) for r in products_result.all()
     }
 
     # 4. Latest prices
@@ -401,12 +402,12 @@ async def get_accounts_summary(
         positions_value = 0.0
 
         for ticker, raw_qty in tickers_in_broker.items():
-            pname, category = product_meta.get(ticker, (ticker, ""))
+            pname, category, instrument_type = product_meta.get(ticker, (ticker, "", ""))
             pm = price_meta.get(ticker)
             price = pm.price if pm else 0.0
             currency = pm.currency if pm else "EUR"
 
-            if category == "Cash":
+            if instrument_type == "Cash":
                 held = max(0.0, raw_qty)
             else:
                 held = max(0.0, -raw_qty)
@@ -414,7 +415,7 @@ async def get_accounts_summary(
             if held == 0:
                 continue
 
-            if category == "Manuel":
+            if instrument_type == "Or physique":
                 value_eur = _to_eur(price, currency, spot_rates)
             else:
                 value_eur = r2(held * _to_eur(price, currency, spot_rates))
@@ -424,6 +425,7 @@ async def get_accounts_summary(
                 ticker=ticker,
                 product_name=pname,
                 category=category or None,
+                instrument_type=instrument_type or None,
                 quantity=round(held, 6),
                 last_price=round(price, 4),
                 last_price_date=pm.date if pm else None,

@@ -42,11 +42,13 @@ async def _make_portfolio(db) -> tuple[int, int]:
     return p.id, b.id
 
 
-async def _add_product(db, ticker: str, name: str = "ETF", category: str = "Actif", currency: str = "EUR") -> None:
+async def _add_product(db, ticker: str, name: str = "ETF", category: str = "Actif",
+                        currency: str = "EUR", instrument_type: str | None = None) -> None:
     from sqlalchemy import select
     ex = await db.execute(select(Product).where(Product.ticker == ticker))
     if not ex.scalar_one_or_none():
-        db.add(Product(ticker=ticker, name=name, category=category, currency=currency))
+        db.add(Product(ticker=ticker, name=name, category=category, currency=currency,
+                        instrument_type=instrument_type))
         await db.flush()
 
 
@@ -255,7 +257,7 @@ async def test_dhv_cash_category(client, db_session):
     ticker = f"DHV.CASH.{uid}"
     snap_date = date(2025, 2, 3)  # Monday
 
-    await _add_product(db_session, ticker, name="EUR Cash", category="Cash")
+    await _add_product(db_session, ticker, name="EUR Cash", category="Actif", instrument_type="Cash")
     db_session.add(Transaction(
         portfolio_id=uid, account_id=aid, date=snap_date,
         type="Actif", ticker=ticker, currency="EUR",
@@ -282,7 +284,7 @@ async def test_dhv_manuel_category(client, db_session):
     ticker = f"DHV.MANUEL.{uid}"
     snap_date = date(2025, 3, 3)  # Monday
 
-    await _add_product(db_session, ticker, name="Or physique", category="Manuel")
+    await _add_product(db_session, ticker, name="Or physique", category="Actif", instrument_type="Or physique")
     db_session.add(Transaction(
         portfolio_id=uid, account_id=aid, date=snap_date,
         type="Actif", ticker=ticker, currency="EUR",
@@ -365,7 +367,7 @@ async def test_dhv_fx_conversion(client, db_session):
     from sqlalchemy import select as sa_select
     ex = await db_session.execute(sa_select(Product).where(Product.ticker == gbp_fx))
     if not ex.scalar_one_or_none():
-        db_session.add(Product(ticker=gbp_fx, name="GBP/EUR", category="Cash", currency="EUR"))
+        db_session.add(Product(ticker=gbp_fx, name="GBP/EUR", category="Actif", instrument_type="Cash", currency="EUR"))
         await db_session.flush()
 
     db_session.add(Transaction(

@@ -72,14 +72,16 @@ vi.mock('../api/queries', () => ({
 const mockManualProduct = {
   ticker: 'GOLD',
   name: 'Or physique',
-  category: 'Manuel',
+  category: 'Actif',
+  instrument_type: 'Or physique',
   currency: 'EUR',
 };
 
 const mockNonManualProduct = {
   ticker: 'AAPL',
   name: 'Apple',
-  category: 'Action',
+  category: 'Actif',
+  instrument_type: 'Action',
   currency: 'USD',
 };
 
@@ -116,7 +118,7 @@ describe('ManualPricePage', () => {
   it('shows empty state when no manual products', () => {
     mockUseProducts.mockReturnValue({ data: [mockNonManualProduct], isLoading: false, isError: false });
     render(<ManualPricePage />);
-    expect(screen.getByText(/Aucun produit de catégorie "Manuel" trouvé/i)).toBeTruthy();
+    expect(screen.getByText(/Aucun produit à cotation manuelle trouvé/i)).toBeTruthy();
   });
 
   it('renders page title', () => {
@@ -169,7 +171,7 @@ describe('ManualPricePage', () => {
   });
 
   it('renders multiple manual products', () => {
-    const secondProduct = { ticker: 'SILV', name: 'Argent physique', category: 'Manuel', currency: 'EUR' };
+    const secondProduct = { ticker: 'SILV', name: 'Argent physique', category: 'Actif', instrument_type: 'Or physique', currency: 'EUR' };
     mockUseProducts.mockReturnValue({ data: [mockManualProduct, secondProduct], isLoading: false, isError: false });
     render(<ManualPricePage />);
     expect(screen.getByText('Or physique')).toBeTruthy();
@@ -262,7 +264,7 @@ describe('ManualPricePage', () => {
 
   it('product with no currency falls back to EUR (line 53 branch)', () => {
     // When product.currency is empty/falsy, currency = product.currency || 'EUR' = 'EUR'
-    const productNoCurrency = { ticker: 'GOLD', name: 'Or physique', category: 'Manuel', currency: '' };
+    const productNoCurrency = { ticker: 'GOLD', name: 'Or physique', category: 'Actif', instrument_type: 'Or physique', currency: '' };
     mockUseProducts.mockReturnValue({ data: [productNoCurrency], isLoading: false, isError: false });
     mockUsePrices.mockReturnValue({ data: [], isLoading: false });
     render(<ManualPricePage />);

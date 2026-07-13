@@ -86,15 +86,15 @@ async def compute_rebalancing_endpoint(
     spot_rates = await _get_spot_rates(db)
     liquidity_eur = await _get_liquidity_eur(db, body.portfolio_id)
 
-    # Fetch product categories so Manuel assets (OR.PHYSIQUE, SICAV) are valued
+    # Fetch instrument types so Or physique assets (OR.PHYSIQUE) are valued
     # using price = total value, not qty × price (which would give 0 since no qty tracked)
-    cat_result = await db.execute(
-        select(Product.ticker, Product.category).where(Product.ticker.in_(all_tickers))
+    itype_result = await db.execute(
+        select(Product.ticker, Product.instrument_type).where(Product.ticker.in_(all_tickers))
     )
-    rebal_categories = {row.ticker: row.category for row in cat_result.all()}
+    rebal_instrument_types = {row.ticker: row.instrument_type for row in itype_result.all()}
 
     pool_values = compute_pool_values(
-        pools, tickers_by_pool, positions, prices, spot_rates, rebal_categories
+        pools, tickers_by_pool, positions, prices, spot_rates, rebal_instrument_types
     )
 
     pool_inputs = [

@@ -449,9 +449,11 @@ function CommissionManager() {
 
 // ── Product Manager ───────────────────────────────────────────────────────
 
-const PRODUCT_CATEGORIES = ['Actif', 'Cash', 'Frais', 'Manuel', 'Revenu'] as const;
-type ProductForm = { ticker: string; name: string; category: string; currency: string };
-const EMPTY_FORM: ProductForm = { ticker: '', name: '', category: 'Actif', currency: 'EUR' };
+const PRODUCT_CATEGORIES = ['Actif', 'Frais'] as const;
+const INSTRUMENT_TYPES = ['ETF', 'SICAV/FCP', 'Action', 'Obligation', 'Or physique', 'Cash'] as const;
+const FEE_TYPES = ['Courtage', 'Tenue de compte', 'Intérêts négatifs', 'Bourse', 'TTF', 'Impôts', 'Conversion'] as const;
+type ProductForm = { ticker: string; name: string; category: string; instrument_type: string; fee_type: string; currency: string };
+const EMPTY_FORM: ProductForm = { ticker: '', name: '', category: 'Actif', instrument_type: '', fee_type: '', currency: 'EUR' };
 type ProductSortCol = 'ticker' | 'name' | 'category' | 'currency';
 
 function ProductManager() {
@@ -480,20 +482,23 @@ function ProductManager() {
   });
 
   const openAdd = () => { setForm(EMPTY_FORM); setFormError(''); setEditingProduct(null); setModalMode('add'); };
-  const openEdit = (p: Product) => { setForm({ ticker: p.ticker, name: p.name, category: p.category, currency: p.currency }); setFormError(''); setEditingProduct(p); setModalMode('edit'); };
+  const openEdit = (p: Product) => { setForm({ ticker: p.ticker, name: p.name, category: p.category, instrument_type: p.instrument_type ?? '', fee_type: p.fee_type ?? '', currency: p.currency }); setFormError(''); setEditingProduct(p); setModalMode('edit'); };
   const closeModal = () => { setModalMode(null); setEditingProduct(null); setFormError(''); };
 
   const handleSave = async () => {
     if (!form.ticker.trim()) { setFormError(t('configGenerale.validation.tickerRequired')); return; }
     if (!form.name.trim()) { setFormError(t('configGenerale.validation.nameRequired')); return; }
     if (!form.currency.trim()) { setFormError(t('configGenerale.validation.currencyRequired')); return; }
+    // Only the sub-classification matching the chosen category is kept
+    const instrument_type = form.category === 'Actif' ? (form.instrument_type || null) : null;
+    const fee_type = form.category === 'Frais' ? (form.fee_type || null) : null;
     try {
       if (modalMode === 'add') {
-        await createProduct({ ...form, ticker: form.ticker.trim().toUpperCase(), name: form.name.trim(), currency: form.currency.trim().toUpperCase() });
+        await createProduct({ ...form, instrument_type, fee_type, ticker: form.ticker.trim().toUpperCase(), name: form.name.trim(), currency: form.currency.trim().toUpperCase() });
       } else {
         /* v8 ignore next -- @preserve */
         if (editingProduct) {
-          await updateProduct(editingProduct.ticker, { name: form.name.trim(), category: form.category, currency: form.currency.trim().toUpperCase() });
+          await updateProduct(editingProduct.ticker, { name: form.name.trim(), category: form.category, instrument_type, fee_type, currency: form.currency.trim().toUpperCase() });
         }
       }
       closeModal(); refetch(); qc.invalidateQueries({ queryKey: ['products'] });
@@ -541,6 +546,7 @@ function ProductManager() {
               <th style={thSt('ticker')} onClick={() => toggleSort('ticker')}>{t('configGenerale.fields.ticker')}{ind('ticker')}</th>
               <th style={thSt('name')} onClick={() => toggleSort('name')}>{t('configGenerale.fields.name')}{ind('name')}</th>
               <th style={thSt('category')} onClick={() => toggleSort('category')}>{t('configGenerale.fields.category')}{ind('category')}</th>
+              <th style={{ padding: '6px 8px', textAlign: 'left', borderBottom: '1px solid #ddd', fontSize: '0.85rem', color: '#6A6E73' }}>{t('configGenerale.fields.type')}</th>
               <th style={thSt('currency')} onClick={() => toggleSort('currency')}>{t('configGenerale.fields.currency')}{ind('currency')}</th>
               <th style={{ padding: '6px 8px', textAlign: 'center', borderBottom: '1px solid #ddd', fontSize: '0.85rem', color: '#6A6E73' }}>
                 <span title="Taxe sur les Transactions Financières — 0,4% à l'achat pour les grandes caps françaises.">TTF ℹ️</span>
@@ -554,6 +560,7 @@ function ProductManager() {
                 <td style={{ ...tdSt, fontFamily: 'monospace', fontWeight: 600 }}>{p.ticker}</td>
                 <td style={tdSt}>{p.name}</td>
                 <td style={tdSt}><span style={{ padding: '2px 8px', borderRadius: 12, fontSize: '0.78rem', background: '#f0f0f0', border: '1px solid #ddd' }}>{p.category}</span></td>
+                <td style={tdSt}>{p.instrument_type || p.fee_type || '—'}</td>
                 <td style={tdSt}>{p.currency}</td>
                 <td style={{ ...tdSt, textAlign: 'center' }}>
                   <input type="checkbox" aria-label={`TTF éligible ${p.ticker}`} checked={p.is_ttf_eligible}
@@ -566,7 +573,7 @@ function ProductManager() {
                 </td>
               </tr>
             ))}
-            {products.length === 0 && <tr><td colSpan={5} style={{ ...tdSt, color: '#6A6E73', textAlign: 'center' }}>Aucun produit</td></tr>}
+            {products.length === 0 && <tr><td colSpan={7} style={{ ...tdSt, color: '#6A6E73', textAlign: 'center' }}>Aucun produit</td></tr>}
           </tbody>
         </table>
       </div>
@@ -588,10 +595,28 @@ function ProductManager() {
           </div>
           <div>
             <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('configGenerale.fields.category')} <span style={{ color: '#C9190B' }}>*</span></label>
-            <select aria-label={t('configGenerale.fields.category')} value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} style={inputSt}>
+            <select aria-label={t('configGenerale.fields.category')} value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value, instrument_type: '', fee_type: '' }))} style={inputSt}>
               {PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
+          {form.category === 'Actif' && (
+            <div>
+              <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('configGenerale.fields.instrumentType')}</label>
+              <select aria-label={t('configGenerale.fields.instrumentType')} value={form.instrument_type} onChange={e => setForm(f => ({ ...f, instrument_type: e.target.value }))} style={inputSt}>
+                <option value="">—</option>
+                {INSTRUMENT_TYPES.map(it => <option key={it} value={it}>{it}</option>)}
+              </select>
+            </div>
+          )}
+          {form.category === 'Frais' && (
+            <div>
+              <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('configGenerale.fields.feeType')}</label>
+              <select aria-label={t('configGenerale.fields.feeType')} value={form.fee_type} onChange={e => setForm(f => ({ ...f, fee_type: e.target.value }))} style={inputSt}>
+                <option value="">—</option>
+                {FEE_TYPES.map(ft => <option key={ft} value={ft}>{ft}</option>)}
+              </select>
+            </div>
+          )}
           <div>
             <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('configGenerale.fields.currency')} <span style={{ color: '#C9190B' }}>*</span></label>
             <input aria-label={t('configGenerale.fields.currency')} value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value.toUpperCase() }))} placeholder="Ex: EUR" style={inputSt} />
@@ -682,12 +707,12 @@ export default function GlobalConfigPage() {
         </CardBody>
       </Card>
 
-      {/* ── Produits financiers ── */}
+      {/* ── Produits et frais financiers ── */}
       <Card style={{ marginBottom: '1.5rem' }}>
-        <CardTitle>📦 Produits financiers</CardTitle>
+        <CardTitle>📦 Produits et frais financiers</CardTitle>
         <CardBody>
           <p style={{ fontSize: '0.85rem', color: '#6A6E73', marginBottom: '1rem' }}>
-            Catalogue des instruments financiers (ETF, actions, cash, or…). Le ticker est la clé primaire et ne peut pas être modifié. La suppression est bloquée si des transactions y font référence.
+            Catalogue des instruments financiers (ETF, actions, cash, or…) et des types de frais. Le ticker est la clé primaire et ne peut pas être modifié. La suppression est bloquée si des transactions y font référence.
           </p>
           <ProductManager />
         </CardBody>

@@ -132,7 +132,7 @@ async def test_rebalancing_manuel_asset_uses_price_as_total_value(client, db_ses
     db_session.add(account)
 
     ticker = f"OR.PHYS.{uid}"
-    db_session.add(Product(ticker=ticker, name="Or physique", category="Manuel", currency="EUR"))
+    db_session.add(Product(ticker=ticker, name="Or physique", category="Actif", instrument_type="Or physique", currency="EUR"))
 
     pool = Pool(portfolio_id=uid, name="Or", strategy="Defensive", target_pct=1.0, is_active=True)
     db_session.add(pool)

@@ -7,10 +7,18 @@ from app.core.database import Base
 class Product(Base):
     __tablename__ = "products"
 
-    # Categories: "Actif" (ETF/stock), "Cash" (LIQUIDITE.EURO), "Frais", "Manuel" (Or physique, SICAV)
+    # Generic classification: "Actif" (any financial instrument, including cash)
+    # or "Frais" (fee line item). Kept deliberately coarse — see instrument_type
+    # / fee_type below for the actual typology.
     ticker: Mapped[str] = mapped_column(String(50), primary_key=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     category: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Sub-classification when category == "Actif": ETF / SICAV-FCP / Action /
+    # Obligation / Or physique / Cash. Null for Frais products.
+    instrument_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    # Sub-classification when category == "Frais": Courtage / Tenue de compte /
+    # Intérêts négatifs / Bourse / TTF / Impôts / Conversion. Null for Actif products.
+    fee_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
     # ISO 4217 currency code for this product (e.g. "EUR", "USD", "GBP")
     currency: Mapped[str] = mapped_column(String(10), default="EUR")
     isin: Mapped[str | None] = mapped_column(String(20), nullable=True)

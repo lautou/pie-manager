@@ -34,14 +34,14 @@ async def get_holdings(
     result = await db.execute(
         select(Transaction.ticker, func.sum(Transaction.quantity).label("qty"))
         .join(Product, Transaction.ticker == Product.ticker)
-        .add_columns(Product.category)
+        .add_columns(Product.instrument_type)
         .where(*where_clauses)
-        .group_by(Transaction.ticker, Product.category)
+        .group_by(Transaction.ticker, Product.instrument_type)
     )
     holdings: dict[str, float] = {}
     for row in result.all():
-        ticker, qty, category = row.ticker, float(row.qty or 0), row.category
-        if category == "Cash":
+        ticker, qty, instrument_type = row.ticker, float(row.qty or 0), row.instrument_type
+        if instrument_type == "Cash":
             held = max(0.0, qty)
         else:
             held = max(0.0, -qty)

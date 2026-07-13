@@ -165,7 +165,7 @@ async def test_summary_with_cash_position(client, db_session):
     await db_session.flush()
 
     ticker = f"CASHEUR.{suffix}"
-    db_session.add(Product(ticker=ticker, name="Cash EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker=ticker, name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
     tx = Transaction(
@@ -190,8 +190,8 @@ async def test_summary_with_cash_position(client, db_session):
 
 
 @pytest.mark.asyncio
-async def test_summary_with_manuel_category(client, db_session):
-    """Manuel category: price IS the total value, not per-unit."""
+async def test_summary_with_or_physique_instrument_type(client, db_session):
+    """Or physique instrument type: price IS the total value, not per-unit."""
     suffix = id(db_session)
     uid = await _create_portfolio(client, f"AccSum-Manuel-{suffix}")
 
@@ -202,7 +202,7 @@ async def test_summary_with_manuel_category(client, db_session):
     await db_session.flush()
 
     ticker = f"OR.PHY.{suffix}"
-    db_session.add(Product(ticker=ticker, name="Or physique", category="Manuel", currency="EUR"))
+    db_session.add(Product(ticker=ticker, name="Or physique", category="Actif", instrument_type="Or physique", currency="EUR"))
     await db_session.flush()
 
     # Negative qty → held=abs(qty) for non-cash
@@ -216,7 +216,7 @@ async def test_summary_with_manuel_category(client, db_session):
     db_session.add(tx)
     await db_session.flush()
 
-    # For Manuel: price = total value
+    # For Or physique: price = total value
     db_session.add(AssetPrice(ticker=ticker, date=date(2025, 3, 1),
                                price=5500.0, currency="EUR", source="manual"))
     await db_session.flush()
@@ -226,11 +226,11 @@ async def test_summary_with_manuel_category(client, db_session):
     summaries = r.json()
     assert len(summaries) == 1
     positions = summaries[0]["positions"]
-    # Manuel: value_eur = price (total value), not qty * price
+    # Or physique: value_eur = price (total value), not qty * price
     pos = next(p for p in positions if p["ticker"] == ticker)
     assert pos["value_eur"] == pytest.approx(5500.0)
-    # category must be returned so the frontend can hide the nonsensical unit price display
-    assert pos["category"] == "Manuel"
+    # instrument_type must be returned so the frontend can hide the nonsensical unit price display
+    assert pos["instrument_type"] == "Or physique"
 
 
 @pytest.mark.asyncio
@@ -464,7 +464,7 @@ async def test_summary_with_usd_position(client, db_session):
     fx_ticker = "USDEUR=X"
     existing_fx = await db_session.execute(sa_select(Product).where(Product.ticker == fx_ticker))
     if not existing_fx.scalar_one_or_none():
-        db_session.add(Product(ticker=fx_ticker, name="USD/EUR", category="Cash", currency="EUR"))
+        db_session.add(Product(ticker=fx_ticker, name="USD/EUR", category="Actif", instrument_type="Cash", currency="EUR"))
         await db_session.flush()
 
     # Buy 10 shares at 200 USD
@@ -587,7 +587,7 @@ async def test_jpyeur_cash_position_no_double_conversion(client, db_session):
     await db_session.flush()
 
     product = Product(ticker="JPYEUR=X", name="JPY / EUR",
-                      category="Cash", currency="EUR")  # EUR — the fix
+                      category="Actif", instrument_type="Cash", currency="EUR")  # EUR — the fix
     db_session.add(product)
     await db_session.flush()
 
@@ -989,7 +989,7 @@ async def test_summary_forex_deducts_foreign_currency_fees(client, db_session):
 
     jpyeur_ticker = f"JPYEUR=X.{suffix}"
     fee_ticker = f"FRAIS.COURTAGE.JPY.{suffix}"
-    db_session.add(Product(ticker=jpyeur_ticker, name="JPY/EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker=jpyeur_ticker, name="JPY/EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     db_session.add(Product(ticker=fee_ticker, name="JPY Fee", category="Fee", currency="JPY"))
     await db_session.flush()
 
@@ -1049,7 +1049,7 @@ async def test_summary_forex_fee_with_fully_sold_position(client, db_session):
 
     jpyeur_ticker = f"JPYEUR.SOLD.{suffix}"
     fee_ticker = f"FRAIS.JPY.SOLD.{suffix}"
-    db_session.add(Product(ticker=jpyeur_ticker, name="JPY/EUR closed", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker=jpyeur_ticker, name="JPY/EUR closed", category="Actif", instrument_type="Cash", currency="EUR"))
     db_session.add(Product(ticker=fee_ticker, name="JPY Fee closed", category="Fee", currency="JPY"))
     await db_session.flush()
 

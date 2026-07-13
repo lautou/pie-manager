@@ -23,6 +23,7 @@ class HoldingOut(BaseModel):
     ticker: str
     product_name: str
     category: Optional[str]
+    instrument_type: Optional[str] = None
     pool_id: Optional[int]
     pool_name: Optional[str]
     quantity: float
@@ -93,12 +94,14 @@ async def get_holdings(
         price_currency = price_tuple[1] if price_tuple else "EUR"
         price_eur_unit = _to_eur(native_price, price_currency, spot_rates)
         category = prod.category if prod else ""
-        # Manuel assets (OR.PHYSIQUE, SICAV): price IS the total value, not per-unit
-        value_eur = r2(price_eur_unit) if category == "Manuel" else r2(qty * price_eur_unit)
+        instrument_type = prod.instrument_type if prod else ""
+        # Or physique assets (OR.PHYSIQUE): price IS the total value, not per-unit
+        value_eur = r2(price_eur_unit) if instrument_type == "Or physique" else r2(qty * price_eur_unit)
         result.append(HoldingOut(
             ticker=ticker,
             product_name=prod.name if prod else ticker,
             category=category or None,
+            instrument_type=instrument_type or None,
             pool_id=pool.id if pool else None,
             pool_name=pool.name if pool else None,
             quantity=round(qty, 6),
@@ -179,21 +182,22 @@ async def get_holdings_at_date(
     for ticker, raw_qty in raw_holdings.items():
         prod = product_map.get(ticker)
         category = prod.category if prod else ""
+        instrument_type = prod.instrument_type if prod else ""
         pm = price_meta.get(ticker)
         native_price = pm.price if pm else 0.0
         price_currency = pm.currency if pm else "EUR"
         price_eur = _to_eur(native_price, price_currency, snap_spot_rates)
         pool = ticker_to_pool.get(ticker)
 
-        if category == "Cash":
+        if instrument_type == "Cash":
             held = max(0.0, raw_qty)
         else:
             held = max(0.0, -raw_qty)
 
-        if held == 0 and category != "Manuel":
+        if held == 0 and instrument_type != "Or physique":
             continue
 
-        value_eur = r2(price_eur) if category == "Manuel" else r2(held * price_eur)
+        value_eur = r2(price_eur) if instrument_type == "Or physique" else r2(held * price_eur)
         if value_eur <= 0:
             continue
 
@@ -201,6 +205,7 @@ async def get_holdings_at_date(
             ticker=ticker,
             product_name=prod.name if prod else ticker,
             category=category or None,
+            instrument_type=instrument_type or None,
             pool_id=pool.id if pool else None,
             pool_name=pool.name if pool else None,
             quantity=round(held, 6),
@@ -241,7 +246,7 @@ async def get_daily_holding_values(
 
     # 1. All tickers held (non-cash, non-LIQUIDITE) with at least one transaction
     tickers_result = await db.execute(
-        select(Transaction.ticker, Product.name, Product.category)
+        select(Transaction.ticker, Product.name, Product.instrument_type)
         .join(Product, Transaction.ticker == Product.ticker)
         .where(
             Transaction.portfolio_id == portfolio_id,
@@ -256,7 +261,7 @@ async def get_daily_holding_values(
 
     tickers = [r.ticker for r in ticker_rows]
     product_names: dict[str, str] = {r.ticker: r.name for r in ticker_rows}
-    product_categories: dict[str, str] = {r.ticker: r.category for r in ticker_rows}
+    product_instrument_types: dict[str, str] = {r.ticker: r.instrument_type for r in ticker_rows}
 
     # 2. Earliest transaction date
     from sqlalchemy import func as sa_func
@@ -365,19 +370,19 @@ async def get_daily_holding_values(
         day_holdings: list[HoldingValueEntry] = []
         for ticker in tickers:
             raw_qty = cumulative_qty.get(ticker, 0.0)
-            category = product_categories.get(ticker, "")
+            instrument_type = product_instrument_types.get(ticker, "")
             native_price = latest_price.get(ticker, 0.0)
             price_cur = latest_price_currency.get(ticker, "EUR")
             price = _to_eur(native_price, price_cur, spot_rates_dhv)
 
-            if category == "Cash":
+            if instrument_type == "Cash":
                 held = max(0.0, raw_qty)
-            elif category == "Manuel":
+            elif instrument_type == "Or physique":
                 held = abs(raw_qty) if raw_qty != 0 else 0.0
             else:
                 held = max(0.0, -raw_qty)
 
-            if category == "Manuel":
+            if instrument_type == "Or physique":
                 value_eur = price if held > 0 else 0.0
             else:
                 value_eur = r2(held * price)

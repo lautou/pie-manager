@@ -279,7 +279,7 @@ async def test_monthly_snapshot_contributions_excluded_from_performance(db_sessi
     if not existing.scalar_one_or_none():
         db_session.add(Product(
             ticker=liquidity_ticker, name="Cash EUR",
-            category="Cash", currency="EUR",
+            category="Actif", instrument_type="Cash", currency="EUR",
         ))
         await db_session.flush()
 
@@ -335,7 +335,7 @@ async def test_daily_snapshot_skips_liquidite_euro(db_session):
 
     existing = await db_session.execute(sa_select(Product).where(Product.ticker == liquidity_ticker))
     if not existing.scalar_one_or_none():
-        db_session.add(Product(ticker=liquidity_ticker, name="Cash EUR", category="Cash", currency="EUR"))
+        db_session.add(Product(ticker=liquidity_ticker, name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
         await db_session.flush()
 
     db_session.add(PoolProduct(pool_id=pool_id, ticker=liquidity_ticker))
@@ -363,7 +363,7 @@ async def test_daily_snapshot_manuel_category_uses_price_as_total(db_session):
     manuel_ticker = f"OR.PHYS.{uid}"
     snap_date = date(2025, 8, 1)
 
-    db_session.add(Product(ticker=manuel_ticker, name="Or physique", category="Manuel", currency="EUR"))
+    db_session.add(Product(ticker=manuel_ticker, name="Or physique", category="Actif", instrument_type="Or physique", currency="EUR"))
     await db_session.flush()
     db_session.add(PoolProduct(pool_id=pool_id, ticker=manuel_ticker))
     db_session.add(Transaction(
@@ -424,7 +424,7 @@ async def test_daily_snapshot_manuel_no_price_excluded(db_session):
     snap_date = date(2025, 11, 3)
 
     db_session.add(Product(ticker=manuel_ticker, name="Or sans prix",
-                           category="Manuel", currency="EUR"))
+                           category="Actif", instrument_type="Or physique", currency="EUR"))
     await db_session.flush()
     db_session.add(PoolProduct(pool_id=pool_id, ticker=manuel_ticker))
     db_session.add(Transaction(
@@ -515,7 +515,7 @@ async def test_compute_daily_snapshot_forex_fee_with_as_of(db_session):
 
     jpyeur = f"JPYEUR.FEE.{portfolio.id}"
     fee_ticker = f"FRAIS.JPY.{portfolio.id}"
-    db_session.add(Product(ticker=jpyeur, name="JPY/EUR", category="Cash", currency="EUR"))
+    db_session.add(Product(ticker=jpyeur, name="JPY/EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     db_session.add(Product(ticker=fee_ticker, name="JPY Fee", category="Fee", currency="JPY"))
     db_session.add(PoolProduct(pool_id=pool.id, ticker=jpyeur))
     await db_session.flush()

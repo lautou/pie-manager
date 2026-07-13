@@ -143,6 +143,7 @@
     "direction": {
       "buy": "Achat",
       "sell": "Vente",
+      "grant": "Attribution",
       "deposit": "Dépôt",
       "withdrawal": "Retrait"
     },
@@ -437,23 +438,20 @@
     "newProduct": "Nouveau produit",
     "editProduct": "Modifier",
     "deleteProductConfirm": "Supprimer le produit \"{{name}}\" ?",
-    "noManualProducts": "Aucun produit de catégorie \"Manuel\" trouvé",
+    "noManualProducts": "Aucun produit à cotation manuelle trouvé",
     "validation": {
       "tickerRequired": "Le ticker est requis",
       "nameRequired": "Le nom est requis",
       "currencyRequired": "La devise est requise"
-    },
-    "categories": {
-      "asset": "Actif",
-      "cash": "Cash",
-      "fees": "Frais",
-      "manual": "Manuel"
     },
     "fields": {
       "ticker": "Ticker",
       "name": "Nom produit",
       "currency": "Devise",
       "category": "Catégorie",
+      "type": "Type",
+      "instrumentType": "Type d'instrument",
+      "feeType": "Type de frais",
       "isin": "ISIN"
     }
   },

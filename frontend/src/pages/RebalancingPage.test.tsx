@@ -462,6 +462,63 @@ describe('RebalancingPage', () => {
     expect(screen.getByText('Rééquilibrage')).toBeTruthy();
   });
 
+  it('hard mode "après" % is computed against total_current, not total_after (leftover liquidity)', async () => {
+    // Regression test: total_apport (existing account liquidity) must NOT inflate the
+    // denominator for hard mode's after-rebalance %, since hard mode injects nothing —
+    // rebalance_amount is computed by the backend against total_current only.
+    const { default: apiClient } = await import('../api/client');
+    vi.mocked(apiClient.post).mockResolvedValue({
+      data: {
+        total_current: 100000, total_apport: 20000, total_after: 120000,
+        pools: [{
+          id: 1, name: 'Asie', strategy: 'Offensive', target_pct: 0.25,
+          current_value: 30000, current_pct: 30,
+          injection_amount: 0, hybrid_amount: 0, rebalance_amount: -5000,
+          injection_fee: 0, hybrid_fee: 0, rebalance_fee: 0,
+          injection_net: 0, hybrid_net: 0, rebalance_net: -5000,
+        }],
+      },
+    });
+    mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
+    render(<RebalancingPage />);
+    await waitFor(() => screen.getByText('Asie'), { timeout: 1500 });
+
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByTestId('toggle-Rééquilibrage complet'));
+
+    // afterValue = 30000 + (-5000) = 25000. Against total_current (100000) → 25.0%
+    // (the correct target). The bug divided by total_after (120000) → 20.8% instead.
+    await waitFor(() => expect(screen.getByText('25.0%')).toBeTruthy(), { timeout: 1500 });
+    expect(screen.queryByText('20.8%')).toBeNull();
+  });
+
+  it('hard mode with totalCurrent=0 falls back to 0% instead of dividing by zero', async () => {
+    // Edge case: empty portfolio (all pools at 0) with a pending external injection —
+    // total_after > 0 (backend still returns pools) but total_current = 0, so hard
+    // mode's afterTotal (= totalCurrent) is 0. Must render 0.0%, not NaN%/Infinity%.
+    const { default: apiClient } = await import('../api/client');
+    vi.mocked(apiClient.post).mockResolvedValue({
+      data: {
+        total_current: 0, total_apport: 10000, total_after: 10000,
+        pools: [{
+          id: 1, name: 'Asie', strategy: 'Offensive', target_pct: 0.25,
+          current_value: 0, current_pct: 12,
+          injection_amount: 2500, hybrid_amount: 2500, rebalance_amount: 0,
+          injection_fee: 0, hybrid_fee: 0, rebalance_fee: 0,
+          injection_net: 2500, hybrid_net: 2500, rebalance_net: 0,
+        }],
+      },
+    });
+    mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
+    render(<RebalancingPage />);
+    await waitFor(() => screen.getByText('Asie'), { timeout: 1500 });
+
+    const user = userEvent.setup({ delay: null });
+    await user.click(screen.getByTestId('toggle-Rééquilibrage complet'));
+
+    await waitFor(() => expect(screen.getByText('0.0%')).toBeTruthy(), { timeout: 1500 });
+  });
+
   // Line 68: handleCommissionChange called when rebalData is still null — if-false branch
   // We need the apiClient.post to never resolve so rebalData stays null during commission change
   it('line 68: commission change before fetch resolves (rebalData=null) — if-false branch skips fetch', async () => {

@@ -9,6 +9,17 @@
 
 Failing to update docs creates drift between code and documentation, which misleads future users and developers.
 
+**Never hardcode a snapshot count** (test case count, function count, "N tests pass in Xs")
+in this file. These numbers drift the moment more code is added and nobody reliably comes
+back to update them. Distinguish:
+- **Fixed policy/threshold values** (100% coverage rule, 94% branch threshold, port numbers,
+  interval configs) — targets/config, not measurements of current state. Fine to hardcode.
+- **Snapshot counts of current codebase size** (how many tests exist, how long a suite takes) —
+  will drift. Point to a command instead (`pytest --collect-only -q`, `npx vitest list`,
+  `go test ./... -cover`), or state the qualitative fact only.
+- **Immutable historical facts** ("all 10 occurrences were fixed in this bug fix") — describe a
+  one-time past event, not an ongoing metric. Fine to hardcode.
+
 ## Absolute rule: 100% test coverage
 
 **Absolute rule**: every code change or new feature must be accompanied by tests ensuring 100% coverage of the modified/added code. Never commit code without its tests.
@@ -32,8 +43,9 @@ These pure utility functions live in `common.go` (shared Linux/Windows) and
 `notify`, `podmanImageExists`, `focusExistingWindow`, `openBrowser`,
 all functions in `main_windows.go`. These exec external programs (Podman, browser,
 OS notifications, Windows API) and require integration-level testing. They are covered
-by the CI smoke test (`go build + ./pie-manager version`). Overall installer coverage
-is ~15% — expected and acceptable for a system-interaction binary.
+by the CI smoke test (`go build + ./pie-manager version`). Overall installer coverage is
+necessarily low (check `go test ./... -cover` for the current figure) — expected and
+acceptable for a system-interaction binary.
 
 **Installer structure:**
 - `common.go` — shared code (no build constraint): `Version`, `defaultPort`, `findAvailablePort`, `readAppPort`
@@ -77,6 +89,7 @@ All data entry goes through the UI — no import mechanism exists.
 - Backend port: **8000** (internal only in prod — not exposed, accessed via HAProxy)
 - HAProxy internal port: **8080** (not 80 — rootless Podman cannot bind privileged ports < 1024)
 - **Library/framework APIs**: when searching for solutions involving a library or framework component, always check the official component documentation website first — never guess API signatures or behavior from memory.
+- **Destructive action confirmation**: never use `window.confirm()` — use the reusable `<ConfirmModal>` component (`frontend/src/components/ConfirmModal.tsx`) so confirmation dialogs match the PatternFly design system.
 
 ## Container architecture
 
@@ -134,6 +147,21 @@ podman logs pie-manager_backend_1
 # Access DB
 podman exec pie-manager_postgres_1 psql -U pie -d pie_db
 ```
+
+### Removing a single container fails with "has dependent containers"
+
+When swapping one container for a locally-built image (e.g. testing a fixed `backend`/`worker`
+image before publishing it), `podman rm` on that one container can fail:
+```
+Error: container ... has dependent containers which must be removed before it: ...
+```
+This happens because `frontend`/`haproxy` share `backend`'s network namespace under
+`podman-compose`'s default networking — removing `backend` alone is blocked by its dependents.
+
+**Fix:** remove all related containers together (dependents first: `frontend`, `haproxy`, then
+`backend`/`worker`), then recreate each individually with an explicit
+`--network pie-manager_default` (and `--network-alias <service-name>` for containers other
+services reach by name) instead of relying on `podman-compose`'s implicit shared-netns behavior.
 
 ## Key data model
 
@@ -262,12 +290,26 @@ a blind bulk fix there without re-deriving the exact intended formula first.
 
 ## Yahoo Finance price sync
 
-- Every 15 min via Celery Beat (`refresh_prices_live`)
+- Every 15 min via Celery Beat (`refresh_prices_live`), plus once at **backend startup**
+  (`main.py` lifespan calls `refresh_prices_live.delay()` alongside `fill_missing_snapshots.delay()`,
+  in its own independent try/except so one failing doesn't block the other)
 - Source: `query1.finance.yahoo.com/v8/finance/chart/{ticker}` — returns `regularMarketPrice`
 - **Glitch guard**: if the new price deviates by more than ×10 from the previous day, it is rejected
   and the ticker is added to `failed_tickers`. Protects against Yahoo scale errors (e.g. JPYEUR=X
   returned as 0.5418 instead of 0.005418). Implemented in `app/tasks/prices.py`.
 - `Manuel` and `Fee` categories excluded from refresh
+
+### Frontend auto-refresh — dual mechanism
+
+`useAutoRefresh` (`frontend/src/hooks/useAutoRefresh.ts`) invalidates `REFRESH_KEYS`
+(dashboard/positions queries) through two independent triggers:
+- A blind 15-minute `setInterval` — a fallback safety net.
+- A precise `useEffect` watching `useSyncStatus().data?.finished_at`: invalidates as soon as
+  that timestamp changes (skips the very first observed value on mount, to avoid an
+  unnecessary refresh right after the page loads).
+
+This makes Dashboard/Rebalancing refresh right when a price sync actually completes, instead
+of waiting for the next blind interval tick.
 
 ## Health check endpoint
 
@@ -503,10 +545,10 @@ new array** even if nothing changes → React re-rendered → new `handleFresh` 
 → `ManuelProductStalenessCheck`'s useEffect re-fired → infinite loop.
 
 Fix: `useCallback` + early return if `name` not in array.
-Result: approximately 20 s for ~1150 tests, clean exit.
+Result: fast, clean exit (previously hung for 16+ minutes — see above).
 
 ### What does NOT work (do not retry)
-- `vi.useFakeTimers()` in DashboardPage.test.tsx → breaks 15 tests (`userEvent` requires real timers)
+- `vi.useFakeTimers()` in DashboardPage.test.tsx → breaks tests using `userEvent` (which requires real timers)
 - Brute-force timer clearing (loop 0→max via `window.setTimeout()`) → OOM: jsdom accumulates millions of IDs, loop allocates 8GB+
 - `pool: 'threads'` or `pool: 'vmThreads'` → same behavior, generic "forks worker" message
 - `teardownTimeout: 5000` → applies to `afterAll/afterEach` hooks, not worker process timeout
@@ -546,12 +588,51 @@ esbuild strips comments before v8 instruments. Use instead:
 The `-- @preserve` forces esbuild to treat the comment as a "legal comment".
 Source: [Vitest PR #2496](https://github.com/vitest-dev/vitest/pull/2496)
 
-**Problem 2 — Branch count discrepancy between text reporter and JSON:**
-Bug in `ast-v8-to-istanbul`: nested ternaries are double-counted in the text report
-vs JSON. Threshold set to 94%. Bug reported: [vitest#10394](https://github.com/vitest-dev/vitest/issues/10394).
+**Problem 2 — RETRACTED, was a misdiagnosis (kept as a cautionary example):**
+A branch gap in `commission.ts` (`weekendRate ?? aboveRate`) was long attributed to a suspected
+`ast-v8-to-istanbul` nested-ternary double-counting bug ([vitest#10394](https://github.com/vitest-dev/vitest/issues/10394)),
+with the branch threshold set to 94% to tolerate it and a claim that "JSON canonical = 100%".
+That claim was never verified against the raw `coverage/coverage-final.json` — when actually
+checked, the JSON showed the exact same `[8, 0]` branch count as the text reporter (no
+discrepancy at all). The real cause: every test called the deprecated `computeRevolutFXCommission`
+alias, which hardcodes `weekendRate: 0.01` — nothing ever exercised the `?? aboveRate` fallback
+with a `null` weekendRate. One test added, gap closed, no tool bug involved. The suite is now at
+literal 100% branches (see below).
+**Lesson:** before attributing a coverage gap to a "known tool bug," check the raw
+`coverage-final.json` branch counts directly — a gap that survives from the text reporter into
+the JSON is not a reporting artifact, it's a real missing test.
 
 **Problem 3 — Istanbul provider via config doesn't load:**
 Bug [#8165](https://github.com/vitest-dev/vitest/issues/8165). Workaround: pass `--coverage.provider=istanbul` via CLI.
+
+**Problem 4 — a leftover `mockRejectedValueOnce`/`mockResolvedValueOnce` silently corrupts a
+later, unrelated test (looks like a v8 coverage artifact, but isn't one):**
+`vi.clearAllMocks()` in `beforeEach` clears call history (`mock.calls`, `mock.results`) but does
+**not** drain a queued one-time implementation set via `mockResolvedValueOnce`/
+`mockRejectedValueOnce` — only `mockReset()`/`resetAllMocks()` does that. If a test queues a
+one-time mock for a call that (after a refactor) its own code path no longer makes, that queued
+value stays put and silently attaches to the **next** test that makes a real call to the same
+mocked function — even in a different `describe` block. Because many tests in this codebase use
+weak assertions (`expect(screen.getByText('Administration système')).toBeTruthy()` — true
+regardless of what the code actually did), the corrupted test still passes, but the code path it
+was meant to exercise (e.g. a `setTimeout` callback gated behind a successful API call) never
+runs, so its lines/branches silently drop out of coverage with no failing test to point at why.
+
+**Symptom:** a block of code shows uncovered in a full-file/full-suite run but covered when the
+one relevant test is run alone via `-t` — this looks exactly like a v8/vitest coverage-merging
+artifact, but is not.
+
+**How to diagnose:** add temporary `console.log` at the entry of the suspect function and its
+catch block, run with `--reporter=verbose`, and read the interleaved stdout across the *whole*
+file (not just the target test) — the log reveals the real, unexpected value being caught (e.g.
+an error message from a completely different, earlier test) instead of the expected one.
+
+**Fix:** every test that queues a `mockResolvedValueOnce`/`mockRejectedValueOnce` must actually
+drive the code path to consume it within that same test, and assert on the resulting behaviour —
+not just `toBeTruthy()` on unrelated static text. When a refactor changes how a flow is triggered
+(e.g. a click now opens a confirmation modal instead of calling the API immediately), update
+every test that relied on the old immediate call. A leftover queued mock from a stale test is
+caught by neither TypeScript, ESLint, nor a passing test suite — only by noticing the coverage gap.
 
 **Rule — `vi.mock` must be at the top level of the test file:**
 Vitest hoists `vi.mock` to the top of the module. A `vi.mock` nested inside `it()` or `describe()`
@@ -560,7 +641,8 @@ To change a mock value within a test: use `mockReturnValue` in `beforeEach`.
 
 **Current CI thresholds:**
 - statements: **100%** (unreachable code marked with `/* v8 ignore next -- @preserve */`)
-- branches: **94%** (ternary counting bug — JSON canonical = 100%)
+- branches: **100%** (see Problem 2 above — the 94% figure was based on a misdiagnosis; the
+  suite has since reached genuine 100% branch coverage)
 - functions: **100%**
 - lines: **100%**
 
@@ -631,18 +713,18 @@ The repository is intended to be made public — apply this rule from the first 
 **With every code change, update the corresponding tests AND verify coverage.**
 
 ### Test locations
-- Backend: `backend/tests/` (pytest + pytest-asyncio) — approximately 500 test functions
+- Backend: `backend/tests/` (pytest + pytest-asyncio) — run `pytest --collect-only -q` for the current count
   - `test_transactions.py`, `test_portfolios.py`, `test_accounts.py` — CRUD
   - `test_pv_service.py` — WACOP and capital gains calculation
   - `test_rebalancing_service.py` — rebalancing logic (pure Python, no DB)
   - `test_price_sync.py` — Yahoo Finance price sync (httpx mocks, no DB)
   - `test_products_router.py`, `test_snapshots_router.py`, etc.
-- Frontend: `frontend/src/**/*.test.{ts,tsx}` (vitest) — approximately 1150 test cases
+- Frontend: `frontend/src/**/*.test.{ts,tsx}` (vitest) — run `npx vitest list` for the current count
   - Test helpers: `frontend/tests/utils/` (outside `src/`)
 
 ### Coverage enforced in CI
 - **Backend**: 100% statements, branches, functions, lines (`--cov-fail-under=100`)
-- **Frontend**: statements 100%, branches 94% (Vitest bug), functions 100%, lines 100%
+- **Frontend**: statements 100%, branches 100%, functions 100%, lines 100% (see Problem 2 above)
 
 ### CI/CD
 - `ci.yml` job `validate`: TypeScript + vitest + coverage (no DB)

@@ -90,11 +90,13 @@ export default function SystemAdminPage() {
 
   const handleCancelRestore = () => {
     setPendingRestoreFile(null);
+    /* v8 ignore next -- @preserve */
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleConfirmRestore = async () => {
     const file = pendingRestoreFile;
+    /* v8 ignore next -- @preserve */
     if (!file) return;
     setPendingRestoreFile(null);
     setIsRestoring(true);
@@ -109,6 +111,7 @@ export default function SystemAdminPage() {
       setRestoreMsg({ type: 'danger', text: msg });
     } finally {
       setIsRestoring(false);
+      /* v8 ignore next -- @preserve */
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };

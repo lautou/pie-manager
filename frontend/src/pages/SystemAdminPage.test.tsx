@@ -481,12 +481,11 @@ describe('SystemAdminPage — additional coverage', () => {
     expect(fileInput).toBeTruthy();
   });
 
-  it('restore file catch branch: post throws → sets danger restoreMsg', async () => {
+  it('restore file catch branch: post throws with plain Error → uses String(err) fallback', async () => {
     const apiClientMock = (await import('../api/client')).default;
     vi.mocked(apiClientMock.post).mockRejectedValueOnce(new Error('Restore failed'));
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
 
-    const { act: actFn } = await import('@testing-library/react');
+    const user = userEvent.setup({ delay: null });
     const { container } = render(<SystemAdminPage />);
 
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
@@ -496,13 +495,9 @@ describe('SystemAdminPage — additional coverage', () => {
       configurable: true,
     });
 
-    await actFn(async () => {
-      fireEvent.change(fileInput);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    fireEvent.change(fileInput);
+    await user.click(screen.getByText('Confirmer'));
+    await screen.findByText('Error: Restore failed');
   }, 10000);
 });
 

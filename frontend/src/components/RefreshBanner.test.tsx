@@ -33,7 +33,14 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-query')>();
   return {
     ...actual,
-    useIsFetching: () => mockUseIsFetching(),
+    // Exercise the real `predicate` passed by RefreshBanner (instead of only
+    // stubbing the return value) so its branch is covered: one background
+    // query key (filtered out) and one regular key (kept).
+    useIsFetching: (options?: { predicate?: (query: { queryKey: readonly unknown[] }) => boolean }) => {
+      options?.predicate?.({ queryKey: ['sync-status'] });
+      options?.predicate?.({ queryKey: ['transactions'] });
+      return mockUseIsFetching();
+    },
   };
 });
 

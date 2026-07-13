@@ -2,7 +2,7 @@
  * Tests for ConfigGeneralePage — covers ProductManager, AccountManager, CommissionManager, TTF rate.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within, waitFor as rtlWaitFor, fireEvent } from '@testing-library/react';
+import { render, screen, within, waitFor as rtlWaitFor, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import { pfCoreStubs, pfTableStubs, pfIconStubs } from '../../tests/utils/patternfly-mocks';
@@ -696,6 +696,42 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     await user.click(screen.getByText('Commission'));
     await user.click(screen.getByText('Produits'));
     expect(screen.getByText(/Disponibles/i)).toBeTruthy();
+  }, 10000);
+
+  it('clicking row-level Produits button opens editor directly in tickers mode', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Produits'));
+    expect(screen.getByText(/Disponibles/i)).toBeTruthy();
+  }, 10000);
+
+  it('clicking row-level Produits button on a broker with no allowed_tickers falls back to []', async () => {
+    mockUseAllAccounts.mockReturnValue({
+      data: [{ ...MOCK_BROKER, allowed_tickers: null }],
+      isLoading: false,
+    });
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Produits'));
+    expect(screen.getByText(/Disponibles/i)).toBeTruthy();
+  }, 10000);
+
+  it('clicking row-level Change FX button opens editor directly in fx mode', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Change FX'));
+    expect(screen.getByText(/Plafond mensuel gratuit/i)).toBeTruthy();
+  }, 10000);
+
+  it('clicking row-level Change FX button on a broker with null FX fields falls back to empty strings', async () => {
+    mockUseAllAccounts.mockReturnValue({
+      data: [{ ...MOCK_BROKER, monthly_free_eur: null, above_monthly_rate: 0, weekend_rate: null }],
+      isLoading: false,
+    });
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Change FX'));
+    expect(screen.getByText(/Plafond mensuel gratuit/i)).toBeTruthy();
   }, 10000);
 
   it('in Produits tab: can filter left panel', async () => {
@@ -1466,27 +1502,51 @@ describe('GlobalConfigPage — additional branch coverage', () => {
     expect(screen.getByText(/Aucun — tous autorisés/i)).toBeTruthy();
   }, 10000);
 
-  it('putCommissionSaleRate fetch error is caught by caller (line 40 error path)', async () => {
+  it('putCommissionSaleRate fetch error is caught by caller and shown via alert', async () => {
     // The onChange handler of sale_rate input calls putCommissionSaleRate which calls fetch
-    // Mock fetch to return ok:false → throw Error → caller (onChange) has no try/catch → unhandled
-    // We test this does not crash the UI by mocking the fetch
     const fetchSpy = vi.spyOn(window, 'fetch').mockResolvedValueOnce({
       ok: false,
       text: () => Promise.resolve('Sale rate error'),
     } as any);
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const { container } = render(<GlobalConfigPage />);
+    const inputs = screen.getAllByRole('spinbutton');
+    const saleRateInput = inputs.find((inp: HTMLElement) =>
+      parseFloat((inp as HTMLInputElement).value) === 0.005
+    ) as HTMLInputElement;
+    expect(saleRateInput).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.change(saleRateInput, { target: { value: '0.006' } });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(alertSpy).toHaveBeenCalledWith('Sale rate error');
+    expect(container).toBeTruthy();
+    fetchSpy.mockRestore();
+    alertSpy.mockRestore();
+  }, 10000);
+
+  it('putCommissionSaleRate: non-Error rejection falls back to generic alert message', async () => {
+    const fetchSpy = vi.spyOn(window, 'fetch').mockRejectedValueOnce('network down');
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
     render(<GlobalConfigPage />);
     const inputs = screen.getAllByRole('spinbutton');
     const saleRateInput = inputs.find((inp: HTMLElement) =>
       parseFloat((inp as HTMLInputElement).value) === 0.005
-    );
-    if (saleRateInput) {
-      // Fire change event to trigger putCommissionSaleRate
+    ) as HTMLInputElement;
+    expect(saleRateInput).toBeTruthy();
+
+    await act(async () => {
       fireEvent.change(saleRateInput, { target: { value: '0.006' } });
-      // Allow microtask to run
-      await new Promise(resolve => setTimeout(resolve, 0));
-    }
-    expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(alertSpy).toHaveBeenCalledWith('Erreur lors de la mise à jour du taux de vente');
     fetchSpy.mockRestore();
+    alertSpy.mockRestore();
   }, 10000);
 
   it('ttfSetting without value skips useEffect (line 564 false branch)', () => {

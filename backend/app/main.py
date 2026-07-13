@@ -15,6 +15,14 @@ async def lifespan(app: FastAPI):
         fill_missing_snapshots.delay()
     except Exception:
         pass  # Don't block startup if Celery is unavailable
+
+    # On startup: refresh live prices immediately so the UI doesn't wait up
+    # to 15 min for the next scheduled Celery Beat run (non-blocking task).
+    try:
+        from app.tasks.prices import refresh_prices_live
+        refresh_prices_live.delay()
+    except Exception:
+        pass  # Don't block startup if Celery is unavailable
     yield
 
 

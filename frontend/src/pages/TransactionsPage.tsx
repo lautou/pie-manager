@@ -1128,6 +1128,7 @@ export default function TransactionsPage() {
   };
 
   const handleConfirmDelete = async () => {
+    /* v8 ignore next -- @preserve */
     if (!deleteTarget) return;
     await deleteMutation.mutateAsync({ id: deleteTarget.id, portfolio_id: Number(portfolioId) });
     setDeleteTarget(null);

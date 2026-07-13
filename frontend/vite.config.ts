@@ -36,26 +36,8 @@ export default defineConfig({
         singleFork: true,
       },
     },
-    coverage: {
-      provider: 'v8',
-      include: ['src/**/*.{ts,tsx}'],
-      exclude: [
-        'src/main.tsx',
-        'src/vite-env.d.ts',
-        'src/**/*.d.ts',
-        'src/**/*.test.{ts,tsx}',
-      ],
-      all: true,
-      reporter: ['text', 'lcov'],
-      thresholds: {
-        // All unreachable branches are suppressed with targeted v8 ignore directives
-        // (/* v8 ignore next */, /* v8 ignore start/stop */) so both text reporter
-        // and JSON canonical show exactly 100% for all metrics.
-        statements: 100,
-        branches: 100,
-        functions: 100,
-        lines: 100,
-      },
-    },
+    // `coverage` config lives in vitest.config.ts, not here: when both a vite.config.ts
+    // and a standalone vitest.config.ts exist, Vitest resolves `test.coverage` from the
+    // standalone file only — any `coverage` block declared here would be silently ignored.
   },
 });

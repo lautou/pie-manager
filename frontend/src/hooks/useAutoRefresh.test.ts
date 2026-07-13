@@ -151,4 +151,92 @@ describe('useAutoRefresh', () => {
     expect(typeof REFRESH_INTERVAL_MS).toBe('number');
     expect(REFRESH_INTERVAL_MS).toBeGreaterThan(0);
   });
+
+  // -------------------------------------------------------------------------
+  // Sync-status driven refresh — precise trigger, complements the blind timer
+  // -------------------------------------------------------------------------
+  describe('sync-status driven refresh', () => {
+    function syncStatusResponse(finishedAt: string) {
+      return {
+        data: {
+          status: 'success', started_at: null, finished_at: finishedAt,
+          total_tickers: 5, succeeded: 5, failed_tickers: [],
+        },
+      } as any;
+    }
+
+    it('does not invalidate on the first observed sync-status value (establishes baseline)', async () => {
+      const apiClient = (await import('../api/client')).default;
+      vi.mocked(apiClient.get).mockResolvedValueOnce(syncStatusResponse('2026-01-01T10:00:00Z'));
+
+      renderHook(() => useAutoRefresh('1'), { wrapper: makeWrapper(qc) });
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(qc.invalidateQueries).not.toHaveBeenCalled();
+    });
+
+    it('invalidates REFRESH_KEYS when sync-status finished_at changes between polls', async () => {
+      const apiClient = (await import('../api/client')).default;
+      vi.mocked(apiClient.get)
+        .mockResolvedValueOnce(syncStatusResponse('2026-01-01T10:00:00Z'))
+        .mockResolvedValueOnce(syncStatusResponse('2026-01-01T10:15:00Z'));
+
+      renderHook(() => useAutoRefresh('1'), { wrapper: makeWrapper(qc) });
+      await vi.advanceTimersByTimeAsync(0); // initial fetch — baseline, no invalidation
+      expect(qc.invalidateQueries).not.toHaveBeenCalled();
+
+      // Simulate the next sync-status poll resolving with a new finished_at,
+      // bypassing useSyncStatus's own refetchInterval/staleTime timing —
+      // this test targets useAutoRefresh's reaction, not React Query's polling.
+      await qc.refetchQueries({ queryKey: ['sync-status'] });
+      await vi.advanceTimersByTimeAsync(0); // let the effect react to the new render
+
+      expect(qc.invalidateQueries).toHaveBeenCalledTimes(REFRESH_KEYS.length);
+      for (const key of REFRESH_KEYS) {
+        expect(qc.invalidateQueries).toHaveBeenCalledWith({ queryKey: [key] });
+      }
+    });
+
+    it('does not invalidate again when sync-status finished_at stays the same across polls', async () => {
+      const apiClient = (await import('../api/client')).default;
+      vi.mocked(apiClient.get).mockResolvedValue(syncStatusResponse('2026-01-01T10:00:00Z'));
+
+      renderHook(() => useAutoRefresh('1'), { wrapper: makeWrapper(qc) });
+      await vi.advanceTimersByTimeAsync(0);
+      await qc.refetchQueries({ queryKey: ['sync-status'] });
+
+      expect(qc.invalidateQueries).not.toHaveBeenCalled();
+    });
+
+    it('re-running the effect for another reason (portfolioId change) with an unchanged finished_at does not invalidate (line 60 false branch)', async () => {
+      const apiClient = (await import('../api/client')).default;
+      vi.mocked(apiClient.get).mockResolvedValue(syncStatusResponse('2026-01-01T10:00:00Z'));
+
+      const { rerender } = renderHook(
+        ({ portfolioId }: { portfolioId: string }) => useAutoRefresh(portfolioId),
+        { wrapper: makeWrapper(qc), initialProps: { portfolioId: '1' } },
+      );
+      await vi.advanceTimersByTimeAsync(0); // baseline recorded for finished_at
+
+      // Switch portfolio — the effect re-runs (portfolioId dependency changed)
+      // but finished_at is unchanged, so no invalidation should occur.
+      rerender({ portfolioId: '2' });
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(qc.invalidateQueries).not.toHaveBeenCalled();
+    });
+
+    it('does not invalidate via sync-status when portfolioId is undefined', async () => {
+      const apiClient = (await import('../api/client')).default;
+      vi.mocked(apiClient.get)
+        .mockResolvedValueOnce(syncStatusResponse('A'))
+        .mockResolvedValueOnce(syncStatusResponse('B'));
+
+      renderHook(() => useAutoRefresh(undefined), { wrapper: makeWrapper(qc) });
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(qc.invalidateQueries).not.toHaveBeenCalled();
+    });
+  });
 });

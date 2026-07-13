@@ -23,6 +23,15 @@ vi.mock('@tanstack/react-query', () => ({
 // Mock PatternFly core
 vi.mock('@patternfly/react-core', () => ({
   ...pfCoreStubs,
+  Modal: ({ children, isOpen, actions, onClose, title }: any) =>
+    isOpen ? (
+      <div data-testid="modal">
+        <div data-testid="modal-title">{title}</div>
+        <div>{children}</div>
+        <div data-testid="modal-actions">{actions}</div>
+        <button onClick={onClose}>Close modal</button>
+      </div>
+    ) : null,
 }));
 
 // Mock PatternFly icons
@@ -171,9 +180,7 @@ describe('AdminPage', () => {
     }
   }, 10000);
 
-  it('can click delete button on pool and cancel confirm', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
-
+  it('can click delete button on pool and see the confirm modal', async () => {
     const user = userEvent.setup({ delay: null });
     render(<AdminPage />);
 
@@ -181,9 +188,8 @@ describe('AdminPage', () => {
     const deleteBtn = btns.find(b => b.textContent?.includes('🗑'));
     if (deleteBtn) {
       await user.click(deleteBtn);
-      expect(confirmSpy).toHaveBeenCalled();
+      expect(screen.getByTestId('modal')).toBeTruthy();
     }
-    confirmSpy.mockRestore();
   }, 10000);
 
   it('can close the pool tickers panel with ✕ button', async () => {
@@ -361,8 +367,8 @@ describe('AdminPage — coverage for uncovered branches', () => {
     }
   }, 10000);
 
-  it('handleDelete: confirm accepted calls deletePool', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
+  it('handleDelete: confirm in modal calls deletePool', async () => {
+    const { deletePool } = await import('../api/queries');
 
     const user = userEvent.setup({ delay: null });
     render(<AdminPage />);
@@ -371,12 +377,27 @@ describe('AdminPage — coverage for uncovered branches', () => {
     const deleteBtn = btns.find(b => b.textContent?.includes('🗑'));
     if (deleteBtn) {
       await user.click(deleteBtn);
-      expect(screen.getByText('Paramètres')).toBeTruthy();
+      await user.click(screen.getByText('Supprimer'));
+      expect(deletePool).toHaveBeenCalled();
+    }
+  }, 10000);
+
+  it('handleDelete: cancel in modal does not call deletePool', async () => {
+    const { deletePool } = await import('../api/queries');
+
+    const user = userEvent.setup({ delay: null });
+    render(<AdminPage />);
+
+    const btns = screen.getAllByRole('button');
+    const deleteBtn = btns.find(b => b.textContent?.includes('🗑'));
+    if (deleteBtn) {
+      await user.click(deleteBtn);
+      await user.click(screen.getByText('Annuler'));
+      expect(deletePool).not.toHaveBeenCalled();
     }
   }, 10000);
 
   it('handleDelete: delete throws shows alert', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
     const { deletePool } = await import('../api/queries');
     vi.mocked(deletePool).mockRejectedValueOnce({
@@ -390,7 +411,8 @@ describe('AdminPage — coverage for uncovered branches', () => {
     const deleteBtn = btns.find(b => b.textContent?.includes('🗑'));
     if (deleteBtn) {
       await user.click(deleteBtn);
-      expect(screen.getByText('Paramètres')).toBeTruthy();
+      await user.click(screen.getByText('Supprimer'));
+      expect(alertSpy).toHaveBeenCalled();
     }
     alertSpy.mockRestore();
   }, 10000);
@@ -428,8 +450,6 @@ describe('AdminPage — coverage for uncovered branches', () => {
   }, 10000);
 
   it('handleDelete: deletes selected pool and clears selection', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-
     const user = userEvent.setup({ delay: null });
     render(<AdminPage />);
 
@@ -441,6 +461,7 @@ describe('AdminPage — coverage for uncovered branches', () => {
       const deleteBtn = btns.find(b => b.textContent?.includes('🗑'));
       if (deleteBtn) {
         await user.click(deleteBtn);
+        await user.click(screen.getByText('Supprimer'));
         expect(screen.getByText('Paramètres')).toBeTruthy();
       }
     }
@@ -556,7 +577,6 @@ describe('AdminPage — direct state rendering coverage', () => {
 
   it('handleDelete: delete throws without detail → alert uses ?? fallback', async () => {
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const { deletePool } = await import('../api/queries');
     vi.mocked(deletePool).mockRejectedValueOnce(new Error('Generic error'));
 
@@ -567,6 +587,7 @@ describe('AdminPage — direct state rendering coverage', () => {
     const deleteBtn = btns.find(b => b.textContent?.includes('🗑'));
     if (deleteBtn) {
       await user.click(deleteBtn);
+      await user.click(screen.getByText('Supprimer'));
     }
     alertSpy.mockRestore();
     expect(screen.getByText('Paramètres')).toBeTruthy();

@@ -16,6 +16,7 @@ import {
 } from '../api/queries';
 import type { Pool, Broker } from '../types';
 import { useSortable } from '../hooks/useSortable';
+import ConfirmModal from '../components/ConfirmModal';
 
 // ── Pool Management sub-component ─────────────────────────────────────────
 
@@ -43,6 +44,8 @@ function PoolManager({ portfolioId }: { portfolioId: string }) {
 
   // Ticker search
   const [tickerSearch, setTickerSearch] = useState('');
+  const [poolDeleteTarget, setPoolDeleteTarget] = useState<Pool | null>(null);
+  const [isDeletingPool, setIsDeletingPool] = useState(false);
 
   const openNew = () => {
     setEditingPool({ id: 0, portfolio_id: Number(portfolioId), name: '', strategy: 'Offensive', target_pct: 0.25, is_active: true, color: null });
@@ -70,10 +73,21 @@ function PoolManager({ portfolioId }: { portfolioId: string }) {
     } catch (e: any) { setPoolError(e?.response?.data?.detail ?? t('error.saveFailed')); }
   };
 
-  const handleDelete = async (p: Pool) => {
-    if (!confirm(t('pools.deleteConfirm', { name: p.name }))) return;
-    try { await deletePool(p.id); if (selectedPool?.id === p.id) setSelectedPool(null); refetchPools(); }
-    catch (e: any) { alert(e?.response?.data?.detail ?? t('error.deleteFailed')); }
+  const handleDelete = (p: Pool) => {
+    setPoolDeleteTarget(p);
+  };
+
+  const handleConfirmDeletePool = async () => {
+    /* v8 ignore next -- @preserve */
+    if (!poolDeleteTarget) return;
+    setIsDeletingPool(true);
+    try {
+      await deletePool(poolDeleteTarget.id);
+      if (selectedPool?.id === poolDeleteTarget.id) setSelectedPool(null);
+      refetchPools();
+      setPoolDeleteTarget(null);
+    } catch (e: any) { alert(e?.response?.data?.detail ?? t('error.deleteFailed')); }
+    finally { setIsDeletingPool(false); }
   };
 
   const handleAddTicker = async (ticker: string) => {
@@ -218,6 +232,15 @@ function PoolManager({ portfolioId }: { portfolioId: string }) {
           )}
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={!!poolDeleteTarget}
+        title={t('common.confirmDeleteTitle')}
+        message={poolDeleteTarget ? t('pools.deleteConfirm', { name: poolDeleteTarget.name }) : ''}
+        isLoading={isDeletingPool}
+        onConfirm={handleConfirmDeletePool}
+        onCancel={() => setPoolDeleteTarget(null)}
+      />
     </div>
   );
 }

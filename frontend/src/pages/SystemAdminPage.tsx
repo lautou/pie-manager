@@ -10,6 +10,7 @@ import {
 import { DatabaseIcon, DownloadIcon, SyncAltIcon, UploadIcon } from '@patternfly/react-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import FrDatePicker from '../components/FrDatePicker';
+import ConfirmModal from '../components/ConfirmModal';
 import {
   triggerRecompute, getTaskStatus,
 } from '../api/queries';
@@ -42,6 +43,7 @@ export default function SystemAdminPage() {
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [restoreMsg, setRestoreMsg] = useState<{ type: 'success' | 'danger'; text: string } | null>(null);
+  const [pendingRestoreFile, setPendingRestoreFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { data: syncStatus } = useSyncStatus();
 
@@ -80,13 +82,21 @@ export default function SystemAdminPage() {
     }
   };
 
-  const handleRestoreFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleRestoreFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!window.confirm(`Restaurer la base depuis "${file.name}" ?\n\nATTENTION : toutes les données actuelles seront remplacées si la restauration réussit. L'opération est transactionnelle : en cas d'erreur, rien n'est modifié.`)) {
-      e.target.value = '';
-      return;
-    }
+    setPendingRestoreFile(file);
+  };
+
+  const handleCancelRestore = () => {
+    setPendingRestoreFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleConfirmRestore = async () => {
+    const file = pendingRestoreFile;
+    if (!file) return;
+    setPendingRestoreFile(null);
     setIsRestoring(true);
     setRestoreMsg(null);
     try {
@@ -99,7 +109,7 @@ export default function SystemAdminPage() {
       setRestoreMsg({ type: 'danger', text: msg });
     } finally {
       setIsRestoring(false);
-      e.target.value = '';
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -222,6 +232,19 @@ export default function SystemAdminPage() {
           )}
         </CardBody>
       </Card>
+
+      <ConfirmModal
+        isOpen={!!pendingRestoreFile}
+        title={t('admin.restore')}
+        message={[
+          `Restaurer la base depuis "${pendingRestoreFile?.name ?? ''}" ?`,
+          "ATTENTION : toutes les données actuelles seront remplacées si la restauration réussit. L'opération est transactionnelle : en cas d'erreur, rien n'est modifié.",
+        ]}
+        confirmLabel={t('common.confirm')}
+        isLoading={isRestoring}
+        onConfirm={handleConfirmRestore}
+        onCancel={handleCancelRestore}
+      />
 
       <Card style={{ maxWidth: 640 }}>
         <CardTitle>{t('admin.regenerateSnapshots')}</CardTitle>

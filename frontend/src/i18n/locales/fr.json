@@ -43,6 +43,7 @@
     "saving": "Enregistrement…",
     "cancel": "Annuler",
     "delete": "Supprimer",
+    "confirmDeleteTitle": "Confirmer la suppression",
     "edit": "Modifier",
     "add": "Ajouter",
     "create": "Créer",

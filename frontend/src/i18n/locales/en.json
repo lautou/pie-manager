@@ -43,6 +43,7 @@
     "saving": "Saving…",
     "cancel": "Cancel",
     "delete": "Delete",
+    "confirmDeleteTitle": "Confirm deletion",
     "edit": "Edit",
     "add": "Add",
     "create": "Create",

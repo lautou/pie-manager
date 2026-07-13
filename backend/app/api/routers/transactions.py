@@ -195,6 +195,7 @@ async def create_transaction(body: TransactionCreate, db: AsyncSession = Depends
             select(Transaction.balance_eur)
             .where(
                 Transaction.account_id == tx.account_id,
+                Transaction.portfolio_id == tx.portfolio_id,
                 Transaction.balance_eur.isnot(None),
                 Transaction.id != tx.id,
                 # Only look at transactions BEFORE this date/id (not future ones)
@@ -241,6 +242,7 @@ async def create_transaction(body: TransactionCreate, db: AsyncSession = Depends
             sa_update(Transaction)
             .where(
                 Transaction.account_id == tx.account_id,
+                Transaction.portfolio_id == tx.portfolio_id,
                 Transaction.balance_eur.isnot(None),
                 Transaction.id != tx.id,
                 (Transaction.date > tx.date) |
@@ -293,6 +295,7 @@ async def create_transaction(body: TransactionCreate, db: AsyncSession = Depends
             select(Transaction.balance_eur)
             .where(
                 Transaction.account_id == sibling.account_id,
+                Transaction.portfolio_id == sibling.portfolio_id,
                 Transaction.balance_eur.isnot(None),
                 Transaction.id != sibling.id,
                 (Transaction.date < sibling.date) |
@@ -352,6 +355,7 @@ async def create_transaction(body: TransactionCreate, db: AsyncSession = Depends
                     select(Transaction.balance_eur)
                     .where(
                         Transaction.account_id == fee_tx.account_id,
+                        Transaction.portfolio_id == fee_tx.portfolio_id,
                         Transaction.balance_eur.isnot(None),
                         Transaction.id != fee_tx.id,
                         (Transaction.date < fee_tx.date) |
@@ -412,6 +416,7 @@ async def update_transaction(
                 sa_update(Transaction)
                 .where(
                     Transaction.account_id == tx.account_id,
+                    Transaction.portfolio_id == tx.portfolio_id,
                     Transaction.balance_eur.isnot(None),
                     Transaction.id != tx.id,
                     (Transaction.date > old_date) |
@@ -426,6 +431,7 @@ async def update_transaction(
             select(Transaction.balance_eur)
             .where(
                 Transaction.account_id == tx.account_id,
+                Transaction.portfolio_id == tx.portfolio_id,
                 Transaction.balance_eur.isnot(None),
                 Transaction.id != tx.id,
                 (Transaction.date < tx.date) |
@@ -451,6 +457,7 @@ async def update_transaction(
                 sa_update(Transaction)
                 .where(
                     Transaction.account_id == tx.account_id,
+                    Transaction.portfolio_id == tx.portfolio_id,
                     Transaction.balance_eur.isnot(None),
                     Transaction.id != tx.id,
                     (Transaction.date > tx.date) |
@@ -466,6 +473,7 @@ async def update_transaction(
                 select(Transaction.balance_eur)
                 .where(
                     Transaction.account_id == tx.account_id,
+                    Transaction.portfolio_id == tx.portfolio_id,
                     Transaction.balance_eur.isnot(None),
                     Transaction.id != tx.id,
                     (Transaction.date < tx.date) |
@@ -516,6 +524,7 @@ async def update_transaction(
                 sa_update(Transaction)
                 .where(
                     Transaction.account_id == tx.account_id,
+                    Transaction.portfolio_id == tx.portfolio_id,
                     Transaction.balance_eur.isnot(None),
                     (Transaction.date > tx.date) |
                     ((Transaction.date == tx.date) & (Transaction.id > tx.id)),
@@ -569,6 +578,7 @@ async def update_transaction(
                     select(Transaction.balance_eur)
                     .where(
                         Transaction.account_id == fee_tx.account_id,
+                        Transaction.portfolio_id == fee_tx.portfolio_id,
                         Transaction.balance_eur.isnot(None),
                         Transaction.id != fee_tx.id,
                         (Transaction.date < fee_tx.date) |

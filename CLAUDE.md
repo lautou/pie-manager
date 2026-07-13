@@ -245,11 +245,31 @@ same-day-same-currency row shows "—" regardless of what its own `balance_eur`/
 `balance_currency` columns actually contain. A raw-data "chain consistency" check
 (`balance == prev + amount`) will flag many rows that are never rendered at all.
 
-**`portfolio_accounts.cash_balance_eur` is NOT a safe ground truth either, for the same reason.**
-`_update_account_cash_balance()` adds `total_amount_eur` to this field for *every* transaction
-type/currency uniformly (JPYEUR=X buys/sells included) — so on any broker that mixes EUR
-activity with a forex position (Revolut, IBKR), `cash_balance_eur` can be contaminated the same
-way `balance_eur` is, and diverge from the real EUR cash position.
+**`portfolio_accounts.cash_balance_eur` was NOT a safe ground truth either, for the same reason
+— root cause now identified and fixed going forward (see below).** `_update_account_cash_balance()`
+used to add `total_amount_eur` to this field for *every* transaction type/currency uniformly
+(JPYEUR=X buys/sells included) — so on any broker that mixes EUR activity with a forex position
+(Revolut, IBKR), `cash_balance_eur` got contaminated the same way `balance_eur` is, and diverged
+from the real EUR cash position.
+
+**Fix (in `_update_account_cash_balance`, `transactions.py`): forex-position transactions
+(`ticker` ending in `EUR=X`, e.g. `JPYEUR=X`) no longer touch `cash_balance_eur` at all**, except
+fee transactions (`type='Frais'`) sharing that ticker for product-linkage, which still do (a
+EUR-denominated Revolut FX commission is a real cash cost). Rationale: a forex buy/sell tracks a
+*currency conversion* (EUR wallet → JPY holding, valued for WACOP/PV via
+`pv_service.py`'s `category='Cash' AND ticker not LIKE 'LIQUIDITE.%'` distinction), not a real EUR
+cash flow — the EUR side of that conversion is already captured by the separate, manually-entered
+`LIQUIDITE.EUR` deposit/withdrawal pair. See `_is_forex_position()` next to
+`_update_account_cash_balance` for the exact rule.
+
+**This is a going-forward fix only — it does not retroactively recompute history.**
+`cash_balance_eur` is a stateful running total shaped by years of now-deleted/edited
+transactions; it cannot be safely reconstructed from today's transaction snapshot (confirmed:
+`SUM(total_amount_eur) WHERE currency='EUR'` today ≠ either broker's real, confirmed balance —
+see the two contradictory examples below, still valid). A currently-wrong account must be
+corrected with a one-time, targeted `UPDATE portfolio_accounts SET cash_balance_eur = <verified
+value>` for that specific `(broker_id, portfolio_id)` row — never a formula, never a bulk
+rewrite. Revolut/Portfolio 1 was corrected this way (confirmed real balance: 0,00€).
 
 **There is no single derived SQL formula that reliably reconstructs the true EUR cash balance
 across brokers — do not assume one, and do not invent one under pressure to "fix" a reported
@@ -275,10 +295,17 @@ do not generalize that approach to any broker with foreign-currency transactions
 can be shared by multiple portfolios, this let one portfolio's running balance leak into
 another's "previous balance" lookup. All 10 occurrences were fixed to filter on both columns.
 Degiro's historical data was bulk-corrected (anchored to `cash_balance_eur`, safe because its
-transactions are 100% EUR). Revolut/IBKR's history was **left uncorrected** — their `cash_balance_eur`
-is confirmed accurate, and a bulk correction of the historical `balance_eur` chain requires
-computing across mixed EUR+JPY activity, which is not a simple sum (see above) — do not attempt
-a blind bulk fix there without re-deriving the exact intended formula first.
+transactions are 100% EUR). Revolut/IBKR's *transaction-level* `balance_eur`/`balance_currency`
+history was **left uncorrected** (a bulk correction there requires computing across mixed
+EUR+JPY activity, which is not a simple sum — see above — do not attempt a blind bulk fix
+without re-deriving the exact intended formula first). This is separate from
+`portfolio_accounts.cash_balance_eur`, which IBKR's has always been accurate and Revolut's is
+now individually corrected (see the forex-position fix above).
+
+**Separate, still-open gap noticed while implementing the forex-position fix (not fixed, out of
+scope):** `update_transaction`'s `date_changed` branch never calls `_update_account_cash_balance`
+at all — if a transaction's date AND amount change in the same edit, the amount delta's cash
+impact is silently dropped. Worth a dedicated fix later.
 
 ## Daily snapshot logic
 

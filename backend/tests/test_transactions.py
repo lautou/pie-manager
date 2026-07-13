@@ -616,6 +616,269 @@ async def test_multiple_same_day_liquidite_transactions_cumulate(client, db_sess
     assert pa.cash_balance_eur == pytest.approx(300.0, abs=0.01)
 
 
+# ---------------------------------------------------------------------------
+# cash_balance_eur — forex-position transactions (JPYEUR=X etc.) are excluded
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_create_forex_position_buy_does_not_change_cash_balance(client, db_session):
+    """
+    Buying a currency-pair position (JPYEUR=X) must NOT change cash_balance_eur:
+    it's a conversion (EUR wallet -> JPY holding), not a real EUR cash flow. The
+    EUR side is captured separately by a manually-entered LIQUIDITE.EUR transaction.
+    """
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+
+    portfolio = Portfolio(name=f"ForexBuy-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name="Revolut", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    pa = PortfolioAccount(portfolio_id=uid, broker_id=account.id, cash_balance_eur=100.0)
+    db_session.add(pa)
+    await db_session.flush()
+    aid = account.id
+
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    await db_session.flush()
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r = await client.post("/api/transactions/", json={
+            "portfolio_id": uid, "account_id": aid,
+            "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
+            "currency": "JPY", "exchange_rate": 0.006102,
+            "quantity": 117333.0, "unit_price": 1.0,
+        })
+    assert r.status_code == 201
+
+    await db_session.refresh(pa)
+    assert pa.cash_balance_eur == pytest.approx(100.0, abs=0.01)
+
+
+@pytest.mark.asyncio
+async def test_create_forex_position_sell_does_not_change_cash_balance(client, db_session):
+    """Selling a currency-pair position (negative quantity) also leaves cash_balance_eur untouched."""
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+
+    portfolio = Portfolio(name=f"ForexSell-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name="Revolut", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    pa = PortfolioAccount(portfolio_id=uid, broker_id=account.id, cash_balance_eur=42.0)
+    db_session.add(pa)
+    await db_session.flush()
+    aid = account.id
+
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    await db_session.flush()
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r = await client.post("/api/transactions/", json={
+            "portfolio_id": uid, "account_id": aid,
+            "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
+            "currency": "JPY", "exchange_rate": 0.005387,
+            "quantity": -10145.0, "unit_price": 1.0,
+        })
+    assert r.status_code == 201
+
+    await db_session.refresh(pa)
+    assert pa.cash_balance_eur == pytest.approx(42.0, abs=0.01)
+
+
+@pytest.mark.asyncio
+async def test_fractional_sibling_forex_position_does_not_change_cash_balance(client, db_session):
+    """A fractional sibling execution on a forex-pair order also leaves cash_balance_eur untouched."""
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+
+    portfolio = Portfolio(name=f"ForexSibling-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name="Revolut", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    pa = PortfolioAccount(portfolio_id=uid, broker_id=account.id, cash_balance_eur=250.0)
+    db_session.add(pa)
+    await db_session.flush()
+    aid = account.id
+
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    await db_session.flush()
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r = await client.post("/api/transactions/", json={
+            "portfolio_id": uid, "account_id": aid,
+            "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
+            "currency": "JPY", "exchange_rate": 0.006102,
+            "quantity": 50000.0, "unit_price": 1.0,
+            "additional_executions": [
+                {"date": _TODAY, "quantity": 67333.0, "unit_price": 1.0, "exchange_rate": 0.006105},
+            ],
+        })
+    assert r.status_code == 201
+
+    await db_session.refresh(pa)
+    assert pa.cash_balance_eur == pytest.approx(250.0, abs=0.01)
+
+
+@pytest.mark.asyncio
+async def test_fee_linked_to_forex_position_still_changes_cash_balance(client, db_session):
+    """
+    A EUR-denominated fee (e.g. Revolut FX commission) linked to a JPYEUR=X buy
+    is a real cash cost and must still reduce cash_balance_eur, even though it
+    shares the parent's forex ticker for product-linkage purposes.
+    """
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+    from app.models.transaction import Transaction as TxModel
+    from sqlalchemy import select
+
+    portfolio = Portfolio(name=f"ForexFee-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name="Revolut", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    pa = PortfolioAccount(portfolio_id=uid, broker_id=account.id, cash_balance_eur=100.0)
+    db_session.add(pa)
+    await db_session.flush()
+    aid = account.id
+
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    await db_session.flush()
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r = await client.post("/api/transactions/", json={
+            "portfolio_id": uid, "account_id": aid,
+            "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
+            "currency": "JPY", "exchange_rate": 0.006102,
+            "quantity": 117333.0, "unit_price": 1.0,
+            "courtage_eur": 5.0,
+        })
+    assert r.status_code == 201
+    parent_id = r.json()["id"]
+
+    result = await db_session.execute(
+        select(TxModel).where(TxModel.linked_transaction_id == parent_id)
+    )
+    frais = result.scalars().all()
+    assert len(frais) == 1
+    assert frais[0].type == "Frais"
+    assert frais[0].ticker == "JPYEUR=X"
+
+    # The forex buy itself contributes nothing; only the 5€ fee reduces cash
+    await db_session.refresh(pa)
+    assert pa.cash_balance_eur == pytest.approx(100.0 - 5.0, abs=0.01)
+
+
+@pytest.mark.asyncio
+async def test_delete_forex_position_transaction_is_noop_on_cash_balance(client, db_session):
+    """Deleting a forex-position transaction is symmetric: it never touched cash_balance_eur, so removing it doesn't either."""
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+
+    portfolio = Portfolio(name=f"ForexDelete-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name="Revolut", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    pa = PortfolioAccount(portfolio_id=uid, broker_id=account.id, cash_balance_eur=0.0)
+    db_session.add(pa)
+    await db_session.flush()
+    aid = account.id
+
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    await db_session.flush()
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r_create = await client.post("/api/transactions/", json={
+            "portfolio_id": uid, "account_id": aid,
+            "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
+            "currency": "JPY", "exchange_rate": 0.006102,
+            "quantity": 117333.0, "unit_price": 1.0,
+        })
+    assert r_create.status_code == 201
+    tx_id = r_create.json()["id"]
+    await db_session.refresh(pa)
+    assert pa.cash_balance_eur == pytest.approx(0.0, abs=0.01)
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r_del = await client.delete(f"/api/transactions/{tx_id}")
+    assert r_del.status_code == 204
+
+    await db_session.refresh(pa)
+    assert pa.cash_balance_eur == pytest.approx(0.0, abs=0.01)
+
+
+@pytest.mark.asyncio
+async def test_update_forex_position_transaction_does_not_change_cash_balance(client, db_session):
+    """Changing a forex-position transaction's quantity/rate must not affect cash_balance_eur."""
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+
+    portfolio = Portfolio(name=f"ForexUpdate-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name="Revolut", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    pa = PortfolioAccount(portfolio_id=uid, broker_id=account.id, cash_balance_eur=17.5)
+    db_session.add(pa)
+    await db_session.flush()
+    aid = account.id
+
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Cash", currency="JPY"))
+    await db_session.flush()
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r_create = await client.post("/api/transactions/", json={
+            "portfolio_id": uid, "account_id": aid,
+            "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
+            "currency": "JPY", "exchange_rate": 0.006102,
+            "quantity": 100000.0, "unit_price": 1.0,
+        })
+    assert r_create.status_code == 201
+    tx_id = r_create.json()["id"]
+    await db_session.refresh(pa)
+    assert pa.cash_balance_eur == pytest.approx(17.5, abs=0.01)
+
+    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
+        r_update = await client.put(f"/api/transactions/{tx_id}", json={
+            "portfolio_id": uid, "account_id": aid,
+            "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
+            "currency": "JPY", "exchange_rate": 0.006200,
+            "quantity": 150000.0, "unit_price": 1.0,
+        })
+    assert r_update.status_code == 200
+
+    await db_session.refresh(pa)
+    assert pa.cash_balance_eur == pytest.approx(17.5, abs=0.01)
+
+
 @pytest.mark.asyncio
 async def test_create_transaction_auto_calculates_balance_eur(client, db_session):
     """
@@ -1518,7 +1781,10 @@ async def test_update_cash_balance_account_not_found_is_noop(client, db_session)
 
     # account_id 999988 does not exist in the test DB
     # Calling the helper with a missing account must silently return None (no error)
-    result = await _update_account_cash_balance(db_session, account_id=999988, portfolio_id=999988, delta=100.0)
+    result = await _update_account_cash_balance(
+        db_session, account_id=999988, portfolio_id=999988, delta=100.0,
+        tx_type="Actif", ticker="TEST",
+    )
     assert result is None  # function returns None implicitly
 
 

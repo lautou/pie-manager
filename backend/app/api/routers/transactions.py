@@ -111,8 +111,21 @@ def _trigger_snapshot_recompute(portfolio_id: int, from_date: Date):
     compute_daily_snapshots_all_users.delay(from_date.isoformat())
 
 
+def _is_forex_position(tx_type: str, ticker: str) -> bool:
+    """True for a currency-pair position transaction (JPYEUR=X, USDEUR=X, ...) that is
+    NOT a fee. These track a forex position's EUR-equivalent value for WACOP/PV purposes
+    (see pv_service.py's category='Cash' AND ticker not LIKE 'LIQUIDITE.%' distinction),
+    not a real EUR cash flow — the EUR side of a conversion is captured separately by a
+    manually-entered LIQUIDITE.EUR transaction. Fee transactions are excluded from this
+    check even when they share the parent's forex ticker (e.g. a EUR-denominated Revolut
+    FX commission), since fees are always a real cash cost. See CLAUDE.md's
+    "Transaction running-balance display" section for the full history of this bug.
+    """
+    return ticker.endswith("EUR=X") and tx_type != "Frais"
+
+
 async def _update_account_cash_balance(
-    db: AsyncSession, account_id: int, portfolio_id: int, delta: float
+    db: AsyncSession, account_id: int, portfolio_id: int, delta: float, tx_type: str, ticker: str
 ) -> None:
     """Update portfolio_accounts.cash_balance_eur by adding delta (positive or negative).
 
@@ -121,7 +134,10 @@ async def _update_account_cash_balance(
     - Buying assets: negative total_amount_eur → cash decreases
     - Selling assets, dividends, deposits: positive → cash increases
     - Fees: negative → cash decreases
+    Forex-position transactions (see _is_forex_position) are skipped entirely.
     """
+    if _is_forex_position(tx_type, ticker):
+        return
     result = await db.execute(
         select(PortfolioAccount).where(
             PortfolioAccount.broker_id == account_id,
@@ -268,7 +284,7 @@ async def create_transaction(body: TransactionCreate, db: AsyncSession = Depends
         )
 
     # Any transaction affects the account cash balance (deposit, buy, sell, fee, dividend)
-    await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, tx.total_amount_eur)
+    await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, tx.total_amount_eur, tx.type, tx.ticker)
 
     # Auto-create fractional sibling executions
     for exec_item in body.additional_executions:
@@ -327,7 +343,7 @@ async def create_transaction(body: TransactionCreate, db: AsyncSession = Depends
                 prev_sib_curr_balance = prev_sib_curr.scalar_one_or_none()
                 if prev_sib_curr_balance is not None:
                     sibling.balance_currency = _no_neg_zero(round(float(prev_sib_curr_balance) + sibling.total_amount, 2))
-        await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, sibling.total_amount_eur)
+        await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, sibling.total_amount_eur, sibling.type, sibling.ticker)
 
     # Auto-create linked fee transactions (brokerage + TTF) for Actif buys/sells
     if body.type == "Actif":
@@ -368,7 +384,7 @@ async def create_transaction(body: TransactionCreate, db: AsyncSession = Depends
                 if prev_fee_balance is not None:
                     fee_tx.balance_eur = _no_neg_zero(round(float(prev_fee_balance) - fee_amount, 2))
                     fee_tx.balance_currency = fee_tx.balance_eur
-                await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, -fee_amount)
+                await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, -fee_amount, fee_tx.type, fee_tx.ticker)
 
     await db.commit()
     await db.refresh(tx)
@@ -533,7 +549,7 @@ async def update_transaction(
                 .execution_options(synchronize_session=False)
             )
 
-            await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, delta)
+            await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, delta, tx.type, tx.ticker)
 
     # Update linked fee transactions (brokerage + TTF) if new values are provided
     # Skip if transaction is a fractional sibling (it never owns fees)
@@ -549,7 +565,7 @@ async def update_transaction(
             select(Transaction).where(Transaction.linked_transaction_id == tx.id)
         )
         for child in children_result.scalars().all():
-            await _update_account_cash_balance(db, child.account_id, child.portfolio_id, -child.total_amount_eur)
+            await _update_account_cash_balance(db, child.account_id, child.portfolio_id, -child.total_amount_eur, child.type, child.ticker)
             await db.delete(child)
         # Recreate with new values
         for fee_amount in (body.courtage_eur or 0, body.ttf_eur or 0):
@@ -591,7 +607,7 @@ async def update_transaction(
                 if prev_fee_balance is not None:
                     fee_tx.balance_eur = _no_neg_zero(round(float(prev_fee_balance) - fee_amount, 2))
                     fee_tx.balance_currency = fee_tx.balance_eur
-                await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, -fee_amount)
+                await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, -fee_amount, fee_tx.type, fee_tx.ticker)
 
     await db.commit()
     await db.refresh(tx)
@@ -606,13 +622,14 @@ async def delete_transaction(transaction_id: int, db: AsyncSession = Depends(get
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
     portfolio_id, tx_date, account_id = tx.portfolio_id, tx.date, tx.account_id
+    tx_type, tx_ticker = tx.type, tx.ticker
 
     # Delete fractional siblings first (they share the brokerage fee of the parent)
     siblings_result = await db.execute(
         select(Transaction).where(Transaction.fractional_parent_id == transaction_id)
     )
     for sibling in siblings_result.scalars().all():
-        await _update_account_cash_balance(db, sibling.account_id, sibling.portfolio_id, -sibling.total_amount_eur)
+        await _update_account_cash_balance(db, sibling.account_id, sibling.portfolio_id, -sibling.total_amount_eur, sibling.type, sibling.ticker)
         await db.delete(sibling)
 
     # Explicitly delete linked fee transactions (brokerage/TTF) so their cash balance is also reversed
@@ -620,14 +637,14 @@ async def delete_transaction(transaction_id: int, db: AsyncSession = Depends(get
         select(Transaction).where(Transaction.linked_transaction_id == transaction_id)
     )
     for child in children_result.scalars().all():
-        await _update_account_cash_balance(db, child.account_id, child.portfolio_id, -child.total_amount_eur)
+        await _update_account_cash_balance(db, child.account_id, child.portfolio_id, -child.total_amount_eur, child.type, child.ticker)
         await db.delete(child)
 
     delta = -tx.total_amount_eur  # reverting the parent transaction's cash impact
     await db.delete(tx)
 
     # Any deleted transaction restores the cash balance
-    await _update_account_cash_balance(db, account_id, portfolio_id, delta)
+    await _update_account_cash_balance(db, account_id, portfolio_id, delta, tx_type, tx_ticker)
 
     await db.commit()
     _trigger_snapshot_recompute(portfolio_id, tx_date)

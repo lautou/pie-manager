@@ -187,6 +187,71 @@ position accurate after paying broker commissions in that currency.
 
 The same logic is mirrored in `brokers.py` for broker-level position display.
 
+## Transaction running-balance display — `balance_eur` vs `balance_currency` (do not confuse)
+
+Each `Transaction` row carries two running-balance columns computed at create/update time:
+- `balance_eur` — a naive cumulative sum, `prev_balance_eur + total_amount_eur`, scoped per
+  `(portfolio_id, account_id)` **across all currencies mixed together**. This is *not* a
+  reliable "EUR cash on hand" figure once an account trades both EUR assets and a foreign
+  currency (JPYEUR=X): buying/selling the forex position also feeds into this same additive
+  chain, so treating it as a checkbook balance is misleading.
+- `balance_currency` — the same running sum but scoped per `(portfolio_id, account_id,
+  currency)`, i.e. one chain per native currency (e.g. a pure JPY ledger for JPYEUR=X trades).
+
+**Critical: the frontend does NOT always display `balance_eur`.** In
+`TransactionsPage.tsx`, the "Contrevaleur solde EUR" column uses this logic:
+```
+tx.currency !== 'EUR' && tx.balance_currency != null
+  ? formatEUR(tx.balance_currency * tx.exchange_rate)   // non-EUR rows
+  : formatEUR(tx.balance_eur)                            // EUR rows only
+```
+So for any non-EUR-currency transaction (JPYEUR=X, etc.), the displayed value is
+`balance_currency × exchange_rate` — the raw `balance_eur` column is computed and stored but
+**never shown on screen** for those rows. Do not use `balance_eur` to judge correctness on a
+non-EUR row; recompute `balance_currency × exchange_rate` instead.
+
+**Also critical: only one row per day is ever displayed.** `endOfDayCurrencyIds` in
+`TransactionsPage.tsx` shows a balance only on the transaction with the **highest id** for a
+given `(date, currency)` group (assumed to be the day's closing state) — every other
+same-day-same-currency row shows "—" regardless of what its own `balance_eur`/
+`balance_currency` columns actually contain. A raw-data "chain consistency" check
+(`balance == prev + amount`) will flag many rows that are never rendered at all.
+
+**`portfolio_accounts.cash_balance_eur` is NOT a safe ground truth either, for the same reason.**
+`_update_account_cash_balance()` adds `total_amount_eur` to this field for *every* transaction
+type/currency uniformly (JPYEUR=X buys/sells included) — so on any broker that mixes EUR
+activity with a forex position (Revolut, IBKR), `cash_balance_eur` can be contaminated the same
+way `balance_eur` is, and diverge from the real EUR cash position.
+
+**There is no single derived SQL formula that reliably reconstructs the true EUR cash balance
+across brokers — do not assume one, and do not invent one under pressure to "fix" a reported
+gap.** Two formulas were each individually confirmed correct for *different* brokers in the same
+investigation, and each was *wrong* for the other:
+- Revolut/Lolo: real EUR wallet = 0€ (user-confirmed). `cash_balance_eur` said -108.20€ (wrong).
+  `SUM(total_amount_eur) WHERE currency='EUR'` gave exactly 0.00€ (right, by luck of Revolut's
+  fully-segregated EUR/JPY wallet architecture).
+- IBKR/Lolo: real EUR balance = 1.74€ (user-confirmed) = `cash_balance_eur` exactly (right, this
+  time). `SUM(total_amount_eur) WHERE currency='EUR'` gave -18.25€ (wrong here).
+
+This means the two brokers settle currency activity differently in ways this app's data model
+doesn't cleanly capture, and no single query safely tells you which broker behaves which way.
+**When a "wrong balance" is reported: verify the specific number against the user's actual
+brokerage app/bank statement before proposing *any* fix** — including a "corrected" ground-truth
+formula. Degiro's historical bulk-correction (anchored on `cash_balance_eur`) was safe only
+because Degiro is 100% EUR with no forex activity at all, eliminating the ambiguity entirely —
+do not generalize that approach to any broker with foreign-currency transactions.
+
+**Known historical bug (fixed but not retroactively corrected everywhere):** several
+`balance_eur`/`balance_currency` lookup queries in `transactions.py` filtered only by
+`account_id`, not `(account_id, portfolio_id)` — since a broker (e.g. Degiro, Revolut, IBKR)
+can be shared by multiple portfolios, this let one portfolio's running balance leak into
+another's "previous balance" lookup. All 10 occurrences were fixed to filter on both columns.
+Degiro's historical data was bulk-corrected (anchored to `cash_balance_eur`, safe because its
+transactions are 100% EUR). Revolut/IBKR's history was **left uncorrected** — their `cash_balance_eur`
+is confirmed accurate, and a bulk correction of the historical `balance_eur` chain requires
+computing across mixed EUR+JPY activity, which is not a simple sum (see above) — do not attempt
+a blind bulk fix there without re-deriving the exact intended formula first.
+
 ## Daily snapshot logic
 
 - Auto-generated at **app startup** (via Celery task `fill_missing_snapshots`)

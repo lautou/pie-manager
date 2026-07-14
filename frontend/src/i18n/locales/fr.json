@@ -83,8 +83,7 @@
     "portfolio": "Portefeuille",
     "snapshot": "Snapshot",
     "sector": "Secteur",
-    "company": "Entreprise",
-    "resetZoom": "Réinitialiser zoom"
+    "company": "Entreprise"
   },
   "dashboard": {
     "title": "Dashboard",

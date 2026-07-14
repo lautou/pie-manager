@@ -29,6 +29,25 @@ interface RatioIndicatorChartProps {
 type ZoomDomain = [Date, Date] | undefined;
 type Brush = { startX: number; endX: number; active: boolean } | null;
 
+// Preset ranges — same set as PerformancePage's time-scale selector, for a consistent UX
+// across every chart in the app that supports zooming.
+const PERIODS = ['1M', '3M', '1Y', 'YTD', '5Y', '10Y', 'MAX'] as const;
+type Period = typeof PERIODS[number];
+
+function periodToDateRange(period: Period, end: Date): [Date, Date] | undefined {
+  const start = new Date(end);
+  switch (period) {
+    case '1M': start.setMonth(start.getMonth() - 1); break;
+    case '3M': start.setMonth(start.getMonth() - 3); break;
+    case '1Y': start.setFullYear(start.getFullYear() - 1); break;
+    case 'YTD': return [new Date(end.getFullYear(), 0, 1), end];
+    case '5Y': start.setFullYear(start.getFullYear() - 5); break;
+    case '10Y': start.setFullYear(start.getFullYear() - 10); break;
+    case 'MAX': return undefined;
+  }
+  return [start, end];
+}
+
 function clampZoom(domain: [Date, Date], minMs: number): [Date, Date] {
   const [s, e] = domain;
   const diff = e.getTime() - s.getTime();
@@ -47,9 +66,18 @@ export default function RatioIndicatorChart({
   const chartRef = useRef<HTMLDivElement>(null);
   const [chartWidth, setChartWidth] = useState(900);
   const [zoomDomain, setZoomDomain] = useState<ZoomDomain>(undefined);
-  const [isManuallyZoomed, setIsManuallyZoomed] = useState(false);
+  const [activePeriod, setActivePeriod] = useState<Period | null>('MAX');
   const [brush, setBrush] = useState<Brush>(null);
 
+  const hasData = !!data && data.dates.length > 0;
+
+  // `containerRef`'s div only mounts once loading finishes and data has arrived (see the
+  // isLoading/!hasData branches below) — an empty dependency array here would run this effect
+  // once on the FIRST render, while containerRef.current is still null, and never again. That
+  // silently freezes chartWidth at its default forever: the chart still *looks* fine (Victory
+  // scales its SVG to fill the container via CSS regardless of the width prop), but the pixel
+  // math driving drag-to-zoom then maps mouse positions against the wrong plot width, producing
+  // a zoomed range that's actually shifted/scaled from where the user dragged.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -58,9 +86,8 @@ export default function RatioIndicatorChart({
     const ro = new ResizeObserver(([entry]) => setChartWidth(Math.floor(entry.contentRect.width)));
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [isLoading, hasData]);
 
-  const hasData = !!data && data.dates.length > 0;
   const numeratorLabel = data?.numerator_label ?? data?.numerator_ticker ?? '';
   const denominatorLabel = data?.denominator_label ?? data?.denominator_ticker ?? '';
   const ratioLegendName = t('indicators.legendRatioLabel', { numerator: numeratorLabel, denominator: denominatorLabel });
@@ -108,13 +135,16 @@ export default function RatioIndicatorChart({
     const startMs = minT + (leftX / plotW) * range;
     const endMs = minT + (rightX / plotW) * range;
     setZoomDomain(clampZoom([new Date(startMs), new Date(endMs)], MIN_ZOOM_MS));
-    setIsManuallyZoomed(true);
+    setActivePeriod(null); // a manual drag rarely lands exactly on a preset range
     setBrush(null);
   };
 
-  const resetZoom = () => {
-    setZoomDomain(undefined);
-    setIsManuallyZoomed(false);
+  const applyPeriod = (period: Period) => {
+    /* v8 ignore next -- @preserve */
+    const latest = hasData ? new Date(data!.dates[data!.dates.length - 1]) : new Date();
+    const range = periodToDateRange(period, latest);
+    setZoomDomain(range && clampZoom(range, MIN_ZOOM_MS));
+    setActivePeriod(period);
   };
 
   // Full date when zoomed in tight (< 90 days), year otherwise — mirrors PerformancePage's
@@ -134,14 +164,6 @@ export default function RatioIndicatorChart({
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
           <span>{title}</span>
           {statusLabel && <Label color={statusColor}>{statusLabel}</Label>}
-          {isManuallyZoomed && (
-            <button
-              onClick={resetZoom}
-              style={{ fontSize: '0.75rem', padding: '2px 8px', cursor: 'pointer', border: '1px solid #ccc', borderRadius: 3, background: '#f5f5f5' }}
-            >
-              ↺ {t('common.resetZoom')}
-            </button>
-          )}
         </div>
       </CardTitle>
       <CardBody>
@@ -155,6 +177,24 @@ export default function RatioIndicatorChart({
           </EmptyState>
         ) : (
           <>
+            <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+              {PERIODS.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => applyPeriod(p)}
+                  aria-pressed={activePeriod === p}
+                  style={{
+                    padding: '3px 10px', cursor: 'pointer', borderRadius: 4, fontSize: '0.8rem',
+                    border: activePeriod === p ? '2px solid #0066CC' : '1px solid #ccc',
+                    background: activePeriod === p ? '#e8f0fe' : '#f5f5f5',
+                    fontWeight: activePeriod === p ? 'bold' : 'normal',
+                    color: activePeriod === p ? '#0066CC' : 'inherit',
+                  }}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
             <div ref={containerRef} style={{ width: '100%', height: 320, position: 'relative' }}>
               <div
                 ref={chartRef}

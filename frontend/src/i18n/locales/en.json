@@ -83,8 +83,7 @@
     "portfolio": "Portfolio",
     "snapshot": "Snapshot",
     "sector": "Sector",
-    "company": "Company",
-    "resetZoom": "Reset zoom"
+    "company": "Company"
   },
   "dashboard": {
     "title": "Dashboard",

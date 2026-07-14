@@ -7,9 +7,11 @@ import {
   Spinner,
 } from '@patternfly/react-core';
 import {
-  Chart, ChartAxis, ChartGroup, ChartLegend, ChartLine, ChartThemeColor, ChartVoronoiContainer,
+  Chart, ChartAxis, ChartGroup, ChartLegend, ChartLine, ChartThemeColor,
 } from '@patternfly/react-charts';
 import type { RatioIndicator } from '../types';
+import { clampZoomRange, timeAxisStyle } from '../utils/chartZoom';
+import ChartCrosshair, { type ChartCrosshairState } from './ChartCrosshair';
 
 const RATIO_COLOR = '#0066CC';
 const MA_COLOR = '#F0AB00';
@@ -48,16 +50,6 @@ function periodToDateRange(period: Period, end: Date): [Date, Date] | undefined 
   return [start, end];
 }
 
-function clampZoom(domain: [Date, Date], minMs: number): [Date, Date] {
-  const [s, e] = domain;
-  const diff = e.getTime() - s.getTime();
-  if (diff < minMs) {
-    const center = (s.getTime() + e.getTime()) / 2;
-    return [new Date(center - minMs / 2), new Date(center + minMs / 2)];
-  }
-  return domain;
-}
-
 export default function RatioIndicatorChart({
   title, data, isLoading, aboveLabel, belowLabel, interpretationAbove, interpretationBelow,
 }: RatioIndicatorChartProps) {
@@ -68,6 +60,7 @@ export default function RatioIndicatorChart({
   const [zoomDomain, setZoomDomain] = useState<ZoomDomain>(undefined);
   const [activePeriod, setActivePeriod] = useState<Period | null>('MAX');
   const [brush, setBrush] = useState<Brush>(null);
+  const [crosshair, setCrosshair] = useState<ChartCrosshairState>(null);
 
   const hasData = !!data && data.dates.length > 0;
 
@@ -92,8 +85,13 @@ export default function RatioIndicatorChart({
   const denominatorLabel = data?.denominator_label ?? data?.denominator_ticker ?? '';
   const ratioLegendName = t('indicators.legendRatioLabel', { numerator: numeratorLabel, denominator: denominatorLabel });
   const movingAvgLegendName = t('indicators.movingAvgLabel', { years: data?.ma_years });
-  const ratioSeries = hasData ? data.dates.map((d, i) => ({ x: new Date(d), y: data.ratio[i], name: ratioLegendName })) : [];
-  const movingAvgSeries = hasData ? data.dates.map((d, i) => ({ x: new Date(d), y: data.moving_avg[i], name: movingAvgLegendName })) : [];
+  // Short names for the hover crosshair — same convention as IndexChart's "Offensif"/
+  // "Défensif" (no "(base 100)"/"(N ans)" qualifiers, which stay useful in the static legend
+  // below the chart but only add clutter to a tooltip shown next to the cursor).
+  const ratioShortName = `${numeratorLabel} / ${denominatorLabel}`;
+  const movingAvgShortName = t('indicators.movingAvgShortLabel');
+  const ratioSeries = hasData ? data.dates.map((d, i) => ({ x: new Date(d), y: data.ratio[i] })) : [];
+  const movingAvgSeries = hasData ? data.dates.map((d, i) => ({ x: new Date(d), y: data.moving_avg[i] })) : [];
 
   const statusLabel = data?.status === 'above' ? aboveLabel : data?.status === 'below' ? belowLabel : null;
   const statusColor = data?.status === 'above' ? 'green' : 'red';
@@ -101,6 +99,11 @@ export default function RatioIndicatorChart({
 
   // ── Brush-drag-to-zoom (mirrors IndexChart.tsx's characteristics) ──────────
   const startBrush = (e: React.MouseEvent) => {
+    // Without this, native browser text-selection highlights every text node the drag passes
+    // over (axis labels, legend) instead of just showing the brush rectangle below.
+    // victory-zoom-container's onMouseDown does this unconditionally (even with allowPan/
+    // allowZoom false) — IndexChart.tsx never needed it explicitly for exactly that reason.
+    e.preventDefault();
     const rect = chartRef.current?.getBoundingClientRect();
     /* v8 ignore next -- @preserve */
     if (!rect) return;
@@ -108,11 +111,48 @@ export default function RatioIndicatorChart({
   };
 
   const moveBrush = (e: React.MouseEvent) => {
-    if (!brush?.active) return;
     const rect = chartRef.current?.getBoundingClientRect();
     /* v8 ignore next -- @preserve */
     if (!rect) return;
-    setBrush({ ...brush, endX: e.clientX - rect.left });
+    const xPx = e.clientX - rect.left;
+
+    if (brush?.active) {
+      setBrush({ ...brush, endX: xPx });
+      return;
+    }
+
+    // Hover crosshair (only tracked while not dragging a brush) — mirrors IndexChart.tsx's
+    // tooltip: nearest data point by date, one colored-bullet row per series.
+    /* v8 ignore next -- @preserve */
+    if (!hasData) { setCrosshair(null); return; }
+    const plotW = rect.width - CHART_PADDING_LEFT - 20;
+    const relX = xPx - CHART_PADDING_LEFT;
+    if (relX < 0 || relX > plotW || plotW <= 0) {
+      setCrosshair(null);
+      return;
+    }
+
+    const [minT, maxT] = zoomDomain
+      ? [zoomDomain[0].getTime(), zoomDomain[1].getTime()]
+      : [new Date(data.dates[0]).getTime(), new Date(data.dates[data.dates.length - 1]).getTime()];
+    const tMs = minT + (relX / plotW) * (maxT - minT);
+
+    let nearestIdx = 0;
+    let minDist = Infinity;
+    data.dates.forEach((d, i) => {
+      const dist = Math.abs(new Date(d).getTime() - tMs);
+      if (dist < minDist) { minDist = dist; nearestIdx = i; }
+    });
+
+    setCrosshair({
+      xPx,
+      date: new Date(data.dates[nearestIdx]),
+      series: [
+        { name: ratioShortName, value: data.ratio[nearestIdx], color: RATIO_COLOR },
+        { name: movingAvgShortName, value: data.moving_avg[nearestIdx], color: MA_COLOR },
+      ],
+      containerWidth: rect.width,
+    });
   };
 
   const endBrush = () => {
@@ -134,7 +174,7 @@ export default function RatioIndicatorChart({
     const range = maxT - minT;
     const startMs = minT + (leftX / plotW) * range;
     const endMs = minT + (rightX / plotW) * range;
-    setZoomDomain(clampZoom([new Date(startMs), new Date(endMs)], MIN_ZOOM_MS));
+    setZoomDomain(clampZoomRange([new Date(startMs), new Date(endMs)], MIN_ZOOM_MS));
     setActivePeriod(null); // a manual drag rarely lands exactly on a preset range
     setBrush(null);
   };
@@ -143,20 +183,11 @@ export default function RatioIndicatorChart({
     /* v8 ignore next -- @preserve */
     const latest = hasData ? new Date(data!.dates[data!.dates.length - 1]) : new Date();
     const range = periodToDateRange(period, latest);
-    setZoomDomain(range && clampZoom(range, MIN_ZOOM_MS));
+    setZoomDomain(range && clampZoomRange(range, MIN_ZOOM_MS));
     setActivePeriod(period);
   };
 
-  // Full date when zoomed in tight (< 90 days), year otherwise — mirrors PerformancePage's
-  // makeAxisStyle adaptive tick format.
-  const zoomDays = zoomDomain ? (zoomDomain[1].getTime() - zoomDomain[0].getTime()) / 86_400_000 : Infinity;
-  const xTickFormat = (d: Date) => {
-    const dt = d instanceof Date ? d : new Date(d);
-    if (zoomDays < 90) {
-      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-    }
-    return dt.getFullYear().toString();
-  };
+  const axisStyle = timeAxisStyle(zoomDomain);
 
   return (
     <Card style={{ marginBottom: '1.5rem' }}>
@@ -164,6 +195,14 @@ export default function RatioIndicatorChart({
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
           <span>{title}</span>
           {statusLabel && <Label color={statusColor}>{statusLabel}</Label>}
+          {activePeriod === null && (
+            <button
+              onClick={() => applyPeriod('MAX')}
+              style={{ fontSize: '0.75rem', padding: '2px 8px', cursor: 'pointer', border: '1px solid #ccc', borderRadius: 3, background: '#f5f5f5' }}
+            >
+              ↺ {t('common.resetZoom')}
+            </button>
+          )}
         </div>
       </CardTitle>
       <CardBody>
@@ -202,7 +241,7 @@ export default function RatioIndicatorChart({
                 onMouseDown={startBrush}
                 onMouseMove={moveBrush}
                 onMouseUp={endBrush}
-                onMouseLeave={() => setBrush(null)}
+                onMouseLeave={() => { setBrush(null); setCrosshair(null); }}
               >
                 {brush?.active && (
                   <div data-testid="zoom-brush-overlay" style={{
@@ -218,6 +257,7 @@ export default function RatioIndicatorChart({
                     zIndex: 10,
                   }} />
                 )}
+                <ChartCrosshair crosshair={brush?.active ? null : crosshair} />
                 <Chart
                   ariaDesc={title}
                   height={320}
@@ -226,14 +266,6 @@ export default function RatioIndicatorChart({
                   scale={{ x: 'time', y: 'linear' }}
                   domain={zoomDomain ? { x: zoomDomain } : undefined}
                   themeColor={ChartThemeColor.multi}
-                  containerComponent={
-                    <ChartVoronoiContainer
-                      labels={({ datum }: { datum: { x: Date; y: number; name: string } }) =>
-                        `${datum.name}: ${datum.y.toFixed(1)}`
-                      }
-                      voronoiDimension="x"
-                    />
-                  }
                   legendData={[
                     { name: ratioLegendName, symbol: { fill: RATIO_COLOR } },
                     { name: movingAvgLegendName, symbol: { fill: MA_COLOR } },
@@ -241,7 +273,7 @@ export default function RatioIndicatorChart({
                   legendPosition="bottom"
                   legendComponent={<ChartLegend />}
                 >
-                  <ChartAxis tickFormat={xTickFormat} />
+                  <ChartAxis {...axisStyle} />
                   <ChartAxis dependentAxis tickFormat={(y: number) => y.toFixed(0)} />
                   <ChartGroup>
                     <ChartLine data={ratioSeries} interpolation="monotoneX" style={{ data: { stroke: RATIO_COLOR } }} />

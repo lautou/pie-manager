@@ -83,7 +83,8 @@
     "portfolio": "Portfolio",
     "snapshot": "Snapshot",
     "sector": "Sector",
-    "company": "Company"
+    "company": "Company",
+    "resetZoom": "Reset zoom"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -514,6 +515,7 @@
     "inflationInterpretationBelow": "Gold is outpacing bonds — an inflation signal.",
     "legendRatioLabel": "{{numerator}} / {{denominator}} (base 100)",
     "movingAvgLabel": "Moving average ({{years}} years)",
+    "movingAvgShortLabel": "Moving average",
     "noData": "No data yet — the first daily sync hasn't run yet.",
     "tickerOil": "Oil ticker",
     "tickerOilLabel": "Oil name",

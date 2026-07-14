@@ -83,7 +83,8 @@
     "portfolio": "Portefeuille",
     "snapshot": "Snapshot",
     "sector": "Secteur",
-    "company": "Entreprise"
+    "company": "Entreprise",
+    "resetZoom": "Réinitialiser zoom"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -525,6 +526,7 @@
     "inflationInterpretationBelow": "L'or progresse plus vite que les obligations — signal inflationniste.",
     "legendRatioLabel": "{{numerator}} / {{denominator}} (base 100)",
     "movingAvgLabel": "Moyenne mobile ({{years}} ans)",
+    "movingAvgShortLabel": "Moyenne mobile",
     "noData": "Aucune donnée pour le moment — la première synchronisation quotidienne n'a pas encore eu lieu.",
     "tickerOil": "Ticker Pétrole",
     "tickerOilLabel": "Nom Pétrole",

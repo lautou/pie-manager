@@ -82,6 +82,7 @@ import GlobalConfigPage from './pages/GlobalConfigPage';
 import CapitalGainsPage from './pages/CapitalGainsPage';
 import RebalancingPage from './pages/RebalancingPage';
 import TaxPage from './pages/TaxPage';
+import IndicatorsPage from './pages/IndicatorsPage';
 
 function AppNav({ portfolioId }: { portfolioId: string }) {
   const { t } = useTranslation();
@@ -137,6 +138,9 @@ function AppNav({ portfolioId }: { portfolioId: string }) {
 
         <NavItem>
           <RouterNavLink to={`/config?from=${portfolioId}`}>{t('nav.globalConfig')}</RouterNavLink>
+        </NavItem>
+        <NavItem>
+          <RouterNavLink to={`/indicators?from=${portfolioId}`}>{t('nav.indicators')}</RouterNavLink>
         </NavItem>
         <NavItem>
           <RouterNavLink to={`/system?from=${portfolioId}`}>
@@ -319,6 +323,11 @@ function ConfigLayout({ children }: { children: React.ReactNode }) {
   return <GlobalLayout title={t('nav.globalConfig')}>{children}</GlobalLayout>;
 }
 
+function IndicatorsLayout({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation();
+  return <GlobalLayout title={t('nav.indicators')}>{children}</GlobalLayout>;
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
@@ -327,6 +336,7 @@ export default function App() {
         <Route path="/portfolios" element={<RootLayout />} />
         <Route path="/portfolio/:portfolioId/*" element={<PortfolioRoutes />} />
         <Route path="/config" element={<ConfigLayout><GlobalConfigPage /></ConfigLayout>} />
+        <Route path="/indicators" element={<IndicatorsLayout><IndicatorsPage /></IndicatorsLayout>} />
         <Route path="/system" element={<SystemLayout><SystemAdminPage /></SystemLayout>} />
       </Routes>
     </ErrorBoundary>

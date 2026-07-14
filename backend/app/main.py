@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routers import portfolios, products, brokers, transactions, pools, prices, snapshots, dashboard, admin
-from app.api.routers import holdings, rebalancing, analytics, pv, fiscal
+from app.api.routers import holdings, rebalancing, analytics, pv, fiscal, indicators
 
 
 @asynccontextmanager
@@ -29,6 +29,14 @@ async def lifespan(app: FastAPI):
     try:
         from app.tasks.etf_holdings import refresh_etf_holdings
         refresh_etf_holdings.delay()
+    except Exception:
+        pass  # Don't block startup if Celery is unavailable
+
+    # On startup: refresh macro indicators too, rather than waiting up to a day for
+    # the next scheduled Celery Beat run (non-blocking task).
+    try:
+        from app.tasks.macro_indicators import refresh_macro_indicators
+        refresh_macro_indicators.delay()
     except Exception:
         pass  # Don't block startup if Celery is unavailable
     yield
@@ -63,6 +71,7 @@ app.include_router(analytics.router, prefix="/api/dashboard")
 app.include_router(admin.router, prefix="/api/admin")
 app.include_router(pv.router, prefix="/api/pv")
 app.include_router(fiscal.router, prefix="/api/fiscal")
+app.include_router(indicators.router, prefix="/api/indicators")
 
 
 @app.get("/health")

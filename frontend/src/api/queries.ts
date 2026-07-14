@@ -2,8 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import apiClient from './client';
 import type {
   Broker, AccountSummary, AssetPrice, Dashboard, DailySnapshot, DailyWithPools,
-  DailyHoldingValues, EtfComposition, FiscalCarryForward, MonthlySnapshot, Pool, PoolAllocation,
-  PortfolioCapitalGains, Holding, Product, Transaction, User,
+  DailyHoldingValues, EtfComposition, FiscalCarryForward, MacroRegionConfig, MonthlySnapshot, Pool,
+  PoolAllocation, PortfolioCapitalGains, Holding, Product, RatioIndicator, Transaction, User,
 } from '../types';
 
 // ── Portfolios ─────────────────────────────────────────────────────────────
@@ -331,6 +331,47 @@ export function useEtfComposition(ticker: string | undefined) {
     enabled: !!ticker,
     staleTime: 60 * 60 * 1000, // composition data refreshes weekly server-side
   });
+}
+
+// ── Macro indicators (global, portfolio-independent) ────────────────────────
+
+export function useGrowthIndicator(region: string) {
+  return useQuery<RatioIndicator>({
+    queryKey: ['macro-growth', region],
+    queryFn: async () =>
+      (await apiClient.get<RatioIndicator>('/api/indicators/growth', { params: { region } })).data,
+    staleTime: 60 * 60 * 1000, // refreshed once a day server-side
+  });
+}
+
+export function useInflationIndicator(region: string) {
+  return useQuery<RatioIndicator>({
+    queryKey: ['macro-inflation', region],
+    queryFn: async () =>
+      (await apiClient.get<RatioIndicator>('/api/indicators/inflation', { params: { region } })).data,
+    staleTime: 60 * 60 * 1000,
+  });
+}
+
+export function useMacroRegions() {
+  return useQuery<MacroRegionConfig[]>({
+    queryKey: ['macro-regions'],
+    queryFn: async () => (await apiClient.get<MacroRegionConfig[]>('/api/indicators/regions')).data,
+  });
+}
+
+export async function createMacroRegion(body: MacroRegionConfig): Promise<MacroRegionConfig> {
+  return (await apiClient.post<MacroRegionConfig>('/api/indicators/regions', body)).data;
+}
+
+export async function updateMacroRegion(
+  code: string, body: Omit<MacroRegionConfig, 'code'>,
+): Promise<MacroRegionConfig> {
+  return (await apiClient.put<MacroRegionConfig>(`/api/indicators/regions/${code}`, body)).data;
+}
+
+export async function deleteMacroRegion(code: string): Promise<void> {
+  await apiClient.delete(`/api/indicators/regions/${code}`);
 }
 
 // ── Dashboard ──────────────────────────────────────────────────────────────

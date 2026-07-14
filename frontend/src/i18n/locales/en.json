@@ -14,7 +14,8 @@
     "systemAdmin": "System Administration",
     "managePortfolios": "Manage Portfolios",
     "global": "GLOBAL",
-    "portfolio": "Portfolio"
+    "portfolio": "Portfolio",
+    "indicators": "Macro Indicators"
   },
   "app": {
     "name": "PIE Manager",
@@ -82,7 +83,8 @@
     "portfolio": "Portfolio",
     "snapshot": "Snapshot",
     "sector": "Sector",
-    "company": "Company"
+    "company": "Company",
+    "resetZoom": "Reset zoom"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -497,5 +499,50 @@
   "refreshBanner": {
     "newDataAvailable": "Data refresh in progress",
     "refresh": "Refresh"
+  },
+  "indicators": {
+    "title": "Macro Indicators",
+    "regionSelectLabel": "Region",
+    "growthTitle": "Growth — {{region}}",
+    "inflationTitle": "Inflation — {{region}}",
+    "growthAbove": "Growth",
+    "growthBelow": "Recession",
+    "inflationAbove": "Disinflation",
+    "inflationBelow": "Inflation",
+    "growthInterpretationAbove": "Equities are outpacing oil — a sign of economic growth.",
+    "growthInterpretationBelow": "Oil is outpacing equities — a recession signal (expensive energy hurts output).",
+    "inflationInterpretationAbove": "Bonds are outpacing gold — a disinflation signal.",
+    "inflationInterpretationBelow": "Gold is outpacing bonds — an inflation signal.",
+    "legendRatioLabel": "{{numerator}} / {{denominator}} (base 100)",
+    "movingAvgLabel": "Moving average ({{years}} years)",
+    "noData": "No data yet — the first daily sync hasn't run yet.",
+    "tickerOil": "Oil ticker",
+    "tickerOilLabel": "Oil name",
+    "tickerGold": "Gold ticker",
+    "tickerGoldLabel": "Gold name",
+    "maYearsLabel": "Moving average duration (years)",
+    "settingsHint": "Changing a ticker only takes effect on the next sync.",
+    "lastSync": "Last sync: {{time}}",
+    "sharedTickersLabel": "Shared (all regions)",
+    "macroSectionTitle": "🌍 Macro indicators — regions",
+    "macroSectionDescription": "Regions tracked for the growth (equity/oil) and inflation (bond/gold) charts on the Indicators page. Add your own region by giving a code, a name, and the two matching Yahoo Finance tickers.",
+    "newRegion": "New region",
+    "editRegion": "Edit region",
+    "regionCode": "Code",
+    "regionLabel": "Name",
+    "regionEquityLabel": "Equity name",
+    "regionBondLabel": "Bond name",
+    "tickerEquity": "Equity ticker",
+    "tickerBond": "Bond ticker",
+    "noRegions": "No regions",
+    "deleteRegionConfirm": "Delete region \"{{name}}\"?",
+    "validation": {
+      "codeRequired": "Code is required",
+      "labelRequired": "Name is required",
+      "equityTickerRequired": "Equity ticker is required",
+      "bondTickerRequired": "Bond ticker is required",
+      "equityLabelRequired": "Equity name is required",
+      "bondLabelRequired": "Bond name is required"
+    }
   }
 }

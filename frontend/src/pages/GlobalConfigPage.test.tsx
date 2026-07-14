@@ -43,6 +43,7 @@ const mockUseSetSystemSetting = vi.fn();
 const mockUseAllAccounts = vi.fn();
 const mockUsePortfolios = vi.fn();
 const mockUseProducts = vi.fn();
+const mockUseMacroRegions = vi.fn();
 
 vi.mock('../api/queries', () => ({
   useSystemSetting: (...args: any[]) => mockUseSystemSetting(...args),
@@ -58,6 +59,10 @@ vi.mock('../api/queries', () => ({
   updateProduct: vi.fn().mockResolvedValue({}),
   deleteProduct: vi.fn().mockResolvedValue(undefined),
   useEtfComposition: () => ({ data: undefined, isLoading: false }),
+  useMacroRegions: (...args: any[]) => mockUseMacroRegions(...args),
+  createMacroRegion: vi.fn().mockResolvedValue({}),
+  updateMacroRegion: vi.fn().mockResolvedValue({}),
+  deleteMacroRegion: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../hooks/useSortable', () => ({
@@ -78,12 +83,18 @@ const MOCK_PRODUCTS = [
   { ticker: 'OR', name: 'Or Physique', category: 'Actif', instrument_type: 'Or physique', currency: 'EUR', is_ttf_eligible: false },
 ];
 
+const MOCK_REGIONS = [
+  { code: 'us', label: 'États-Unis', equity_ticker: '^SPXEW', bond_ticker: 'GOVT', equity_label: 'S&P 500 Equal Weight', bond_label: 'Obligations Trésor américain' },
+  { code: 'fr', label: 'France', equity_ticker: '^FCHI', bond_ticker: 'MTE.PA', equity_label: 'CAC 40', bond_label: 'Obligations zone euro' },
+];
+
 function setupDefaultMocks() {
   mockUseSystemSetting.mockReturnValue({ data: { value: '0.004' }, isError: false });
   mockUseSetSystemSetting.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false });
   mockUseAllAccounts.mockReturnValue({ data: [], isLoading: false });
   mockUsePortfolios.mockReturnValue({ data: [] });
   mockUseProducts.mockReturnValue({ data: MOCK_PRODUCTS, refetch: vi.fn() });
+  mockUseMacroRegions.mockReturnValue({ data: MOCK_REGIONS, refetch: vi.fn() });
 }
 
 describe('GlobalConfigPage — ProductManager', () => {
@@ -212,8 +223,9 @@ describe('GlobalConfigPage — ProductManager', () => {
     const newBtn = screen.getAllByRole('button').find(b => b.textContent?.includes('Nouveau produit'));
     if (newBtn) {
       await user.click(newBtn);
-      await user.type(screen.getByRole('textbox', { name: /ticker/i }), 'TEST');
-      const modal = screen.getByTestId('modal'); await user.click(within(modal).getByText('Enregistrer'));
+      const modal = screen.getByTestId('modal');
+      await user.type(within(modal).getByRole('textbox', { name: /ticker/i }), 'TEST');
+      await user.click(within(modal).getByText('Enregistrer'));
       expect(screen.getByText(/Le nom est requis/i)).toBeTruthy();
     }
   }, 10000);
@@ -224,10 +236,11 @@ describe('GlobalConfigPage — ProductManager', () => {
     const newBtn = screen.getAllByRole('button').find(b => b.textContent?.includes('Nouveau produit'));
     if (newBtn) {
       await user.click(newBtn);
-      await user.type(screen.getByRole('textbox', { name: /ticker/i }), 'TEST');
-      await user.type(screen.getByRole('textbox', { name: /nom/i }), 'Test Product');
-      await user.clear(screen.getByRole('textbox', { name: /devise/i }));
-      const modal = screen.getByTestId('modal'); await user.click(within(modal).getByText('Enregistrer'));
+      const modal = screen.getByTestId('modal');
+      await user.type(within(modal).getByRole('textbox', { name: /ticker/i }), 'TEST');
+      await user.type(within(modal).getByRole('textbox', { name: /nom/i }), 'Test Product');
+      await user.clear(within(modal).getByRole('textbox', { name: /devise/i }));
+      await user.click(within(modal).getByText('Enregistrer'));
       expect(screen.getByText(/La devise est requise/i)).toBeTruthy();
     }
   }, 10000);
@@ -239,9 +252,10 @@ describe('GlobalConfigPage — ProductManager', () => {
     const newBtn = screen.getAllByRole('button').find(b => b.textContent?.includes('Nouveau produit'));
     if (newBtn) {
       await user.click(newBtn);
-      await user.type(screen.getByRole('textbox', { name: /ticker/i }), 'TSLA');
-      await user.type(screen.getByRole('textbox', { name: /nom/i }), 'Tesla');
-      const modal = screen.getByTestId('modal'); await user.click(within(modal).getByText('Enregistrer'));
+      const modal = screen.getByTestId('modal');
+      await user.type(within(modal).getByRole('textbox', { name: /ticker/i }), 'TSLA');
+      await user.type(within(modal).getByRole('textbox', { name: /nom/i }), 'Tesla');
+      await user.click(within(modal).getByText('Enregistrer'));
       expect(createProduct).toHaveBeenCalled();
     }
   }, 10000);
@@ -252,7 +266,8 @@ describe('GlobalConfigPage — ProductManager', () => {
     const newBtn = screen.getAllByRole('button').find(b => b.textContent?.includes('Nouveau produit'));
     if (newBtn) {
       await user.click(newBtn);
-      const tickerInput = screen.getByRole('textbox', { name: /ticker/i });
+      const modal = screen.getByTestId('modal');
+      const tickerInput = within(modal).getByRole('textbox', { name: /ticker/i });
       await user.type(tickerInput, 'tsla');
       expect((tickerInput as HTMLInputElement).value).toBe('TSLA');
     }
@@ -316,11 +331,11 @@ describe('GlobalConfigPage — ProductManager', () => {
     const newBtn = screen.getAllByRole('button').find(b => b.textContent?.includes('Nouveau produit'));
     if (newBtn) {
       await user.click(newBtn);
-      await user.type(screen.getByRole('textbox', { name: /ticker/i }), 'FRAIS.TEST');
-      await user.type(screen.getByRole('textbox', { name: /nom/i }), 'Frais Test');
+      const modal = screen.getByTestId('modal');
+      await user.type(within(modal).getByRole('textbox', { name: /ticker/i }), 'FRAIS.TEST');
+      await user.type(within(modal).getByRole('textbox', { name: /nom/i }), 'Frais Test');
       await user.selectOptions(screen.getByRole('combobox', { name: /catégorie/i }), 'Frais');
       await user.selectOptions(screen.getByRole('combobox', { name: /type de frais/i }), 'Courtage');
-      const modal = screen.getByTestId('modal');
       await user.click(within(modal).getByText('Enregistrer'));
       expect(createProduct).toHaveBeenCalledWith(expect.objectContaining({
         instrument_type: null, fee_type: 'Courtage',
@@ -335,10 +350,10 @@ describe('GlobalConfigPage — ProductManager', () => {
     const newBtn = screen.getAllByRole('button').find(b => b.textContent?.includes('Nouveau produit'));
     if (newBtn) {
       await user.click(newBtn);
-      await user.type(screen.getByRole('textbox', { name: /ticker/i }), 'FRAIS.TEST2');
-      await user.type(screen.getByRole('textbox', { name: /nom/i }), 'Frais Test 2');
-      await user.selectOptions(screen.getByRole('combobox', { name: /catégorie/i }), 'Frais');
       const modal = screen.getByTestId('modal');
+      await user.type(within(modal).getByRole('textbox', { name: /ticker/i }), 'FRAIS.TEST2');
+      await user.type(within(modal).getByRole('textbox', { name: /nom/i }), 'Frais Test 2');
+      await user.selectOptions(screen.getByRole('combobox', { name: /catégorie/i }), 'Frais');
       await user.click(within(modal).getByText('Enregistrer'));
       expect(createProduct).toHaveBeenCalledWith(expect.objectContaining({
         instrument_type: null, fee_type: null,
@@ -383,7 +398,8 @@ describe('GlobalConfigPage — ProductManager', () => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByRole('button', { name: /Modifier AAPL/i }));
-    const tickerInput = screen.getByRole('textbox', { name: /ticker/i });
+    const modal = screen.getByTestId('modal');
+    const tickerInput = within(modal).getByRole('textbox', { name: /ticker/i });
     expect((tickerInput as HTMLInputElement).disabled).toBe(true);
   }, 10000);
 
@@ -392,10 +408,10 @@ describe('GlobalConfigPage — ProductManager', () => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByRole('button', { name: /Modifier AAPL/i }));
-    const nameInput = screen.getByRole('textbox', { name: /nom/i });
+    const modal = screen.getByTestId('modal');
+    const nameInput = within(modal).getByRole('textbox', { name: /nom/i });
     await user.clear(nameInput);
     await user.type(nameInput, 'Apple Updated');
-    const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
     expect(updateProduct).toHaveBeenCalled();
   }, 10000);
@@ -408,9 +424,10 @@ describe('GlobalConfigPage — ProductManager', () => {
     const newBtn = screen.getAllByRole('button').find(b => b.textContent?.includes('Nouveau produit'));
     if (newBtn) {
       await user.click(newBtn);
-      await user.type(screen.getByRole('textbox', { name: /ticker/i }), 'AAPL');
-      await user.type(screen.getByRole('textbox', { name: /nom/i }), 'Apple');
-      const modal = screen.getByTestId('modal'); await user.click(within(modal).getByText('Enregistrer'));
+      const modal = screen.getByTestId('modal');
+      await user.type(within(modal).getByRole('textbox', { name: /ticker/i }), 'AAPL');
+      await user.type(within(modal).getByRole('textbox', { name: /nom/i }), 'Apple');
+      await user.click(within(modal).getByText('Enregistrer'));
       await rtlWaitFor(() => expect(screen.getByText(/Ticker already exists/i)).toBeTruthy());
     }
   }, 10000);
@@ -423,9 +440,10 @@ describe('GlobalConfigPage — ProductManager', () => {
     const newBtn = screen.getAllByRole('button').find(b => b.textContent?.includes('Nouveau produit'));
     if (newBtn) {
       await user.click(newBtn);
-      await user.type(screen.getByRole('textbox', { name: /ticker/i }), 'TST');
-      await user.type(screen.getByRole('textbox', { name: /nom/i }), 'Test');
-      const modal = screen.getByTestId('modal'); await user.click(within(modal).getByText('Enregistrer'));
+      const modal = screen.getByTestId('modal');
+      await user.type(within(modal).getByRole('textbox', { name: /ticker/i }), 'TST');
+      await user.type(within(modal).getByRole('textbox', { name: /nom/i }), 'Test');
+      await user.click(within(modal).getByText('Enregistrer'));
       await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de l'enregistrement/i)).toBeTruthy());
     }
   }, 10000);
@@ -765,7 +783,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     render(<GlobalConfigPage />);
     await user.click(screen.getByText('Commission'));
     const saveBtns = screen.getAllByText('Enregistrer');
-    await user.click(saveBtns[saveBtns.length - 1]);
+    await user.click(saveBtns[1]); // index 0 = TTF card's save button, index 1 = Commission panel's
     expect(fetchSpy).toHaveBeenCalled();
     fetchSpy.mockRestore();
   }, 10000);
@@ -776,7 +794,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     render(<GlobalConfigPage />);
     await user.click(screen.getByText('Commission'));
     const saveBtns = screen.getAllByText('Enregistrer');
-    await user.click(saveBtns[saveBtns.length - 1]);
+    await user.click(saveBtns[1]); // index 0 = TTF card's save button, index 1 = Commission panel's
     expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
     fetchSpy.mockRestore();
   }, 10000);
@@ -959,7 +977,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     await user.click(screen.getByText('Commission'));
     await user.click(screen.getByText('Produits'));
     const saveBtns = screen.getAllByText('Enregistrer');
-    await user.click(saveBtns[saveBtns.length - 1]);
+    await user.click(saveBtns[1]); // index 0 = TTF card's save button, index 1 = Commission panel's
     expect(fetchSpy).toHaveBeenCalled();
     fetchSpy.mockRestore();
   }, 10000);
@@ -972,7 +990,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     await user.click(screen.getByText('Produits'));
     await user.click(screen.getByText(/← Tout retirer/i));
     const saveBtns = screen.getAllByText('Enregistrer');
-    await user.click(saveBtns[saveBtns.length - 1]);
+    await user.click(saveBtns[1]); // index 0 = TTF card's save button, index 1 = Commission panel's
     expect(fetchSpy).toHaveBeenCalled();
     fetchSpy.mockRestore();
   }, 10000);
@@ -992,7 +1010,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     await user.click(screen.getByText('Commission'));
     await user.click(screen.getByText('Change FX'));
     const saveBtns = screen.getAllByText('Enregistrer');
-    await user.click(saveBtns[saveBtns.length - 1]);
+    await user.click(saveBtns[1]); // index 0 = TTF card's save button, index 1 = Commission panel's
     expect(fetchSpy).toHaveBeenCalled();
     fetchSpy.mockRestore();
   }, 10000);
@@ -1008,7 +1026,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     await user.click(screen.getByText('Commission'));
     await user.click(screen.getByText('Change FX'));
     const saveBtns = screen.getAllByText('Enregistrer');
-    await user.click(saveBtns[saveBtns.length - 1]);
+    await user.click(saveBtns[1]); // index 0 = TTF card's save button, index 1 = Commission panel's
     // Error is caught by handleSave try/catch → sets error state
     expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
     fetchSpy.mockRestore();
@@ -1025,7 +1043,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     await user.click(screen.getByText('Commission'));
     await user.click(screen.getByText('Produits'));
     const saveBtns = screen.getAllByText('Enregistrer');
-    await user.click(saveBtns[saveBtns.length - 1]);
+    await user.click(saveBtns[1]); // index 0 = TTF card's save button, index 1 = Commission panel's
     expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
     fetchSpy.mockRestore();
   }, 10000);
@@ -1042,7 +1060,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
       await user.clear(numberInputs[0]);
     }
     const saveBtns = screen.getAllByText('Enregistrer');
-    await user.click(saveBtns[saveBtns.length - 1]);
+    await user.click(saveBtns[1]); // index 0 = TTF card's save button, index 1 = Commission panel's
     expect(fetchSpy).toHaveBeenCalled();
     fetchSpy.mockRestore();
   }, 10000);
@@ -1052,10 +1070,13 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     render(<GlobalConfigPage />);
     await user.click(screen.getByText('Commission'));
     await user.click(screen.getByText('Change FX'));
-    // Type in the number inputs to trigger onChange for each FX field
-    const numberInputs = screen.getAllByRole('spinbutton');
-    // FX panel has 3 inputs: monthly_free, above_rate, weekend_rate
-    for (const inp of numberInputs.slice(-3)) {
+    // Type in the number inputs to trigger onChange for each FX field.
+    // Scoped to the FX panel itself (not a position-based slice) so it isn't thrown off by
+    // unrelated spinbuttons elsewhere on the page (e.g. the macro "Durée MM" setting).
+    const fxPanel = screen.getByText(/Laisser vide pour désactiver/i).parentElement as HTMLElement;
+    const numberInputs = within(fxPanel).getAllByRole('spinbutton');
+    expect(numberInputs).toHaveLength(3); // monthly_free, above_rate, weekend_rate
+    for (const inp of numberInputs) {
       await user.clear(inp);
       await user.type(inp, '1.5');
     }
@@ -1664,8 +1685,236 @@ describe('GlobalConfigPage — additional branch coverage', () => {
     render(<GlobalConfigPage />);
     await user.click(screen.getByText('Commission'));
     const saveBtns = screen.getAllByText('Enregistrer');
-    await user.click(saveBtns[saveBtns.length - 1]);
+    await user.click(saveBtns[1]); // index 0 = TTF card's save button, index 1 = Commission panel's
     await rtlWaitFor(() => expect(screen.getByText('Valeur invalide')).toBeTruthy());
     fetchSpy.mockRestore();
+  }, 10000);
+});
+
+describe('GlobalConfigPage — RegionManager (Indicateurs macro)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupDefaultMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('renders the macro indicators section with the region list and shared ticker fields', () => {
+    render(<GlobalConfigPage />);
+    expect(screen.getByText(/Indicateurs macro/i)).toBeTruthy();
+    expect(screen.getByText('us')).toBeTruthy();
+    expect(screen.getByText('États-Unis')).toBeTruthy();
+    expect(screen.getByText('^SPXEW')).toBeTruthy();
+    expect(screen.getByText('S&P 500 Equal Weight')).toBeTruthy();
+    expect(screen.getByText('Obligations Trésor américain')).toBeTruthy();
+    expect(screen.getByLabelText('Ticker Pétrole')).toBeTruthy();
+    expect(screen.getByLabelText('Nom Pétrole')).toBeTruthy();
+    expect(screen.getByLabelText('Ticker Or')).toBeTruthy();
+    expect(screen.getByLabelText('Nom Or')).toBeTruthy();
+    expect(screen.getByLabelText('Durée de la moyenne mobile (années)')).toBeTruthy();
+  });
+
+  it('shows "Aucune région" when there are no regions', () => {
+    mockUseMacroRegions.mockReturnValue({ data: [], refetch: vi.fn() });
+    render(<GlobalConfigPage />);
+    expect(screen.getByText('Aucune région')).toBeTruthy();
+  });
+
+  it('saving without a code shows validation error', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Nouvelle région'));
+    await user.type(screen.getByLabelText('Nom'), 'Allemagne');
+    const modal = screen.getByTestId('modal');
+    await user.click(within(modal).getByText('Enregistrer'));
+    expect(screen.getByText(/Le code est requis/i)).toBeTruthy();
+  }, 10000);
+
+  it('saving without a label shows validation error', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Nouvelle région'));
+    await user.type(screen.getByLabelText('Code'), 'de');
+    const modal = screen.getByTestId('modal');
+    await user.click(within(modal).getByText('Enregistrer'));
+    expect(screen.getByText(/Le nom est requis/i)).toBeTruthy();
+  }, 10000);
+
+  it('saving without an equity ticker shows validation error', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Nouvelle région'));
+    await user.type(screen.getByLabelText('Code'), 'de');
+    await user.type(screen.getByLabelText('Nom'), 'Allemagne');
+    const modal = screen.getByTestId('modal');
+    await user.click(within(modal).getByText('Enregistrer'));
+    expect(screen.getByText(/Le ticker actions est requis/i)).toBeTruthy();
+  }, 10000);
+
+  it('saving without a bond ticker shows validation error', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Nouvelle région'));
+    await user.type(screen.getByLabelText('Code'), 'de');
+    await user.type(screen.getByLabelText('Nom'), 'Allemagne');
+    await user.type(screen.getByLabelText('Ticker actions'), '^GDAXI');
+    const modal = screen.getByTestId('modal');
+    await user.click(within(modal).getByText('Enregistrer'));
+    expect(screen.getByText(/Le ticker obligations est requis/i)).toBeTruthy();
+  }, 10000);
+
+  it('saving without an equity label shows validation error', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Nouvelle région'));
+    await user.type(screen.getByLabelText('Code'), 'de');
+    await user.type(screen.getByLabelText('Nom'), 'Allemagne');
+    await user.type(screen.getByLabelText('Ticker actions'), '^GDAXI');
+    await user.type(screen.getByLabelText('Ticker obligations'), 'BUND');
+    const modal = screen.getByTestId('modal');
+    await user.click(within(modal).getByText('Enregistrer'));
+    expect(screen.getByText(/Le nom des actions est requis/i)).toBeTruthy();
+  }, 10000);
+
+  it('saving without a bond label shows validation error', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Nouvelle région'));
+    await user.type(screen.getByLabelText('Code'), 'de');
+    await user.type(screen.getByLabelText('Nom'), 'Allemagne');
+    await user.type(screen.getByLabelText('Ticker actions'), '^GDAXI');
+    await user.type(screen.getByLabelText('Ticker obligations'), 'BUND');
+    await user.type(screen.getByLabelText('Nom actions'), 'DAX 40');
+    const modal = screen.getByTestId('modal');
+    await user.click(within(modal).getByText('Enregistrer'));
+    expect(screen.getByText(/Le nom des obligations est requis/i)).toBeTruthy();
+  }, 10000);
+
+  it('can create a region with valid data', async () => {
+    const { createMacroRegion } = await import('../api/queries');
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Nouvelle région'));
+    await user.type(screen.getByLabelText('Code'), 'de');
+    await user.type(screen.getByLabelText('Nom'), 'Allemagne');
+    await user.type(screen.getByLabelText('Ticker actions'), '^GDAXI');
+    await user.type(screen.getByLabelText('Ticker obligations'), 'BUND');
+    await user.type(screen.getByLabelText('Nom actions'), 'DAX 40');
+    await user.type(screen.getByLabelText('Nom obligations'), 'Bund 10 ans');
+    const modal = screen.getByTestId('modal');
+    await user.click(within(modal).getByText('Enregistrer'));
+    expect(createMacroRegion).toHaveBeenCalledWith({
+      code: 'de', label: 'Allemagne', equity_ticker: '^GDAXI', bond_ticker: 'BUND',
+      equity_label: 'DAX 40', bond_label: 'Bund 10 ans',
+    });
+  }, 10000);
+
+  it('region code input converts to lowercase', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Nouvelle région'));
+    const codeInput = screen.getByLabelText('Code');
+    await user.type(codeInput, 'DE');
+    expect((codeInput as HTMLInputElement).value).toBe('de');
+  }, 10000);
+
+  it('create region API error shows the returned detail message', async () => {
+    const { createMacroRegion } = await import('../api/queries');
+    vi.mocked(createMacroRegion).mockRejectedValueOnce({ response: { data: { detail: "Region 'de' already exists" } } });
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Nouvelle région'));
+    await user.type(screen.getByLabelText('Code'), 'de');
+    await user.type(screen.getByLabelText('Nom'), 'Allemagne');
+    await user.type(screen.getByLabelText('Ticker actions'), '^GDAXI');
+    await user.type(screen.getByLabelText('Ticker obligations'), 'BUND');
+    await user.type(screen.getByLabelText('Nom actions'), 'DAX 40');
+    await user.type(screen.getByLabelText('Nom obligations'), 'Bund 10 ans');
+    const modal = screen.getByTestId('modal');
+    await user.click(within(modal).getByText('Enregistrer'));
+    await rtlWaitFor(() => expect(screen.getByText(/already exists/i)).toBeTruthy());
+  }, 10000);
+
+  it('create region API error without detail uses fallback message', async () => {
+    const { createMacroRegion } = await import('../api/queries');
+    vi.mocked(createMacroRegion).mockRejectedValueOnce(new Error('Network error'));
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Nouvelle région'));
+    await user.type(screen.getByLabelText('Code'), 'de');
+    await user.type(screen.getByLabelText('Nom'), 'Allemagne');
+    await user.type(screen.getByLabelText('Ticker actions'), '^GDAXI');
+    await user.type(screen.getByLabelText('Ticker obligations'), 'BUND');
+    await user.type(screen.getByLabelText('Nom actions'), 'DAX 40');
+    await user.type(screen.getByLabelText('Nom obligations'), 'Bund 10 ans');
+    const modal = screen.getByTestId('modal');
+    await user.click(within(modal).getByText('Enregistrer'));
+    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de l'enregistrement/i)).toBeTruthy());
+  }, 10000);
+
+  it('shows edit modal with the code locked when clicking edit for a region', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByRole('button', { name: /Modifier us/i }));
+    expect(screen.getByText(/Modifier la région — us/i)).toBeTruthy();
+    const codeInput = screen.getByLabelText('Code');
+    expect((codeInput as HTMLInputElement).disabled).toBe(true);
+    expect((codeInput as HTMLInputElement).value).toBe('us');
+  }, 10000);
+
+  it('can save an edited region', async () => {
+    const { updateMacroRegion } = await import('../api/queries');
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByRole('button', { name: /Modifier us/i }));
+    const labelInput = screen.getByLabelText('Nom');
+    await user.clear(labelInput);
+    await user.type(labelInput, 'USA');
+    const modal = screen.getByTestId('modal');
+    await user.click(within(modal).getByText('Enregistrer'));
+    expect(updateMacroRegion).toHaveBeenCalledWith('us', {
+      label: 'USA', equity_ticker: '^SPXEW', bond_ticker: 'GOVT',
+      equity_label: 'S&P 500 Equal Weight', bond_label: 'Obligations Trésor américain',
+    });
+  }, 10000);
+
+  it('can delete a region with confirm', async () => {
+    const { deleteMacroRegion } = await import('../api/queries');
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByRole('button', { name: /Supprimer fr/i }));
+    await user.click(screen.getByText('Supprimer'));
+    expect(deleteMacroRegion).toHaveBeenCalledWith('fr');
+  }, 10000);
+
+  it('delete cancelled by user does not call deleteMacroRegion', async () => {
+    const { deleteMacroRegion } = await import('../api/queries');
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByRole('button', { name: /Supprimer fr/i }));
+    await user.click(screen.getByText('Annuler'));
+    expect(deleteMacroRegion).not.toHaveBeenCalled();
+  }, 10000);
+
+  it('delete blocked (last remaining region) shows the returned error message', async () => {
+    const { deleteMacroRegion } = await import('../api/queries');
+    vi.mocked(deleteMacroRegion).mockRejectedValueOnce({ response: { data: { detail: 'Cannot delete the last remaining region' } } });
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByRole('button', { name: /Supprimer fr/i }));
+    await user.click(screen.getByText('Supprimer'));
+    await rtlWaitFor(() => expect(screen.getByText(/Cannot delete the last remaining region/i)).toBeTruthy());
+  }, 10000);
+
+  it('delete error without detail shows fallback message', async () => {
+    const { deleteMacroRegion } = await import('../api/queries');
+    vi.mocked(deleteMacroRegion).mockRejectedValueOnce(new Error('Unknown error'));
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByRole('button', { name: /Supprimer fr/i }));
+    await user.click(screen.getByText('Supprimer'));
+    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de la suppression/i)).toBeTruthy());
   }, 10000);
 });

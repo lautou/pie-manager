@@ -96,6 +96,10 @@ vi.mock('./api/queries', () => ({
   deleteBrokerAPI: vi.fn(),
   useEtfComposition: () => ({ data: undefined, isLoading: false }),
   usePoolAllocation: () => ({ data: undefined }),
+  useMacroRegions: () => ({ data: [] }),
+  createMacroRegion: vi.fn(),
+  updateMacroRegion: vi.fn(),
+  deleteMacroRegion: vi.fn(),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -179,6 +183,10 @@ vi.mock('./pages/CapitalGainsPage', () => ({
 
 vi.mock('./pages/TaxPage', () => ({
   default: () => <div data-testid="fiscalite-page">FiscalitePage</div>,
+}));
+
+vi.mock('./pages/IndicatorsPage', () => ({
+  default: () => <div data-testid="indicators-page">IndicatorsPage</div>,
 }));
 
 // A component that throws so we can test the ErrorBoundary
@@ -280,6 +288,12 @@ describe('App', () => {
     render(<App />);
     const body = document.body.textContent ?? '';
     expect(body).toContain('Administration système');
+  });
+
+  it('renders Indicateurs macro nav link', () => {
+    render(<App />);
+    const body = document.body.textContent ?? '';
+    expect(body).toContain('Indicateurs macro');
   });
 
   it('sidebar toggle button click covers the inner (o) => !o updater (line 73)', async () => {

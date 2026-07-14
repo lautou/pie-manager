@@ -7,7 +7,7 @@ celery_app = Celery(
     "pie",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.tasks.prices", "app.tasks.snapshots", "app.tasks.etf_holdings"],
+    include=["app.tasks.prices", "app.tasks.snapshots", "app.tasks.etf_holdings", "app.tasks.macro_indicators"],
 )
 
 celery_app.conf.update(
@@ -36,6 +36,11 @@ celery_app.conf.update(
         "refresh-etf-holdings": {
             "task": "app.tasks.etf_holdings.refresh_etf_holdings",
             "schedule": crontab(hour=6, minute=0, day_of_week="0"),
+        },
+        # Refresh macro indicators (SP500/oil, US10Y/gold) once a day
+        "refresh-macro-indicators": {
+            "task": "app.tasks.macro_indicators.refresh_macro_indicators",
+            "schedule": crontab(hour=7, minute=0),
         },
     },
 )

@@ -1,14 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '../api/client';
+import type { SyncStatus } from '../types';
 
-export interface SyncStatus {
-  status: 'never' | 'running' | 'success' | 'partial' | 'failed';
-  started_at: string | null;
-  finished_at: string | null;
-  total_tickers: number;
-  succeeded: number;
-  failed_tickers: string[];
-}
+export type { SyncStatus };
 
 async function fetchSyncStatus(): Promise<SyncStatus> {
   const { data } = await apiClient.get('/api/admin/sync-status');

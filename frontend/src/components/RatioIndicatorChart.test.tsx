@@ -14,9 +14,11 @@ import { pfCoreStubs } from '../../tests/utils/patternfly-mocks';
 vi.mock('@patternfly/react-core', () => ({ ...pfCoreStubs }));
 
 let capturedDomain: any;
+let capturedWidth: any;
 vi.mock('@patternfly/react-charts', () => ({
-  Chart: ({ children, containerComponent, legendComponent, domain, legendData }: any) => {
+  Chart: ({ children, containerComponent, legendComponent, domain, legendData, width }: any) => {
     capturedDomain = domain;
+    capturedWidth = width;
     return (
       <div data-testid="chart">
         {containerComponent ?? null}
@@ -73,9 +75,14 @@ function getChartContainer() {
   return screen.getByTestId('chart').parentElement as HTMLElement;
 }
 
+function periodButton(period: string) {
+  return screen.getByRole('button', { name: period });
+}
+
 describe('RatioIndicatorChart', () => {
   beforeEach(() => {
     capturedDomain = undefined;
+    capturedWidth = undefined;
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
       width: 800, height: 320, top: 0, left: 0, bottom: 320, right: 800, x: 0, y: 0,
       toJSON: () => ({}),
@@ -145,6 +152,16 @@ describe('RatioIndicatorChart', () => {
   it('picks up the initial container width from getBoundingClientRect', () => {
     render(<RatioIndicatorChart title="Growth" data={baseData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
     expect(screen.getByTestId('chart')).toBeInTheDocument();
+    expect(capturedWidth).toBe(800);
+  });
+
+  it('ignores a zero-width initial measurement (e.g. a container not yet laid out) and keeps the default width', () => {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+      width: 0, height: 320, top: 0, left: 0, bottom: 320, right: 0, x: 0, y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    render(<RatioIndicatorChart title="Growth" data={baseData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
+    expect(capturedWidth).toBe(900);
   });
 
   it('updates chart width when the ResizeObserver callback fires', () => {
@@ -176,14 +193,14 @@ describe('RatioIndicatorChart', () => {
     expect(screen.getByTestId('zoom-brush-overlay')).toBeInTheDocument();
   });
 
-  it('completing a drag beyond the 5px threshold zooms in and shows the reset button', () => {
+  it('completing a drag beyond the 5px threshold zooms in and deselects the active period', () => {
     render(<RatioIndicatorChart title="Growth" data={baseData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
     const container = getChartContainer();
     fireEvent.mouseDown(container, { clientX: 100 });
     fireEvent.mouseMove(container, { clientX: 400 });
     fireEvent.mouseUp(container);
 
-    expect(screen.getByText(/Réinitialiser zoom/)).toBeInTheDocument();
+    expect(periodButton('MAX')).toHaveAttribute('aria-pressed', 'false');
     expect(screen.queryByTestId('zoom-brush-overlay')).not.toBeInTheDocument();
     expect(capturedDomain).toBeDefined();
   });
@@ -195,7 +212,8 @@ describe('RatioIndicatorChart', () => {
     fireEvent.mouseMove(container, { clientX: 102 });
     fireEvent.mouseUp(container);
 
-    expect(screen.queryByText(/Réinitialiser zoom/)).not.toBeInTheDocument();
+    expect(periodButton('MAX')).toHaveAttribute('aria-pressed', 'true');
+    expect(capturedDomain).toBeUndefined();
   });
 
   it('a completed drag on a collapsed (zero-width) container does not zoom', () => {
@@ -209,18 +227,20 @@ describe('RatioIndicatorChart', () => {
     fireEvent.mouseMove(container, { clientX: 45 });
     fireEvent.mouseUp(container);
 
-    expect(screen.queryByText(/Réinitialiser zoom/)).not.toBeInTheDocument();
+    expect(periodButton('MAX')).toHaveAttribute('aria-pressed', 'true');
+    expect(capturedDomain).toBeUndefined();
   });
 
-  it('clicking reset clears the zoom domain', () => {
+  it('clicking MAX after a manual drag clears the zoom domain and re-selects MAX', () => {
     render(<RatioIndicatorChart title="Growth" data={baseData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
     const container = getChartContainer();
     fireEvent.mouseDown(container, { clientX: 100 });
     fireEvent.mouseMove(container, { clientX: 400 });
     fireEvent.mouseUp(container);
+    expect(capturedDomain).toBeDefined();
 
-    fireEvent.click(screen.getByText(/Réinitialiser zoom/));
-    expect(screen.queryByText(/Réinitialiser zoom/)).not.toBeInTheDocument();
+    fireEvent.click(periodButton('MAX'));
+    expect(periodButton('MAX')).toHaveAttribute('aria-pressed', 'true');
     expect(capturedDomain).toBeUndefined();
   });
 
@@ -232,7 +252,7 @@ describe('RatioIndicatorChart', () => {
     fireEvent.mouseDown(container, { clientX: 100 });
     fireEvent.mouseMove(container, { clientX: 110 });
     fireEvent.mouseUp(container);
-    expect(screen.getByText(/Réinitialiser zoom/)).toBeInTheDocument();
+    expect(capturedDomain).toBeDefined();
   });
 
   it('a wide drag on a multi-year dataset zooms without clamping to the 30-day minimum', () => {
@@ -248,7 +268,7 @@ describe('RatioIndicatorChart', () => {
     fireEvent.mouseMove(container, { clientX: 700 });
     fireEvent.mouseUp(container);
 
-    expect(screen.getByText(/Réinitialiser zoom/)).toBeInTheDocument();
+    expect(capturedDomain).toBeDefined();
     const [start, end] = capturedDomain.x as [Date, Date];
     expect(end.getTime() - start.getTime()).toBeGreaterThan(90 * 86_400_000);
   });
@@ -259,13 +279,15 @@ describe('RatioIndicatorChart', () => {
     fireEvent.mouseDown(container, { clientX: 100 });
     fireEvent.mouseMove(container, { clientX: 400 });
     fireEvent.mouseUp(container);
-    expect(screen.getByText(/Réinitialiser zoom/)).toBeInTheDocument();
+    expect(capturedDomain).toBeDefined();
+    const firstDomain = capturedDomain;
 
     // Second drag, now starting from an already-zoomed domain.
     fireEvent.mouseDown(container, { clientX: 150 });
     fireEvent.mouseMove(container, { clientX: 300 });
     fireEvent.mouseUp(container);
-    expect(screen.getByText(/Réinitialiser zoom/)).toBeInTheDocument();
+    expect(capturedDomain).toBeDefined();
+    expect(capturedDomain).not.toBe(firstDomain);
   });
 
   it('mouse leaving the chart while dragging cancels the brush', () => {
@@ -288,6 +310,81 @@ describe('RatioIndicatorChart', () => {
     render(<RatioIndicatorChart title="Growth" data={baseData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
     const container = getChartContainer();
     fireEvent.mouseUp(container);
-    expect(screen.queryByText(/Réinitialiser zoom/)).not.toBeInTheDocument();
+    expect(periodButton('MAX')).toHaveAttribute('aria-pressed', 'true');
+    expect(capturedDomain).toBeUndefined();
   });
+
+  // ── Preset period buttons ─────────────────────────────────────────────────
+
+  it('renders all 7 preset period buttons with MAX active by default', () => {
+    render(<RatioIndicatorChart title="Growth" data={baseData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
+    for (const p of ['1M', '3M', '1Y', 'YTD', '5Y', '10Y', 'MAX']) {
+      expect(periodButton(p)).toBeInTheDocument();
+    }
+    expect(periodButton('MAX')).toHaveAttribute('aria-pressed', 'true');
+    expect(capturedDomain).toBeUndefined();
+  });
+
+  it('clicking a preset period zooms to a range anchored on the dataset\'s latest date, not today', () => {
+    render(<RatioIndicatorChart title="Growth" data={baseData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
+    fireEvent.click(periodButton('1Y'));
+
+    expect(periodButton('1Y')).toHaveAttribute('aria-pressed', 'true');
+    expect(periodButton('MAX')).toHaveAttribute('aria-pressed', 'false');
+    const [, end] = capturedDomain.x as [Date, Date];
+    expect(end.toISOString().slice(0, 10)).toBe(baseData.dates[baseData.dates.length - 1]);
+  });
+
+  it('YTD zooms from January 1st of the latest data point\'s year', () => {
+    // A range spanning most of the year, so YTD (~5.5 months here) isn't widened by the
+    // 30-day minimum-zoom clamp — that would shift `start` earlier than Jan 1st and mask
+    // what this test is actually checking.
+    const midYearData: RatioIndicator = { ...baseData, dates: ['2020-01-01', '2020-06-15'] };
+    render(<RatioIndicatorChart title="Growth" data={midYearData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
+    fireEvent.click(periodButton('YTD'));
+
+    const [start] = capturedDomain.x as [Date, Date];
+    expect(start.getFullYear()).toBe(2020);
+    expect(start.getMonth()).toBe(0);
+    expect(start.getDate()).toBe(1);
+  });
+
+  it.each(['1M', '3M', '10Y'])('clicking the %s preset zooms and marks it active', (period) => {
+    // Use a decade-spanning dataset so every preset's natural range clears the 30-day clamp.
+    const longData: RatioIndicator = { ...baseData, dates: ['2010-01-01', '2020-06-15'] };
+    render(<RatioIndicatorChart title="Growth" data={longData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
+    fireEvent.click(periodButton(period));
+    expect(periodButton(period)).toHaveAttribute('aria-pressed', 'true');
+    expect(capturedDomain).toBeDefined();
+  });
+
+  it('only one preset button is marked active at a time', () => {
+    render(<RatioIndicatorChart title="Growth" data={baseData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
+    fireEvent.click(periodButton('5Y'));
+    for (const p of ['1M', '3M', '1Y', 'YTD', '10Y', 'MAX']) {
+      expect(periodButton(p)).toHaveAttribute('aria-pressed', 'false');
+    }
+    expect(periodButton('5Y')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it(
+    'picks up the real container width even when it only mounts after the loading state ' +
+    'clears (regression: an effect with an empty dependency array never re-measures a ref ' +
+    'that is null on first render)',
+    () => {
+      vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+        width: 950, height: 320, top: 0, left: 0, bottom: 320, right: 950, x: 0, y: 0,
+        toJSON: () => ({}),
+      } as DOMRect);
+      const { rerender } = render(
+        <RatioIndicatorChart title="Growth" data={undefined} isLoading aboveLabel="Up" belowLabel="Down" {...interpretationProps} />
+      );
+      expect(capturedWidth).toBeUndefined(); // no <Chart> rendered yet — spinner only
+
+      rerender(
+        <RatioIndicatorChart title="Growth" data={baseData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />
+      );
+      expect(capturedWidth).toBe(950);
+    }
+  );
 });

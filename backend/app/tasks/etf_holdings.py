@@ -40,7 +40,11 @@ YAHOO_WARMUP_URL = "https://fc.yahoo.com"
 YAHOO_WARMUP_QUOTE_URL = "https://finance.yahoo.com/quote/AAPL"
 YAHOO_HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; portfolio-tracker/1.0)",
-    "Accept": "application/json",
+    # The crumb endpoint (query2.finance.yahoo.com/v1/test/getcrumb) returns 406 Not Acceptable
+    # for "Accept: application/json" — confirmed empirically the User-Agent is not the issue,
+    # only this header is. quoteSummary itself returns JSON regardless of Accept, so "*/*"
+    # works for every request this module makes.
+    "Accept": "*/*",
 }
 
 

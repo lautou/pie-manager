@@ -455,7 +455,18 @@ module `topHoldings` for funds, `assetProfile` for a direct stock's `sectorKey`)
 **different, more fragile mechanism** than the price-sync `chart` endpoint above. It requires
 a session cookie + CSRF "crumb" token (`app/tasks/etf_holdings.py`, `_get_yahoo_session_crumb`)
 fetched fresh each run; if that fails, the whole task aborts cleanly (old data stays in place,
-`products.holdings_updated_at` just doesn't advance). Only the top 10 holdings are ever
+`products.holdings_updated_at` just doesn't advance).
+
+**Crumb endpoint gotcha, confirmed empirically**: `query2.finance.yahoo.com/v1/test/getcrumb`
+returns `406 Not Acceptable` when the request sends `Accept: application/json` — it's the
+`Accept` header specifically, not the `User-Agent` (isolated both independently; swapping only
+the `Accept` header to `*/*` flips 406→200, a real crumb, and a working `quoteSummary` fetch).
+`YAHOO_HEADERS`'s `Accept` is `*/*` for exactly this reason — `quoteSummary` itself returns
+JSON regardless of the `Accept` header sent, so this is safe for every request the module
+makes. This had silently never worked in production since the feature was introduced
+(`products.holdings_updated_at` was `NULL` for all 21 eligible products) until this fix.
+
+Only the top 10 holdings are ever
 available (never full composition — coverage varies 19-97% of fund assets depending on the
 ETF), so `by_company` always carries an explicit `"__OTHER__"` bucket for the untracked
 remainder rather than implying completeness. `products.bond_duration`/`bond_maturity` are also
@@ -570,11 +581,18 @@ use, and the page still shows "Dernière synchro" and auto-invalidates its queri
 completes.
 
 **Chart zoom** (`RatioIndicatorChart.tsx`) mirrors `IndexChart.tsx`'s characteristics
-(drag-to-select via raw mouse events, a translucent brush overlay, a `MIN_ZOOM_MS` floor, a
-"↺ Réinitialiser zoom" button) but deliberately skips `VictoryZoomContainer` — with
-`allowPan={false} allowZoom={false}` it adds nothing beyond directly setting
-`domain={{x: zoomDomain}}` on `<Chart>`, and dropping it lets `ChartVoronoiContainer` (hover
-tooltips) occupy the same `containerComponent` slot instead.
+(drag-to-select via raw mouse events, a translucent brush overlay, a `MIN_ZOOM_MS` floor) but
+deliberately skips `VictoryZoomContainer` — with `allowPan={false} allowZoom={false}` it adds
+nothing beyond directly setting `domain={{x: zoomDomain}}` on `<Chart>`, and dropping it lets
+`ChartVoronoiContainer` (hover tooltips) occupy the same `containerComponent` slot instead.
+A preset-period button row (1M/3M/1Y/YTD/5Y/10Y/MAX, same set as `PerformancePage.tsx`'s time
+scale selector) replaces the old standalone "Réinitialiser zoom" button — MAX both resets to
+the full range and serves as the "active by default" state; clicking a preset anchors the
+range on the **dataset's latest point** (`data.dates[last]`), not `new Date()`, since this
+data only updates via the nightly Celery sync. A manual drag clears the active-preset
+highlight (it rarely lands exactly on a preset boundary). See the ResizeObserver/`useEffect`
+lesson above — that bug was found and fixed while investigating a reported "zoom lands on the
+wrong years" issue in this exact chart.
 
 ## Health check endpoint
 
@@ -742,6 +760,48 @@ const handleFresh = useCallback((name: string) => {
 ```
 
 **Rule:** any callback passed as a prop to a child component that uses it in a `useEffect` **must** be wrapped in `useCallback`. Otherwise each parent re-render creates a new callback → child's useEffect re-fires → setState → re-render → infinite loop.
+
+## React pattern to avoid — measuring a ref in a `useEffect([])` when that ref mounts conditionally
+
+**Witnessed bug:** drag-to-zoom on `RatioIndicatorChart` (Indicateurs macro page) zoomed to a
+completely wrong date range — dragging over ~2020-2025 produced a chart zoomed to 2018-2019.
+
+**Root cause:** the standard "responsive chart width" pattern used throughout this codebase
+(`RatioIndicatorChart.tsx`, and also `PerformancePage.tsx`'s `chartContainerRef` — same latent
+bug there, not yet fixed) is:
+```tsx
+const containerRef = useRef<HTMLDivElement>(null);
+const [chartWidth, setChartWidth] = useState(900);
+useEffect(() => {
+  const el = containerRef.current;
+  if (!el) return;
+  setChartWidth(Math.floor(el.getBoundingClientRect().width));
+  const ro = new ResizeObserver(([entry]) => setChartWidth(Math.floor(entry.contentRect.width)));
+  ro.observe(el);
+  return () => ro.disconnect();
+}, []);  // ← BUG: empty deps
+```
+If the `<div ref={containerRef}>` only renders once `isLoading` is false (i.e. it's behind an
+`isLoading ? <Spinner/> : ... : <div ref={containerRef}>` branch — true for every chart in this
+app), `containerRef.current` is still `null` on the very first render, so the effect's `if
+(!el) return;` bails out and the `ResizeObserver` is **never created**. When data later arrives
+and the container finally mounts, the effect does **not** re-run (empty dependency array), so
+`chartWidth` stays frozen at its literal default (900) forever — confirmed by inspecting the
+live SVG's `viewBox` in the browser, which read `"0 0 900 320"` no matter the actual window
+size. The chart still renders at the right *visual* size regardless, because Victory always
+CSS-scales its SVG to fill the container irrespective of the `width` prop — so this is invisible
+until something does pixel math against the *real* screen size (the custom drag-to-zoom
+brush), at which point the mismatch between the assumed (900) and actual (~1800) coordinate
+systems throws the computed date range off by a large, non-obvious factor.
+
+**Rule:** an effect that measures a ref must depend on whatever gates that ref's conditional
+render (e.g. `[isLoading, hasData]`), not `[]`. An empty dependency array is only safe when the
+ref'd element is unconditionally present from the very first render.
+
+**How to verify this class of bug in the browser, without reading source:** inspect the
+chart's `<svg viewBox="...">` attribute directly (`document.querySelectorAll('svg')`) and
+resize the window — if the `viewBox` never changes while `clientWidth` does, the JS width
+state driving it is stuck.
 
 ## UX design decisions — do not revisit
 

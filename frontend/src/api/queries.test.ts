@@ -30,6 +30,8 @@ import {
   useGitHubUpdateStatus,
   useSystemSetting, useSetSystemSetting, useDeleteSystemSetting,
   useEtfComposition, usePoolAllocation,
+  useGrowthIndicator, useInflationIndicator,
+  useMacroRegions, createMacroRegion, updateMacroRegion, deleteMacroRegion,
 } from './queries';
 
 vi.mock('./client', () => ({
@@ -592,6 +594,91 @@ describe('api/queries React Query hooks', () => {
       const wrapper = makeWrapper();
       const { result } = renderHook(() => useEtfComposition(undefined), { wrapper });
       expect(result.current.isFetching).toBe(false);
+    });
+  });
+
+  // ── Macro indicators ─────────────────────────────────────────────────────────
+
+  const ratioIndicatorFixture = {
+    dates: ['2020-01-01'], ratio: [100], moving_avg: [95], ma_years: 7, status: 'above', latest_date: '2020-01-01',
+    numerator_ticker: '^SPXEW', denominator_ticker: 'CL=F',
+    numerator_label: 'S&P 500 Equal Weight', denominator_label: 'Pétrole (WTI)',
+  };
+
+  describe('useGrowthIndicator', () => {
+    it('fetches the growth indicator for the given region', async () => {
+      mockGet.mockResolvedValueOnce({ data: ratioIndicatorFixture } as any);
+
+      const wrapper = makeWrapper();
+      const { result } = renderHook(() => useGrowthIndicator('fr'), { wrapper });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockGet).toHaveBeenCalledWith('/api/indicators/growth', { params: { region: 'fr' } });
+      expect(result.current.data).toEqual(ratioIndicatorFixture);
+    });
+  });
+
+  describe('useInflationIndicator', () => {
+    it('fetches the inflation indicator for the given region', async () => {
+      mockGet.mockResolvedValueOnce({ data: ratioIndicatorFixture } as any);
+
+      const wrapper = makeWrapper();
+      const { result } = renderHook(() => useInflationIndicator('world'), { wrapper });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockGet).toHaveBeenCalledWith('/api/indicators/inflation', { params: { region: 'world' } });
+    });
+  });
+
+  describe('useMacroRegions', () => {
+    it('fetches the region list', async () => {
+      const regions = [{
+        code: 'us', label: 'États-Unis', equity_ticker: '^SPXEW', bond_ticker: 'GOVT',
+        equity_label: 'S&P 500 Equal Weight', bond_label: 'Obligations Trésor américain',
+      }];
+      mockGet.mockResolvedValueOnce({ data: regions } as any);
+
+      const wrapper = makeWrapper();
+      const { result } = renderHook(() => useMacroRegions(), { wrapper });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockGet).toHaveBeenCalledWith('/api/indicators/regions');
+      expect(result.current.data).toEqual(regions);
+    });
+  });
+
+  describe('createMacroRegion', () => {
+    it('posts a new region', async () => {
+      const region = {
+        code: 'de', label: 'Allemagne', equity_ticker: '^GDAXI', bond_ticker: 'BUND',
+        equity_label: 'DAX 40', bond_label: 'Bund 10 ans',
+      };
+      mockPost.mockResolvedValueOnce({ data: region } as any);
+      const result = await createMacroRegion(region);
+      expect(mockPost).toHaveBeenCalledWith('/api/indicators/regions', region);
+      expect(result).toEqual(region);
+    });
+  });
+
+  describe('updateMacroRegion', () => {
+    it('puts region changes', async () => {
+      const body = {
+        label: 'Deutschland', equity_ticker: 'EWG', bond_ticker: 'BUNL',
+        equity_label: 'iShares MSCI Germany', bond_label: 'Bund 10-15 ans',
+      };
+      const updated = { code: 'de', ...body };
+      mockPut.mockResolvedValueOnce({ data: updated } as any);
+      const result = await updateMacroRegion('de', body);
+      expect(mockPut).toHaveBeenCalledWith('/api/indicators/regions/de', body);
+      expect(result).toEqual(updated);
+    });
+  });
+
+  describe('deleteMacroRegion', () => {
+    it('deletes a region by code', async () => {
+      mockDelete.mockResolvedValueOnce({} as any);
+      await deleteMacroRegion('de');
+      expect(mockDelete).toHaveBeenCalledWith('/api/indicators/regions/de');
     });
   });
 

@@ -14,7 +14,8 @@
     "systemAdmin": "Administration système",
     "managePortfolios": "Gérer les portefeuilles",
     "global": "GLOBAL",
-    "portfolio": "Portefeuille"
+    "portfolio": "Portefeuille",
+    "indicators": "Indicateurs macro"
   },
   "app": {
     "name": "PIE Manager",
@@ -82,7 +83,8 @@
     "portfolio": "Portefeuille",
     "snapshot": "Snapshot",
     "sector": "Secteur",
-    "company": "Entreprise"
+    "company": "Entreprise",
+    "resetZoom": "Réinitialiser zoom"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -508,5 +510,50 @@
   "refreshBanner": {
     "newDataAvailable": "Actualisation des données en cours",
     "refresh": "Actualiser"
+  },
+  "indicators": {
+    "title": "Indicateurs macro",
+    "regionSelectLabel": "Zone",
+    "growthTitle": "Croissance — {{region}}",
+    "inflationTitle": "Inflation — {{region}}",
+    "growthAbove": "Croissance",
+    "growthBelow": "Récession",
+    "inflationAbove": "Désinflation",
+    "inflationBelow": "Inflation",
+    "growthInterpretationAbove": "Les actions progressent plus vite que le pétrole — signal de croissance économique.",
+    "growthInterpretationBelow": "Le pétrole progresse plus vite que les actions — signal de récession (l'énergie chère pénalise la production).",
+    "inflationInterpretationAbove": "Les obligations progressent plus vite que l'or — signal de désinflation.",
+    "inflationInterpretationBelow": "L'or progresse plus vite que les obligations — signal inflationniste.",
+    "legendRatioLabel": "{{numerator}} / {{denominator}} (base 100)",
+    "movingAvgLabel": "Moyenne mobile ({{years}} ans)",
+    "noData": "Aucune donnée pour le moment — la première synchronisation quotidienne n'a pas encore eu lieu.",
+    "tickerOil": "Ticker Pétrole",
+    "tickerOilLabel": "Nom Pétrole",
+    "tickerGold": "Ticker Or",
+    "tickerGoldLabel": "Nom Or",
+    "maYearsLabel": "Durée de la moyenne mobile (années)",
+    "settingsHint": "La modification d'un ticker ne s'applique qu'à la prochaine synchronisation.",
+    "lastSync": "Dernière synchro : {{time}}",
+    "sharedTickersLabel": "Commun (toutes zones)",
+    "macroSectionTitle": "🌍 Indicateurs macro — régions",
+    "macroSectionDescription": "Zones suivies pour les graphiques de croissance (actions/pétrole) et d'inflation (obligations/or) de la page Indicateurs. Ajoutez votre propre zone en indiquant un code, un nom, et les deux tickers Yahoo Finance correspondants.",
+    "newRegion": "Nouvelle région",
+    "editRegion": "Modifier la région",
+    "regionCode": "Code",
+    "regionLabel": "Nom",
+    "regionEquityLabel": "Nom actions",
+    "regionBondLabel": "Nom obligations",
+    "tickerEquity": "Ticker actions",
+    "tickerBond": "Ticker obligations",
+    "noRegions": "Aucune région",
+    "deleteRegionConfirm": "Supprimer la région \"{{name}}\" ?",
+    "validation": {
+      "codeRequired": "Le code est requis",
+      "labelRequired": "Le nom est requis",
+      "equityTickerRequired": "Le ticker actions est requis",
+      "bondTickerRequired": "Le ticker obligations est requis",
+      "equityLabelRequired": "Le nom des actions est requis",
+      "bondLabelRequired": "Le nom des obligations est requis"
+    }
   }
 }

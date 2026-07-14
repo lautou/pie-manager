@@ -12,6 +12,7 @@ PIE Manager permet de suivre plusieurs portefeuilles d'investissement depuis une
 - **Positions et titres** — actions, ETF, devises, or, SICAV
 - **Composition des ETF** — top 10 des avoirs et répartition sectorielle (clic sur un ticker)
 - **Allocation réelle par pool** — recoupement des actions détenues en direct avec leur poids dans chaque ETF du pool, par secteur et par entreprise
+- **Indicateurs macro** — croissance (actions/pétrole) et inflation (obligations/or) par zone géographique, zones entièrement configurables par l'utilisateur, écran indépendant du portefeuille
 - **Dashboard** — vue synthétique de la valeur totale, répartition par compte et par pool
 - **Plus-values (CUMP/WACOP)** — calcul automatique des plus-values latentes et réalisées
 - **Rééquilibrage** — outil de rééquilibrage par rapport aux allocations cibles

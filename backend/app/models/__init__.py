@@ -8,6 +8,7 @@ from app.models.snapshot import DailySnapshot, DailyPoolSnapshot, MonthlySnapsho
 from app.models.fiscal import FiscalCarryForward
 from app.models.portfolio_account import PortfolioAccount
 from app.models.etf_holding import EtfHolding, EtfSectorWeighting
+from app.models.macro_indicator import MacroSeriesPrice, MacroRegion
 
 __all__ = [
     "Portfolio",
@@ -26,4 +27,6 @@ __all__ = [
     "PortfolioAccount",
     "EtfHolding",
     "EtfSectorWeighting",
+    "MacroSeriesPrice",
+    "MacroRegion",
 ]

@@ -312,3 +312,34 @@ export interface PoolAllocation {
   unclassified_pct: number;
   holdings_updated_at: string | null;
 }
+
+export interface MacroRegionConfig {
+  code: string;
+  label: string;
+  equity_ticker: string;
+  bond_ticker: string;
+  equity_label: string;
+  bond_label: string;
+}
+
+export interface RatioIndicator {
+  dates: string[];
+  ratio: number[];
+  moving_avg: number[];
+  ma_years: number | null;
+  status: 'above' | 'below' | null;
+  latest_date: string | null;
+  numerator_ticker: string | null;
+  denominator_ticker: string | null;
+  numerator_label: string | null;
+  denominator_label: string | null;
+}
+
+export interface SyncStatus {
+  status: 'never' | 'running' | 'success' | 'partial' | 'failed';
+  started_at: string | null;
+  finished_at: string | null;
+  total_tickers: number;
+  succeeded: number;
+  failed_tickers: string[];
+}

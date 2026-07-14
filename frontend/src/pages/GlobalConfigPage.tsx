@@ -14,12 +14,14 @@ import { PencilAltIcon, PlusCircleIcon, TrashIcon } from '@patternfly/react-icon
 import { useQueryClient } from '@tanstack/react-query';
 import { useSystemSetting, useSetSystemSetting, useAllBrokers, usePortfolios,
   createBrokerAPI, updateBrokerAPI, deleteBrokerAPI, updateBrokerPortfoliosAPI,
-  useProducts, createProduct, updateProduct, deleteProduct } from '../api/queries';
+  useProducts, createProduct, updateProduct, deleteProduct,
+  useMacroRegions, createMacroRegion, updateMacroRegion, deleteMacroRegion } from '../api/queries';
 import { useSortable } from '../hooks/useSortable';
 import ConfirmModal from '../components/ConfirmModal';
 import TickerLink from '../components/TickerLink';
 import EtfCompositionModal from '../components/EtfCompositionModal';
-import type { Broker, CommissionTier, Product } from '../types';
+import SettingField from '../components/SettingField';
+import type { Broker, CommissionTier, MacroRegionConfig, Product } from '../types';
 import { computeCommission } from '../utils/commission';
 
 // ── Broker Manager ─────────────────────────────────────────────────────────
@@ -646,6 +648,188 @@ function ProductManager() {
   );
 }
 
+// ── Macro indicators region manager ───────────────────────────────────────
+
+interface RegionForm {
+  code: string;
+  label: string;
+  equity_ticker: string;
+  bond_ticker: string;
+  equity_label: string;
+  bond_label: string;
+}
+const EMPTY_REGION_FORM: RegionForm = {
+  code: '', label: '', equity_ticker: '', bond_ticker: '', equity_label: '', bond_label: '',
+};
+
+function RegionManager() {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const { data: regions = [], refetch } = useMacroRegions();
+
+  const [modalMode, setModalMode] = useState<'add' | 'edit' | null>(null);
+  const [editingRegion, setEditingRegion] = useState<MacroRegionConfig | null>(null);
+  const [form, setForm] = useState<RegionForm>(EMPTY_REGION_FORM);
+  const [formError, setFormError] = useState('');
+  const [deleteError, setDeleteError] = useState<{ code: string; message: string } | null>(null);
+  const [regionDeleteTarget, setRegionDeleteTarget] = useState<MacroRegionConfig | null>(null);
+  const [isDeletingRegion, setIsDeletingRegion] = useState(false);
+
+  const openAdd = () => { setForm(EMPTY_REGION_FORM); setFormError(''); setEditingRegion(null); setModalMode('add'); };
+  const openEdit = (r: MacroRegionConfig) => {
+    setForm({
+      code: r.code, label: r.label, equity_ticker: r.equity_ticker, bond_ticker: r.bond_ticker,
+      equity_label: r.equity_label, bond_label: r.bond_label,
+    });
+    setFormError(''); setEditingRegion(r); setModalMode('edit');
+  };
+  const closeModal = () => { setModalMode(null); setEditingRegion(null); setFormError(''); };
+
+  const invalidateMacroQueries = () => {
+    qc.invalidateQueries({ queryKey: ['macro-regions'] });
+    qc.invalidateQueries({ queryKey: ['macro-growth'] });
+    qc.invalidateQueries({ queryKey: ['macro-inflation'] });
+  };
+
+  const handleSave = async () => {
+    if (!form.code.trim()) { setFormError(t('indicators.validation.codeRequired')); return; }
+    if (!form.label.trim()) { setFormError(t('indicators.validation.labelRequired')); return; }
+    if (!form.equity_ticker.trim()) { setFormError(t('indicators.validation.equityTickerRequired')); return; }
+    if (!form.bond_ticker.trim()) { setFormError(t('indicators.validation.bondTickerRequired')); return; }
+    if (!form.equity_label.trim()) { setFormError(t('indicators.validation.equityLabelRequired')); return; }
+    if (!form.bond_label.trim()) { setFormError(t('indicators.validation.bondLabelRequired')); return; }
+    try {
+      if (modalMode === 'add') {
+        await createMacroRegion({
+          code: form.code.trim().toLowerCase(), label: form.label.trim(),
+          equity_ticker: form.equity_ticker.trim(), bond_ticker: form.bond_ticker.trim(),
+          equity_label: form.equity_label.trim(), bond_label: form.bond_label.trim(),
+        });
+      } else {
+        /* v8 ignore next -- @preserve */
+        if (editingRegion) {
+          await updateMacroRegion(editingRegion.code, {
+            label: form.label.trim(), equity_ticker: form.equity_ticker.trim(), bond_ticker: form.bond_ticker.trim(),
+            equity_label: form.equity_label.trim(), bond_label: form.bond_label.trim(),
+          });
+        }
+      }
+      closeModal(); refetch(); invalidateMacroQueries();
+    } catch (e: any) {
+      setFormError(e?.response?.data?.detail ?? 'Erreur lors de l\'enregistrement');
+    }
+  };
+
+  const handleDelete = (r: MacroRegionConfig) => { setDeleteError(null); setRegionDeleteTarget(r); };
+
+  const handleConfirmDeleteRegion = async () => {
+    /* v8 ignore next -- @preserve */
+    if (!regionDeleteTarget) return;
+    setIsDeletingRegion(true);
+    try {
+      await deleteMacroRegion(regionDeleteTarget.code);
+      refetch(); invalidateMacroQueries();
+      setRegionDeleteTarget(null);
+    } catch (e: any) {
+      setDeleteError({ code: regionDeleteTarget.code, message: e?.response?.data?.detail ?? 'Erreur lors de la suppression' });
+    } finally { setIsDeletingRegion(false); }
+  };
+
+  const inputSt: React.CSSProperties = { padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', fontSize: '0.9rem', width: '100%' };
+  const tdSt: React.CSSProperties = { padding: '6px 8px', fontSize: '0.9rem', borderBottom: '1px solid #eee' };
+  const thSt: React.CSSProperties = { padding: '6px 8px', textAlign: 'left', borderBottom: '1px solid #ddd', fontSize: '0.85rem', color: '#6A6E73' };
+  const btnSm = (extra?: React.CSSProperties): React.CSSProperties => ({ padding: '3px 8px', borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem', border: 'none', ...extra });
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+        <span style={{ fontSize: '0.85rem', color: '#6A6E73' }}>{regions.length} région(s)</span>
+        <Button variant="primary" icon={<PlusCircleIcon />} size="sm" onClick={openAdd}>{t('indicators.newRegion')}</Button>
+      </div>
+      {deleteError && <Alert variant="danger" isInline title={t('error.deleteFailed')} style={{ marginBottom: '0.75rem' }}>{deleteError.message}</Alert>}
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+          <thead>
+            <tr style={{ background: '#f5f5f5' }}>
+              <th style={thSt}>{t('indicators.regionCode')}</th>
+              <th style={thSt}>{t('indicators.regionLabel')}</th>
+              <th style={thSt}>{t('indicators.regionEquityLabel')}</th>
+              <th style={thSt}>{t('indicators.tickerEquity')}</th>
+              <th style={thSt}>{t('indicators.regionBondLabel')}</th>
+              <th style={thSt}>{t('indicators.tickerBond')}</th>
+              <th style={thSt}>{t('common.actions')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {regions.map(r => (
+              <tr key={r.code}>
+                <td style={{ ...tdSt, fontFamily: 'monospace', fontWeight: 600 }}>{r.code}</td>
+                <td style={tdSt}>{r.label}</td>
+                <td style={tdSt}>{r.equity_label}</td>
+                <td style={{ ...tdSt, fontFamily: 'monospace' }}>{r.equity_ticker}</td>
+                <td style={tdSt}>{r.bond_label}</td>
+                <td style={{ ...tdSt, fontFamily: 'monospace' }}>{r.bond_ticker}</td>
+                <td style={{ ...tdSt, whiteSpace: 'nowrap' }}>
+                  <button aria-label={`${t('common.edit')} ${r.code}`} style={btnSm({ marginRight: 4, background: '#f5f5f5', border: '1px solid #ccc' })} onClick={() => openEdit(r)}><PencilAltIcon /></button>
+                  <button aria-label={`${t('common.delete')} ${r.code}`} style={btnSm({ background: '#FAEAE8', border: '1px solid #C9190B', color: '#C9190B' })} onClick={() => handleDelete(r)}><TrashIcon /></button>
+                </td>
+              </tr>
+            ))}
+            {regions.length === 0 && <tr><td colSpan={7} style={{ ...tdSt, color: '#6A6E73', textAlign: 'center' }}>{t('indicators.noRegions')}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <Modal variant={ModalVariant.medium}
+        title={modalMode === 'add' ? t('indicators.newRegion') : `${t('indicators.editRegion')} — ${editingRegion?.code}`}
+        isOpen={modalMode !== null} onClose={closeModal}
+        actions={[<Button key="save" variant="primary" onClick={handleSave}>{t('common.save')}</Button>, <Button key="cancel" variant="link" onClick={closeModal}>{t('common.cancel')}</Button>]}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div>
+            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('indicators.regionCode')} {modalMode === 'add' && <span style={{ color: '#C9190B' }}>*</span>}</label>
+            {modalMode === 'add' ? (
+              <input aria-label={t('indicators.regionCode')} value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toLowerCase() }))} placeholder="Ex: de" style={inputSt} />
+            ) : (
+              <input aria-label={t('indicators.regionCode')} value={form.code} disabled style={{ ...inputSt, background: '#f5f5f5', color: '#6A6E73' }} />
+            )}
+          </div>
+          <div>
+            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('indicators.regionLabel')} <span style={{ color: '#C9190B' }}>*</span></label>
+            <input aria-label={t('indicators.regionLabel')} value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} placeholder="Ex: Allemagne" style={inputSt} />
+          </div>
+          <div>
+            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('indicators.tickerEquity')} <span style={{ color: '#C9190B' }}>*</span></label>
+            <input aria-label={t('indicators.tickerEquity')} value={form.equity_ticker} onChange={e => setForm(f => ({ ...f, equity_ticker: e.target.value }))} placeholder="Ex: ^GDAXI" style={inputSt} />
+          </div>
+          <div>
+            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('indicators.regionEquityLabel')} <span style={{ color: '#C9190B' }}>*</span></label>
+            <input aria-label={t('indicators.regionEquityLabel')} value={form.equity_label} onChange={e => setForm(f => ({ ...f, equity_label: e.target.value }))} placeholder="Ex: DAX 40" style={inputSt} />
+          </div>
+          <div>
+            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('indicators.tickerBond')} <span style={{ color: '#C9190B' }}>*</span></label>
+            <input aria-label={t('indicators.tickerBond')} value={form.bond_ticker} onChange={e => setForm(f => ({ ...f, bond_ticker: e.target.value }))} placeholder="Ex: BUND" style={inputSt} />
+          </div>
+          <div>
+            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('indicators.regionBondLabel')} <span style={{ color: '#C9190B' }}>*</span></label>
+            <input aria-label={t('indicators.regionBondLabel')} value={form.bond_label} onChange={e => setForm(f => ({ ...f, bond_label: e.target.value }))} placeholder="Ex: Bund 10 ans" style={inputSt} />
+          </div>
+          {formError && <div style={{ color: '#C9190B', fontSize: '0.85rem' }}>{formError}</div>}
+        </div>
+      </Modal>
+
+      <ConfirmModal
+        isOpen={!!regionDeleteTarget}
+        title={t('common.confirmDeleteTitle')}
+        message={regionDeleteTarget
+          ? t('indicators.deleteRegionConfirm', { name: `${regionDeleteTarget.code} — ${regionDeleteTarget.label}` })
+          : ''}
+        isLoading={isDeletingRegion}
+        onConfirm={handleConfirmDeleteRegion}
+        onCancel={() => setRegionDeleteTarget(null)}
+      />
+    </div>
+  );
+}
+
 export default function GlobalConfigPage() {
   const { t } = useTranslation();
   const { data: ttfSetting } = useSystemSetting('ttf_rate');
@@ -722,6 +906,26 @@ export default function GlobalConfigPage() {
             Catalogue des instruments financiers (ETF, actions, cash, or…) et des types de frais. Le ticker est la clé primaire et ne peut pas être modifié. La suppression est bloquée si des transactions y font référence.
           </p>
           <ProductManager />
+        </CardBody>
+      </Card>
+
+      {/* ── Indicateurs macro (régions + tickers communs) ── */}
+      <Card style={{ marginBottom: '1.5rem' }}>
+        <CardTitle>{t('indicators.macroSectionTitle')}</CardTitle>
+        <CardBody>
+          <p style={{ fontSize: '0.85rem', color: '#6A6E73', marginBottom: '1rem' }}>
+            {t('indicators.macroSectionDescription')}
+          </p>
+          <RegionManager />
+          <div style={{ fontWeight: 600, margin: '1.25rem 0 0.5rem' }}>{t('indicators.sharedTickersLabel')}</div>
+          <SettingField settingKey="macro.ticker.oil" label={t('indicators.tickerOil')} defaultValue="CL=F" />
+          <SettingField settingKey="macro.ticker.oil.label" label={t('indicators.tickerOilLabel')} defaultValue="Pétrole (WTI)" />
+          <SettingField settingKey="macro.ticker.gold" label={t('indicators.tickerGold')} defaultValue="GC=F" />
+          <SettingField settingKey="macro.ticker.gold.label" label={t('indicators.tickerGoldLabel')} defaultValue="Or" />
+          <SettingField settingKey="macro.ma_years" label={t('indicators.maYearsLabel')} defaultValue="7" type="number" />
+          <div style={{ fontSize: '0.78rem', color: '#6A6E73', marginTop: '0.5rem' }}>
+            {t('indicators.settingsHint')}
+          </div>
         </CardBody>
       </Card>
     </PageSection>

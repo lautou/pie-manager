@@ -472,6 +472,110 @@ Transactions, Performance, Dashboard) — a single reusable pair rather than one
 page. `PoolAllocationSection` (on the Positions page, per pool) shows the merged sector/company
 breakdown via `GET /api/pools/{pool_id}/allocation`.
 
+## Macro indicators — growth/inflation ratio page (portfolio-independent)
+
+New global page `/indicators` (outside `/portfolio/:id/*`, uses `GlobalLayout` like `/config`)
+showing two "base 100" ratio charts with a rolling moving average, for a selectable **region**:
+**growth** (region equity index / WTI oil `CL=F`, oil shared across regions) and **inflation**
+(region government bond ETF / gold `GC=F`, gold shared across regions). Ratio below its own
+moving average = recession / inflationary regime, per the user's macro reading — this is a
+display convention, not something the backend interprets. Each chart's legend spells out the
+real "X / Y (base 100)" ratio using **human-readable descriptive names** (e.g. "CAC 40 /
+Pétrole (WTI)"), never the raw Yahoo ticker (e.g. "^FCHI / CL=F" means nothing to a
+non-technical reader) — see `equity_label`/`bond_label` below. Falls back to the raw ticker
+only if a label is ever empty (defensive, shouldn't happen since the fields are required in
+the UI). Also shows a one-line interpretation of what "above"/"below" means for that pair
+(gold vs. bonds, equities vs. energy) — sourced from i18n, not hardcoded per region.
+
+**Inflation deliberately uses bond ETF *prices*, never a yield**, uniformly across all
+regions — a yield and a bond price move inversely, so mixing a yield-based region with
+price-based ones would flip the "ratio below MA" reading's direction between regions.
+
+**Regions are a user-managed CRUD list, not a hardcoded set.** `MacroRegion` model
+(`code` PK, `label`, `equity_ticker`, `bond_ticker`, `equity_label`, `bond_label`) is managed
+entirely from **Configuration générale** (`GlobalConfigPage.tsx`'s `RegionManager`, mirroring
+`ProductManager`'s table + modal + `ConfirmModal`-delete shape) — the user adds/edits/removes
+regions themselves, no code change needed. `code` is immutable once created (it doubles as the
+`macro_series_prices` series-key prefix: `f"{code}_equity"`/`f"{code}_bond"` — renaming it
+would orphan history). `equity_label`/`bond_label` (e.g. "CAC 40", "Obligations zone euro
+10-15 ans") are required fields in the add/edit form — the whole point of the feature is a
+human-readable legend, so leaving them optional would silently regress to raw tickers for any
+region the user forgets to fill in. Deleting the last remaining region is rejected (the page
+must always have at least one). Seeded regions (migration `pp99qq00rr11`, labels backfilled by
+`qq00rr11ss22`):
+
+| Region | Growth (equity) | Inflation (bond ETF) |
+|---|---|---|
+| US | `^SPXEW` "S&P 500 Equal Weight" | `GOVT` "Obligations Trésor américain" (iShares U.S. Treasury Bond ETF) |
+| France | `^FCHI` "CAC 40" (see data-gap gotcha below) | `MTE.PA` "Obligations zone euro 10-15 ans" (Amundi Euro Government Bond 10-15Y — **Eurozone, not pure France OAT**) |
+| Monde | `MWEQ.L` "Actions Monde (Equal Weight)" (Invesco MSCI World Equal Weight UCITS ETF) | `BNDW` "Obligations Monde" (Vanguard Total World Bond ETF) |
+
+The shared oil/gold tickers get the same treatment: `macro.ticker.oil.label`/
+`macro.ticker.gold.label` SystemSetting keys (default "Pétrole (WTI)"/"Or"), surfaced as two
+more `SettingField`s next to the existing ticker fields in the same "Indicateurs macro" card —
+`get_macro_settings(db)` returns them as `oil_label`/`gold_label` alongside the existing
+`oil`/`gold` ticker keys.
+
+**Two Yahoo tickers were confirmed dead via real QA testing, not caught by mocked unit
+tests** — always empirically curl-verify a ticker's chart history depth before adopting it:
+- The raw MSCI World Equal Weighted index code `^129857-USD-STRD` returns a live quote on
+  Yahoo but **zero historical chart data** (confirmed via explicit `period1`/`period2` even
+  over a 10-year window — only 1 point, today, ever comes back). Replaced by `MWEQ.L`, the
+  equal-weight ETF tracking the same index (real daily history, ~470 points since Sept 2024).
+- `^SBF120` (originally used for France) has **zero chart history from 2016 onward**
+  (confirmed via narrow 2016-2018 and 2020-2021 windows, both 0 points) — visible on the
+  frontend as the growth ratio line flattening to a constant value once the underlying series
+  stops updating. Replaced by `^FCHI` (CAC 40), verified to have a continuous 26-year daily
+  history with no gaps.
+
+Single generic table `macro_series_prices` (`series`, `date`, `value`, unique on
+`(series, date)`), decoupled from `products`/portfolios and from the region list itself —
+`compute_ratio_indicator(db, numerator_series, denominator_series, ma_years)` only ever sees
+plain series-key strings, with no notion of "region" at all. This is why generalizing from a
+single hardcoded region to 3, then to a fully dynamic N-region CRUD system required **zero**
+changes to this function — validating the payoff of keeping it series-key-based from the start.
+The moving average is a time-based (not point-count) O(n) sliding window, since fixed-N-point
+windows are imprecise once holidays/gaps exist in the series.
+
+Oil/gold tickers + the moving-average duration (default 7 years, **one setting shared by every
+region's charts**, not per-graph) are configurable via the generic `SystemSetting` key/value
+store (`macro.ticker.oil`, `macro.ticker.gold`, `macro.ma_years`) — surfaced as `SettingField`
+inputs (shared component, `frontend/src/components/SettingField.tsx`) under **Configuration
+générale**'s "Indicateurs macro" card, alongside the region table. Nothing is hardcoded: adding
+a region or changing a ticker/MA-duration never requires a code change.
+
+`GET /api/indicators/growth|inflation` take a `region` query param, 404 on an unknown region
+code (a real missing resource, not a fixed-enum check) — response includes both the resolved
+`numerator_ticker`/`denominator_ticker` (raw tickers, kept for reference) and
+`numerator_label`/`denominator_label` (the descriptive names the frontend actually renders in
+the legend) so the frontend never needs to duplicate region/settings data to build either.
+`GET/POST/PUT/DELETE /api/indicators/regions` mirror `products.py`'s CRUD shape.
+
+**Critical data-source gotcha**: `app/tasks/macro_indicators.py` fetches full history every run
+using **explicit `period1`/`period2` Unix-timestamp params**, never `range=max`. Confirmed
+empirically: `range=max&interval=1d` gets silently downsampled by Yahoo to ~monthly granularity
+for long spans (only ~168 points over 42 years for `^GSPC`), while explicit `period1`/`period2`
+returns true uncapped daily data (6500+ points over 26 years). Re-fetching full history each run
+(not just "today") is cheap and self-heals gaps/revisions, mirroring the ETF holdings task's
+replace-on-fetch approach. Runs daily (`crontab(hour=7, minute=0)`) plus once at backend startup.
+The task builds its fetch list from `list_regions(db)` at runtime plus oil/gold — it scales to
+however many regions exist, no hardcoded ticker count anywhere.
+
+Manual trigger (`POST /api/indicators/refresh`) + status polling
+(`GET /api/indicators/sync-status`, Redis key `pie:macro:status`) mirror the ETF holdings task's
+pattern rather than price-sync's fixed-4s-guess, since a full refetch's duration isn't a safe
+constant to assume. There is no manual "Actualiser maintenant" button on the page itself
+(removed — daily auto-sync makes a manual trigger low-value); the endpoint remains for ops/curl
+use, and the page still shows "Dernière synchro" and auto-invalidates its queries when a sync
+completes.
+
+**Chart zoom** (`RatioIndicatorChart.tsx`) mirrors `IndexChart.tsx`'s characteristics
+(drag-to-select via raw mouse events, a translucent brush overlay, a `MIN_ZOOM_MS` floor, a
+"↺ Réinitialiser zoom" button) but deliberately skips `VictoryZoomContainer` — with
+`allowPan={false} allowZoom={false}` it adds nothing beyond directly setting
+`domain={{x: zoomDomain}}` on `<Chart>`, and dropping it lets `ChartVoronoiContainer` (hover
+tooltips) occupy the same `containerComponent` slot instead.
+
 ## Health check endpoint
 
 - `GET /api/admin/health` — returns `{"status": "healthy"}` (200) or 503 if DB unreachable
@@ -827,6 +931,28 @@ caught by neither TypeScript, ESLint, nor a passing test suite — only by notic
 Vitest hoists `vi.mock` to the top of the module. A `vi.mock` nested inside `it()` or `describe()`
 produces a warning — will become an error in a future version.
 To change a mock value within a test: use `mockReturnValue` in `beforeEach`.
+
+**Problem 5 — position-based selectors (`getAllByText(...)[.length - 1]`, `.slice(-3)`,
+`inputs[0]`) silently break when new, unrelated content is added elsewhere on the same page:**
+`GlobalConfigPage.tsx` hosts several independent managers (TTF rate, `CommissionManager`,
+`ProductManager`, `RegionManager`) stacked as sibling `Card`s. Several pre-existing tests
+targeted "the button/input I care about" by position — `saveBtns[saveBtns.length - 1]` (assumed
+last "Enregistrer" on the page = the one just opened), `numberInputs.slice(-3)` (assumed the
+last 3 number inputs = the FX panel's three fields). Adding the "Indicateurs macro" card (with
+its own always-rendered `SettingField` "Enregistrer" buttons and a numeric "Durée MM" input)
+*after* those cards in the JSX shifted what counted as "last" — the tests kept passing (or, for
+ones with weak assertions like `toBeTruthy()` on static text, silently stopped exercising their
+intended code path at all, dropping real coverage with no failing test to point at why — the
+exact same failure shape as Problem 4 above, different mechanism).
+
+**Rule:** never select an element by absolute position/count when the page can grow unrelated
+siblings later. Scope with `within(container)` on the specific panel/modal being tested (most
+robust — a sibling section's new buttons are structurally excluded), or an exact-text match on
+the one you mean (`{ name: 'Ticker' }` instead of `{ name: /ticker/i }`, if another field's
+label happens to contain the same substring — as happened here with "Ticker Pétrole"/"Ticker
+Or"). When adding a new always-rendered element to a page that already has similarly-labeled
+siblings, grep the test file for `getAllBy*`/`.slice(-N)`/`[N]`/`/regex/i` patterns that could
+now match your new element, don't assume "my new tests pass" is sufficient.
 
 **Current CI thresholds:**
 - statements: **100%** (unreachable code marked with `/* v8 ignore next -- @preserve */`)

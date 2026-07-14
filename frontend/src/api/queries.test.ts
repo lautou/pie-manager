@@ -29,6 +29,7 @@ import {
   useFiscalCurrentYearPv,
   useGitHubUpdateStatus,
   useSystemSetting, useSetSystemSetting, useDeleteSystemSetting,
+  useEtfComposition, usePoolAllocation,
 } from './queries';
 
 vi.mock('./client', () => ({
@@ -448,6 +449,33 @@ describe('api/queries React Query hooks', () => {
     });
   });
 
+  describe('usePoolAllocation', () => {
+    it('fetches pool allocation when portfolioId and poolId are both set', async () => {
+      const allocation = { pool_id: 1, pool_name: 'Energie', total_eur: 0, by_sector: [], by_company: [], unclassified_eur: 0, unclassified_pct: 0, holdings_updated_at: null };
+      mockGet.mockResolvedValueOnce({ data: allocation } as any);
+
+      const wrapper = makeWrapper();
+      const { result } = renderHook(() => usePoolAllocation(1, 2), { wrapper });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockGet).toHaveBeenCalledWith('/api/pools/2/allocation', expect.objectContaining({
+        params: { portfolio_id: 1 },
+      }));
+    });
+
+    it('is disabled when poolId is null', () => {
+      const wrapper = makeWrapper();
+      const { result } = renderHook(() => usePoolAllocation(1, null), { wrapper });
+      expect(result.current.isFetching).toBe(false);
+    });
+
+    it('is disabled when portfolioId is undefined', () => {
+      const wrapper = makeWrapper();
+      const { result } = renderHook(() => usePoolAllocation(undefined, 2), { wrapper });
+      expect(result.current.isFetching).toBe(false);
+    });
+  });
+
   // ── Prices ──────────────────────────────────────────────────────────────────
 
   describe('usePrices', () => {
@@ -541,6 +569,28 @@ describe('api/queries React Query hooks', () => {
     it('is disabled when userId is undefined', () => {
       const wrapper = makeWrapper();
       const { result } = renderHook(() => useHoldingsAtDate(undefined, '2024-01-01'), { wrapper });
+      expect(result.current.isFetching).toBe(false);
+    });
+  });
+
+  describe('useEtfComposition', () => {
+    it('fetches composition when ticker is defined', async () => {
+      const composition = {
+        ticker: 'FLXC.DE', name: 'Franklin FTSE China', top_holdings: [], top_holdings_coverage_pct: 0,
+        sector_weightings: [], bond_duration: null, bond_maturity: null, holdings_updated_at: null,
+      };
+      mockGet.mockResolvedValueOnce({ data: composition } as any);
+
+      const wrapper = makeWrapper();
+      const { result } = renderHook(() => useEtfComposition('FLXC.DE'), { wrapper });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockGet).toHaveBeenCalledWith('/api/dashboard/holdings/FLXC.DE/composition');
+    });
+
+    it('is disabled when ticker is undefined', () => {
+      const wrapper = makeWrapper();
+      const { result } = renderHook(() => useEtfComposition(undefined), { wrapper });
       expect(result.current.isFetching).toBe(false);
     });
   });

@@ -96,6 +96,7 @@ vi.mock('../api/queries', () => ({
   useCreateTransaction: () => mockUseCreateTransaction(),
   useUpdateTransaction: () => mockUseUpdateTransaction(),
   useDeleteTransaction: () => mockUseDeleteTransaction(),
+  useEtfComposition: () => ({ data: undefined, isLoading: false }),
 }));
 
 const mockAccount = { id: 1, portfolio_id: 1, name: 'Degiro', currency: 'EUR' };

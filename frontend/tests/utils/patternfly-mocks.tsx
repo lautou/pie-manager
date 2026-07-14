@@ -151,6 +151,22 @@ export const pfCoreStubs = {
     </button>
   ),
 
+  // Tabs
+  Tabs: ({ children, activeKey, onSelect }: any) => (
+    <div data-testid="tabs" data-active-key={String(activeKey)}>
+      {React.Children.map(children, (child: any) =>
+        React.cloneElement(child, { onSelect, isActive: child.props.eventKey === activeKey })
+      )}
+    </div>
+  ),
+  Tab: ({ children, eventKey, title, onSelect, isActive }: any) => (
+    <div data-testid={`tab-${eventKey}`}>
+      <button onClick={(e: any) => onSelect?.(e, eventKey)}>{title}</button>
+      {isActive && <div data-testid={`tab-panel-${eventKey}`}>{children}</div>}
+    </div>
+  ),
+  TabTitleText: ({ children }: any) => <>{children}</>,
+
   // Progress
   Progress: ({ value, 'aria-label': ariaLabel }: any) => (
     <div data-testid="progress" aria-label={ariaLabel}>{value}%</div>

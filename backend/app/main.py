@@ -23,6 +23,14 @@ async def lifespan(app: FastAPI):
         refresh_prices_live.delay()
     except Exception:
         pass  # Don't block startup if Celery is unavailable
+
+    # On startup: refresh ETF holdings too, rather than waiting up to a week for
+    # the next scheduled Celery Beat run (non-blocking task).
+    try:
+        from app.tasks.etf_holdings import refresh_etf_holdings
+        refresh_etf_holdings.delay()
+    except Exception:
+        pass  # Don't block startup if Celery is unavailable
     yield
 
 

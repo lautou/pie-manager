@@ -439,6 +439,39 @@ portfolio with a pending injection) must fall back to 0%, not NaN/Infinity.
 This makes Dashboard/Rebalancing refresh right when a price sync actually completes, instead
 of waiting for the next blind interval tick.
 
+## ETF look-through holdings — sector/company allocation
+
+Two new tables — `etf_holdings` (top-10 underlying holdings) and `etf_sector_weightings`
+(sector breakdown) — keyed by `parent_ticker`. A directly held stock (`instrument_type='Action'`)
+gets a **synthetic self-row** in both (`holding_ticker=parent_ticker`, `weight_pct=1.0`), so
+`compute_pool_lookthrough()` in `app/services/etf_holdings_service.py` never special-cases
+"ETF vs direct stock" — every position in a pool feeds the same `by_company`/`by_sector`
+accumulators keyed by underlying ticker/sector, which is what merges a stock held directly
+with the same stock found inside one or more ETFs in the pool (e.g. TotalEnergies held
+directly as `TTE.PA` and inside `STN.PA` at 18.63% — confirmed on real portfolio data).
+
+**Data source**: Yahoo Finance's unofficial `quoteSummary` endpoint (`query2.finance.yahoo.com`,
+module `topHoldings` for funds, `assetProfile` for a direct stock's `sectorKey`) — a
+**different, more fragile mechanism** than the price-sync `chart` endpoint above. It requires
+a session cookie + CSRF "crumb" token (`app/tasks/etf_holdings.py`, `_get_yahoo_session_crumb`)
+fetched fresh each run; if that fails, the whole task aborts cleanly (old data stays in place,
+`products.holdings_updated_at` just doesn't advance). Only the top 10 holdings are ever
+available (never full composition — coverage varies 19-97% of fund assets depending on the
+ETF), so `by_company` always carries an explicit `"__OTHER__"` bucket for the untracked
+remainder rather than implying completeness. `products.bond_duration`/`bond_maturity` are also
+captured for bond funds — present in Yahoo's API but never shown on Yahoo's own site.
+
+Runs weekly (`crontab(hour=6, minute=0, day_of_week="0")`) plus once at backend startup,
+mirroring the price-sync task's structure.
+
+**Frontend**: `TickerLink` (`frontend/src/components/TickerLink.tsx`) renders a ticker as
+clickable only for `instrument_type` ETF/SICAV-FCP/Action (never Cash/Or physique/Obligation/
+Frais — no composition data exists for those), opening `EtfCompositionModal`. Both are shared
+components wired into every page that displays a ticker (Comptes, Produits et frais, Positions,
+Transactions, Performance, Dashboard) — a single reusable pair rather than one-off modals per
+page. `PoolAllocationSection` (on the Positions page, per pool) shows the merged sector/company
+breakdown via `GET /api/pools/{pool_id}/allocation`.
+
 ## Health check endpoint
 
 - `GET /api/admin/health` — returns `{"status": "healthy"}` (200) or 503 if DB unreachable

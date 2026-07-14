@@ -1,10 +1,10 @@
 from __future__ import annotations
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from pydantic import BaseModel
 from typing import Optional
-from datetime import date
+from datetime import date, datetime
 
 from app.core.database import get_db
 from app.models import Pool, PoolProduct, AssetPrice, Transaction, Product
@@ -15,8 +15,31 @@ from app.services.dashboard_service import (
     _get_spot_rates_at_date,
     _get_latest_holdings,
 )
+from app.services.etf_holdings_service import get_composition
 
 router = APIRouter(tags=["dashboard"])
+
+
+class EtfHoldingOut(BaseModel):
+    ticker: str
+    name: str
+    weight_pct: float
+
+
+class SectorWeightingOut(BaseModel):
+    sector: str
+    weight_pct: float
+
+
+class EtfCompositionOut(BaseModel):
+    ticker: str
+    name: str
+    top_holdings: list[EtfHoldingOut]
+    top_holdings_coverage_pct: float
+    sector_weightings: list[SectorWeightingOut]
+    bond_duration: Optional[float] = None
+    bond_maturity: Optional[float] = None
+    holdings_updated_at: Optional[datetime] = None
 
 
 class HoldingOut(BaseModel):
@@ -114,6 +137,15 @@ async def get_holdings(
 
     result.sort(key=lambda x: x.product_name.lower())
     return result
+
+
+@router.get("/holdings/{ticker}/composition", response_model=EtfCompositionOut)
+async def get_ticker_composition(ticker: str, db: AsyncSession = Depends(get_db)):
+    """Top-10 holdings + sector weightings for one ticker — see the "click a ticker" modal."""
+    composition = await get_composition(db, ticker)
+    if composition is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return composition
 
 
 @router.get("/holdings/history", response_model=list[HoldingOut])

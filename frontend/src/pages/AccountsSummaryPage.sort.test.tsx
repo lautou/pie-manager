@@ -55,6 +55,7 @@ const mockUseCapitalGains = vi.fn();
 vi.mock('../api/queries', () => ({
   useAccountsSummary: (...args: any[]) => mockUseAccountsSummary(...args),
   useCapitalGains: (...args: any[]) => mockUseCapitalGains(...args),
+  useEtfComposition: () => ({ data: undefined, isLoading: false }),
 }));
 
 // Two accounts with different values to make comparisons non-trivial

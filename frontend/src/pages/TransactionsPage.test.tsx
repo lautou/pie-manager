@@ -99,6 +99,7 @@ vi.mock('../api/queries', () => ({
   useCreateTransaction: () => mockUseCreateTransaction(),
   useUpdateTransaction: () => mockUseUpdateTransaction(),
   useDeleteTransaction: () => mockUseDeleteTransaction(),
+  useEtfComposition: () => ({ data: undefined, isLoading: false }),
 }));
 
 const mockTransaction = {
@@ -162,6 +163,19 @@ describe('TransactionsPage', () => {
     mockUseTransactions.mockReturnValue({ data: [mockTransaction], isLoading: false, isError: false });
     render(<TransactionsPage />);
     expect(screen.getByText('AAPL')).toBeTruthy();
+  });
+
+  it('clicking a composable ticker in the transactions table opens the composition modal, and closing it clears the state', async () => {
+    mockUseTransactions.mockReturnValue({ data: [mockTransaction], isLoading: false, isError: false });
+    mockUseProducts.mockReturnValue({ data: [mockProduct] });
+    const user = userEvent.setup({ delay: null });
+    render(<TransactionsPage />);
+
+    await user.click(screen.getByText('AAPL'));
+    expect(screen.getByTestId('modal')).toBeTruthy();
+
+    await user.click(screen.getByText('Close'));
+    expect(screen.queryByTestId('modal')).toBeNull();
   });
 
   it('can open add modal', async () => {

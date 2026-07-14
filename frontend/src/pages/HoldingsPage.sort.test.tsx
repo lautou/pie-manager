@@ -108,6 +108,8 @@ vi.mock('../api/queries', () => ({
   useDashboard: (...args: any[]) => mockUseDashboard(...args),
   useHoldings: (...args: any[]) => mockUseHoldings(...args),
   useCapitalGains: (...args: any[]) => mockUseCapitalGains(...args),
+  useEtfComposition: () => ({ data: undefined, isLoading: false }),
+  usePoolAllocation: () => ({ data: undefined }),
 }));
 
 // ── Shared fixtures ───────────────────────────────────────────────────────────

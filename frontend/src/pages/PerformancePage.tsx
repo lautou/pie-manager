@@ -18,6 +18,8 @@ import IndexChart, { HOLDING_COLORS } from '../components/IndexChart';
 import type { IndexView, BrushState } from '../components/IndexChart';
 import PatrimoineChart from '../components/PatrimoineChart';
 import SnapshotsTable from '../components/SnapshotsTable';
+import TickerLink from '../components/TickerLink';
+import EtfCompositionModal from '../components/EtfCompositionModal';
 
 const defaultScale = (() => { const e = new Date(); const s = new Date(e); s.setFullYear(s.getFullYear()-1); return { x: [s, e] as [Date,Date] }; })();
 
@@ -128,6 +130,7 @@ export default function PerformancePage() {
   const [indexView, setIndexView] = useState<IndexView>('total');
   const [snapPage, setSnapPage] = useState(1);
   const [selectedSnap, setSelectedSnap] = useState<DailySnapshot | null>(null);
+  const [compositionTicker, setCompositionTicker] = useState<string | null>(null);
   const [zoomIndex, setZoomIndex] = useState<{ x?: [Date, Date]; y?: [number, number] } | undefined>(defaultScale);
   const [zoomPatrimoine, setZoomPatrimoine] = useState<{ x?: [Date, Date]; y?: [number, number] } | undefined>(defaultScale);
   const [isManuallyZoomedIndex, setIsManuallyZoomedIndex] = useState(false);
@@ -492,7 +495,7 @@ export default function PerformancePage() {
                         <Tbody>
                           {poolHoldings.sort((a, b) => b.value_eur - a.value_eur).map((h) => (
                             <Tr key={h.ticker}>
-                              <Td><strong>{h.ticker}</strong></Td>
+                              <Td><strong><TickerLink ticker={h.ticker} instrumentType={h.instrument_type} onClick={setCompositionTicker} /></strong></Td>
                               <Td>{h.quantity.toLocaleString('fr-FR', { maximumFractionDigits: 4 })}</Td>
                               <Td>{formatUnitPrice(h.last_price, h.currency || 'EUR')}</Td>
                               <Td>{formatEUR(h.value_eur)}</Td>
@@ -508,6 +511,7 @@ export default function PerformancePage() {
           })()}
         </Modal>
       )}
+      <EtfCompositionModal ticker={compositionTicker} onClose={() => setCompositionTicker(null)} />
     </PageSection>
   );
 }

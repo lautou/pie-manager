@@ -4,9 +4,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, ConfigDict
 from typing import Optional
+from datetime import datetime
 
 from app.core.database import get_db
 from app.models import Pool, PoolProduct
+from app.services.etf_holdings_service import compute_pool_lookthrough
 
 router = APIRouter(tags=["pools"])
 
@@ -49,6 +51,24 @@ class PoolProductOut(BaseModel):
 
     pool_id: int
     ticker: str
+
+
+class AllocationEntryOut(BaseModel):
+    key: str      # underlying ticker (by_company) or raw Yahoo sector key (by_sector)
+    label: str    # company name (by_company) or raw sector key, frontend i18n-translates it
+    value_eur: float
+    pct: float
+
+
+class PoolAllocationOut(BaseModel):
+    pool_id: int
+    pool_name: str
+    total_eur: float
+    by_sector: list[AllocationEntryOut]
+    by_company: list[AllocationEntryOut]
+    unclassified_eur: float
+    unclassified_pct: float
+    holdings_updated_at: Optional[datetime] = None
 
 
 @router.get("/", response_model=list[PoolOut])
@@ -102,6 +122,23 @@ async def list_pool_products(pool_id: int, db: AsyncSession = Depends(get_db)):
         select(PoolProduct).where(PoolProduct.pool_id == pool_id)
     )
     return result.scalars().all()
+
+
+@router.get("/{pool_id}/allocation", response_model=PoolAllocationOut)
+async def get_pool_allocation(
+    pool_id: int,
+    portfolio_id: int = Query(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Look-through sector/company allocation for this pool: every ETF's top-10 holdings
+    decomposed and merged with any directly held stock exposure to the same underlying
+    ticker/sector — see app.services.etf_holdings_service.compute_pool_lookthrough.
+    """
+    allocation = await compute_pool_lookthrough(db, portfolio_id, pool_id)
+    if allocation is None:
+        raise HTTPException(status_code=404, detail="Pool not found")
+    return allocation
 
 
 @router.post("/{pool_id}/products", response_model=PoolProductOut, status_code=201)

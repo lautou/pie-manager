@@ -2,7 +2,7 @@
  * Tests for PerformancePage
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 
@@ -119,6 +119,7 @@ vi.mock('../api/queries', () => ({
   useMonthlySnapshots: (...args: any[]) => mockUseMonthlySnapshots(...args),
   useDailyWithPools: (...args: any[]) => mockUseDailyWithPools(...args),
   useTWRR: (...args: any[]) => mockUseTWRR(...args),
+  useEtfComposition: () => ({ data: undefined, isLoading: false }),
 }));
 
 import PerformancePage from './PerformancePage';
@@ -399,6 +400,36 @@ describe('PerformancePage', () => {
       // Positions should be shown in the modal
       expect(screen.getByText('AAPL')).toBeTruthy();
     }
+  });
+
+  it('clicking a composable ticker inside the snapshot modal opens the composition modal, and closing it clears the state', async () => {
+    mockUseDailySnapshots.mockReturnValue({ data: mockDailySnapshots, isLoading: false });
+    mockUseMonthlySnapshots.mockReturnValue({ data: [], isLoading: false });
+    mockUseTWRR.mockReturnValue({ data: mockTWRR, isLoading: false });
+    mockUseHoldingsAtDate.mockReturnValue({
+      data: [{
+        ticker: 'AAPL', product_name: 'Apple', pool_id: 1, pool_name: 'Asie', instrument_type: 'ETF',
+        quantity: 10, last_price: 150, last_price_date: '2024-01-01',
+        last_price_source: 'yahoo', value_eur: 2000, currency: 'USD',
+      }],
+      isLoading: false,
+    });
+
+    const user = userEvent.setup({ delay: null });
+    render(<PerformancePage />);
+
+    const rows = screen.getAllByRole('row');
+    const snapRow = rows.find(r => r.textContent?.includes('2024-01-01'));
+    expect(snapRow).toBeTruthy();
+    await user.click(snapRow!);
+    const snapshotModal = screen.getByTestId('modal');
+
+    await user.click(within(snapshotModal).getByText('AAPL'));
+    const modals = screen.getAllByTestId('modal');
+    expect(modals.length).toBe(2);
+
+    await user.click(screen.getAllByText('Close')[1]);
+    expect(screen.getAllByTestId('modal').length).toBe(1);
   });
 
   it('renders "Aucune donnée disponible." when patrimoineData is empty', () => {

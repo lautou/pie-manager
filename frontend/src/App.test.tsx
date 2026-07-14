@@ -94,6 +94,8 @@ vi.mock('./api/queries', () => ({
   createBrokerAPI: vi.fn(),
   updateBrokerAPI: vi.fn(),
   deleteBrokerAPI: vi.fn(),
+  useEtfComposition: () => ({ data: undefined, isLoading: false }),
+  usePoolAllocation: () => ({ data: undefined }),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

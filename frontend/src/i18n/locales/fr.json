@@ -80,7 +80,9 @@
     "broker": "Broker",
     "account": "Compte",
     "portfolio": "Portefeuille",
-    "snapshot": "Snapshot"
+    "snapshot": "Snapshot",
+    "sector": "Secteur",
+    "company": "Entreprise"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -127,7 +129,37 @@
     "priceNotUpdated": "Prix non mis à jour lors de la dernière synchronisation",
     "table": "Positions",
     "target": "cible",
-    "actual": "actuel"
+    "actual": "actuel",
+    "allocationTitle": "Composition du pool",
+    "allocationBySector": "Par secteur",
+    "allocationByCompany": "Par entreprise",
+    "allocationOther": "Autres non détaillés",
+    "allocationUnclassified": "Non classé (pas encore synchronisé)",
+    "allocationNoData": "Aucune donnée de composition disponible pour ce pool."
+  },
+  "etfComposition": {
+    "modalTitle": "Composition — {{ticker}}",
+    "topHoldings": "Principaux avoirs",
+    "coverageNote": "Top {{count}} = {{pct}} % des actifs",
+    "sectorWeightings": "Répartition sectorielle",
+    "bondDuration": "Duration",
+    "bondMaturity": "Échéance moyenne",
+    "lastUpdated": "Dernière mise à jour : {{date}}",
+    "neverUpdated": "Jamais synchronisé",
+    "noData": "Aucune donnée de composition disponible pour ce titre."
+  },
+  "sectors": {
+    "realestate": "Immobilier",
+    "consumer_cyclical": "Consommation cyclique",
+    "basic_materials": "Matériaux de base",
+    "consumer_defensive": "Consommation défensive",
+    "technology": "Technologie",
+    "communication_services": "Services de communication",
+    "financial_services": "Services financiers",
+    "utilities": "Services collectifs",
+    "industrials": "Industrie",
+    "energy": "Énergie",
+    "healthcare": "Santé"
   },
   "transactions": {
     "title": "Transactions",

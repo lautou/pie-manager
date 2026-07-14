@@ -13,8 +13,18 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => vi.fn(),
 }));
 
-// Mock PatternFly core
-vi.mock('@patternfly/react-core', () => pfCoreStubs);
+// Mock PatternFly core — Modal overridden to expose an onClose trigger
+// (the generic stub has no close affordance)
+vi.mock('@patternfly/react-core', () => ({
+  ...pfCoreStubs,
+  Modal: ({ children, isOpen, onClose }: any) =>
+    isOpen ? (
+      <div data-testid="modal">
+        <button data-testid="modal-close" onClick={onClose}>Close</button>
+        {children}
+      </div>
+    ) : null,
+}));
 
 // Mock PatternFly table — override Th to invoke sort.onSort when clicked
 // Each click toggles between 'asc' and 'desc' to exercise both sort direction branches.
@@ -61,6 +71,7 @@ const mockUseCapitalGains = vi.fn();
 vi.mock('../api/queries', () => ({
   useAccountsSummary: (...args: any[]) => mockUseAccountsSummary(...args),
   useCapitalGains: (...args: any[]) => mockUseCapitalGains(...args),
+  useEtfComposition: () => ({ data: undefined, isLoading: false }),
 }));
 
 const mockAccountSummary = {
@@ -154,6 +165,22 @@ describe('AccountsSummaryPage', () => {
     mockUseAccountsSummary.mockReturnValue({ data: [mockAccountSummary], isLoading: false, isError: false });
     render(<AccountsSummaryPage />);
     expect(screen.getAllByText('Degiro').length).toBeGreaterThan(0);
+  });
+
+  it('clicking a composable ticker opens the composition modal, and closing it clears the state', async () => {
+    const user = userEvent.setup();
+    const etfAccount = {
+      ...mockAccountSummary,
+      positions: [{ ...mockAccountSummary.positions[0], instrument_type: 'ETF' }],
+    };
+    mockUseAccountsSummary.mockReturnValue({ data: [etfAccount], isLoading: false, isError: false });
+    render(<AccountsSummaryPage />);
+
+    await user.click(screen.getByText('AAPL'));
+    expect(screen.getByTestId('modal')).toBeTruthy();
+
+    await user.click(screen.getByTestId('modal-close'));
+    expect(screen.queryByTestId('modal')).toBeNull();
   });
 
   it('renders KPI cards', () => {

@@ -2,7 +2,7 @@
  * Tests for DashboardPage
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import { pfCoreStubs, pfTableStubs } from '../../tests/utils/patternfly-mocks';
@@ -130,6 +130,7 @@ vi.mock('../api/queries', () => ({
   useProducts: () => mockUseProducts(),
   usePrices: (...args: any[]) => mockUsePrices(...args),
   useCapitalGains: (...args: any[]) => mockUseCapitalGains(...args),
+  useEtfComposition: () => ({ data: undefined, isLoading: false }),
 }));
 
 import DashboardPage from './DashboardPage';
@@ -893,6 +894,24 @@ describe('DashboardPage — PV KPI cards', () => {
     const modal = screen.getByTestId('modal');
     // The modal should show AAPL data
     expect(modal.textContent).toContain('AAPL');
+  }, 10000);
+
+  it('clicking the ticker in the position-detail modal opens the composition modal, and closing it clears the state', async () => {
+    const user = userEvent.setup({ delay: null });
+    mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
+    mockUseHoldings.mockReturnValue({ data: [{ ...mockPositions[0], instrument_type: 'ETF' }] });
+    mockUseCapitalGains.mockReturnValue({ data: mockCapitalGains, isLoading: false });
+
+    render(<DashboardPage />);
+    await user.click(screen.getByTestId('treemap'));
+    const positionModal = screen.getByTestId('modal');
+
+    await user.click(within(positionModal).getByText('AAPL'));
+    // Both modals are open now — the composition modal is the second "modal" testid.
+    expect(screen.getAllByTestId('modal').length).toBe(2);
+
+    await user.click(screen.getAllByTestId('modal-close')[1]);
+    expect(screen.getAllByTestId('modal').length).toBe(1);
   }, 10000);
 
   it('ticker popup shows not-found when position not in positions list (pos=undefined branch)', async () => {

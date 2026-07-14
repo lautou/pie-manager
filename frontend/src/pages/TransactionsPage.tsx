@@ -33,6 +33,8 @@ import {
 import type { Transaction } from '../types';
 import FrDatePicker from '../components/FrDatePicker';
 import ConfirmModal from '../components/ConfirmModal';
+import TickerLink from '../components/TickerLink';
+import EtfCompositionModal from '../components/EtfCompositionModal';
 import { formatEUR, formatEUR3, formatQty as fmtQty, formatNativeCurrency } from '../utils/format';
 import { computeCommission, TTF_RATE, isWeekendNewYork, computeMonthlyLimitFXCommission } from '../utils/commission';
 import { localDateStr } from '../utils/format';
@@ -1078,6 +1080,7 @@ export default function TransactionsPage() {
   const [showDevise, setShowDevise] = useState(true);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null);
+  const [compositionTicker, setCompositionTicker] = useState<string | null>(null);
 
   const { data: transactions = [], isLoading, isError } = useTransactions(portfolioId!, {
     date_from: dateFrom || undefined,
@@ -1097,9 +1100,9 @@ export default function TransactionsPage() {
     [accounts]
   );
 
-  // Ticker → product name map for tooltips
-  const productNameMap = useMemo(
-    () => new Map(allProducts.map((p) => [p.ticker, p.name])),
+  // Ticker → product map, for the tooltip's product name and the composition click affordance
+  const productByTicker = useMemo(
+    () => new Map(allProducts.map((p) => [p.ticker, p])),
     [allProducts]
   );
 
@@ -1327,13 +1330,23 @@ export default function TransactionsPage() {
                     <Td dataLabel="Type">{tx.type}</Td>
                     <Td dataLabel="Sens">{sens}</Td>
                     <Td dataLabel="Ticker">
-                      {productNameMap.has(tx.ticker) ? (
-                        <Tooltip content={productNameMap.get(tx.ticker)}>
+                      {productByTicker.has(tx.ticker) ? (
+                        <Tooltip content={productByTicker.get(tx.ticker)?.name}>
                           <span style={{ cursor: 'help', textDecoration: 'underline dotted' }}>
-                            {tx.ticker}
+                            <TickerLink
+                              ticker={tx.ticker}
+                              instrumentType={productByTicker.get(tx.ticker)?.instrument_type}
+                              onClick={setCompositionTicker}
+                            />
                           </span>
                         </Tooltip>
-                      ) : tx.ticker}
+                      ) : (
+                        <TickerLink
+                          ticker={tx.ticker}
+                          instrumentType={productByTicker.get(tx.ticker)?.instrument_type}
+                          onClick={setCompositionTicker}
+                        />
+                      )}
                     </Td>
                     <Td dataLabel="Quantité" modifier="nowrap">
                       {formatQty(tx.quantity)}
@@ -1436,6 +1449,8 @@ export default function TransactionsPage() {
         onConfirm={handleConfirmDelete}
         onCancel={() => setDeleteTarget(null)}
       />
+
+      <EtfCompositionModal ticker={compositionTicker} onClose={() => setCompositionTicker(null)} />
     </PageSection>
   );
 }

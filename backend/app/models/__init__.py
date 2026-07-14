@@ -7,6 +7,7 @@ from app.models.price import AssetPrice, ExchangeRate
 from app.models.snapshot import DailySnapshot, DailyPoolSnapshot, MonthlySnapshot, MonthlyPoolSnapshot
 from app.models.fiscal import FiscalCarryForward
 from app.models.portfolio_account import PortfolioAccount
+from app.models.etf_holding import EtfHolding, EtfSectorWeighting
 
 __all__ = [
     "Portfolio",
@@ -23,4 +24,6 @@ __all__ = [
     "MonthlyPoolSnapshot",
     "FiscalCarryForward",
     "PortfolioAccount",
+    "EtfHolding",
+    "EtfSectorWeighting",
 ]

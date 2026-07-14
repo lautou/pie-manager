@@ -250,3 +250,87 @@ async def test_create_pool_inactive(client, db_session):
     })
     assert r.status_code == 201
     assert r.json()["is_active"] is False
+
+
+# ---------------------------------------------------------------------------
+# GET /api/pools/{pool_id}/allocation
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_pool_allocation_404_for_missing_pool(client, db_session):
+    uid = await _create_portfolio(client, f"AllocMissing-{id(db_session)}")
+    r = await client.get("/api/pools/9999999/allocation", params={"portfolio_id": uid})
+    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_pool_allocation_empty_pool(client, db_session):
+    uid = await _create_portfolio(client, f"AllocEmpty-{id(db_session)}")
+    pool = await _create_pool(client, uid, "Energie", "Offensive")
+    r = await client.get(f"/api/pools/{pool['id']}/allocation", params={"portfolio_id": uid})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total_eur"] == pytest.approx(0.0)
+    assert body["by_company"] == []
+    assert body["by_sector"] == []
+
+
+@pytest.mark.asyncio
+async def test_pool_allocation_merges_direct_and_etf_exposure(client, db_session):
+    """End-to-end: create the pool + held positions via HTTP, hit the real endpoint."""
+    from datetime import date
+    from app.models.broker import Broker
+    from app.models.transaction import Transaction
+    from app.models.price import AssetPrice
+    from app.models.portfolio_account import PortfolioAccount
+    from app.models.pool import PoolProduct
+    from app.services.etf_holdings_service import replace_etf_holdings
+
+    uid = await _create_portfolio(client, f"AllocMerge-{id(db_session)}")
+    pool = await _create_pool(client, uid, "Energie", "Offensive")
+
+    account = Broker(name=f"Broker-{id(db_session)}", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    db_session.add(PortfolioAccount(portfolio_id=uid, broker_id=account.id))
+    await db_session.flush()
+
+    stn = f"STN.{id(db_session)}"
+    tte = f"TTE.{id(db_session)}"
+    await _create_product(client, stn, name="STN.PA-like", instrument_type="ETF")
+    await _create_product(client, tte, name="TotalEnergies SE", instrument_type="Action")
+    db_session.add(PoolProduct(pool_id=pool["id"], ticker=stn))
+    db_session.add(PoolProduct(pool_id=pool["id"], ticker=tte))
+    await db_session.flush()
+
+    db_session.add(Transaction(
+        portfolio_id=uid, account_id=account.id, date=date(2025, 1, 1), type="Actif",
+        ticker=stn, currency="EUR", exchange_rate=1.0,
+        quantity=-10.0, unit_price=50.0, unit_price_eur=50.0,
+        total_amount=-500.0, total_amount_eur=-500.0,
+    ))
+    db_session.add(Transaction(
+        portfolio_id=uid, account_id=account.id, date=date(2025, 1, 1), type="Actif",
+        ticker=tte, currency="EUR", exchange_rate=1.0,
+        quantity=-5.0, unit_price=60.0, unit_price_eur=60.0,
+        total_amount=-300.0, total_amount_eur=-300.0,
+    ))
+    db_session.add(AssetPrice(ticker=stn, date=date(2025, 1, 1), price=50.0, currency="EUR", source="test"))
+    db_session.add(AssetPrice(ticker=tte, date=date(2025, 1, 1), price=60.0, currency="EUR", source="test"))
+    await db_session.flush()
+
+    await replace_etf_holdings(db_session, stn, [
+        {"ticker": tte, "name": "TotalEnergies SE", "weight_pct": 0.1863},
+    ])
+    await replace_etf_holdings(db_session, tte, [
+        {"ticker": tte, "name": "TotalEnergies SE", "weight_pct": 1.0},
+    ])
+    await db_session.flush()
+
+    r = await client.get(f"/api/pools/{pool['id']}/allocation", params={"portfolio_id": uid})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total_eur"] == pytest.approx(800.0)
+    entry = next(e for e in body["by_company"] if e["key"] == tte)
+    # 500 * 0.1863 (via STN) + 300 * 1.0 (direct) = 393.15
+    assert entry["value_eur"] == pytest.approx(393.15, abs=0.01)

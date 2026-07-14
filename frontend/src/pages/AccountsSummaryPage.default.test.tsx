@@ -64,6 +64,7 @@ const mockUseCapitalGains = vi.fn();
 vi.mock('../api/queries', () => ({
   useAccountsSummary: (...args: any[]) => mockUseAccountsSummary(...args),
   useCapitalGains: (...args: any[]) => mockUseCapitalGains(...args),
+  useEtfComposition: () => ({ data: undefined, isLoading: false }),
 }));
 
 // Two accounts with multiple positions so sort comparators actually run comparisons

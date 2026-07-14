@@ -12,7 +12,8 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => vi.fn(),
 }));
 
-// Mock PatternFly core — override Tooltip to render title prop for test assertions
+// Mock PatternFly core — override Tooltip to render title prop for test assertions,
+// and Modal to expose an onClose trigger (generic stub has no close affordance)
 vi.mock('@patternfly/react-core', () => ({
   ...pfCoreStubs,
   Tooltip: ({ children, content }: any) => (
@@ -20,6 +21,13 @@ vi.mock('@patternfly/react-core', () => ({
       {children}
     </div>
   ),
+  Modal: ({ children, isOpen, onClose }: any) =>
+    isOpen ? (
+      <div data-testid="modal">
+        <button data-testid="modal-close" onClick={onClose}>Close</button>
+        {children}
+      </div>
+    ) : null,
 }));
 
 // Mock PatternFly table
@@ -69,6 +77,8 @@ vi.mock('../api/queries', () => ({
   useDashboard: (...args: any[]) => mockUseDashboard(...args),
   useHoldings: (...args: any[]) => mockUseHoldings(...args),
   useCapitalGains: (...args: any[]) => mockUseCapitalGains(...args),
+  useEtfComposition: () => ({ data: undefined, isLoading: false }),
+  usePoolAllocation: () => ({ data: undefined }),
 }));
 
 const mockCapitalGains = {
@@ -171,6 +181,21 @@ describe('HoldingsPage', () => {
     mockUseHoldings.mockReturnValue({ data: [], isLoading: false, isError: false });
     render(<HoldingsPage />);
     expect(screen.getByText('Liquidités disponibles')).toBeTruthy();
+  });
+
+  it('clicking a composable ticker opens the composition modal, and closing it clears the state', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+    const etfPosition = { ...mockPositions[0], instrument_type: 'ETF' };
+    mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
+    mockUseHoldings.mockReturnValue({ data: [etfPosition], isLoading: false, isError: false });
+    render(<HoldingsPage />);
+
+    await user.click(screen.getByText('AAPL'));
+    expect(screen.getByTestId('modal')).toBeTruthy();
+
+    await user.click(screen.getByTestId('modal-close'));
+    expect(screen.queryByTestId('modal')).toBeNull();
   });
 
   it('shows manual price badge for manual source', () => {

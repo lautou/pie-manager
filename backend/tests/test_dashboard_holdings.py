@@ -687,3 +687,62 @@ async def test_holdings_forex_deducts_foreign_currency_fees(client, db_session):
     assert pos is not None
     # 300,000 - 165 - 20 = 299,815 JPY (not 300,000)
     assert pos["quantity"] == pytest.approx(299_815.0, rel=0.001)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/dashboard/holdings/{ticker}/composition
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_ticker_composition_404_for_missing_product(client, db_session):
+    r = await client.get(f"/api/dashboard/holdings/NOPE.{id(db_session)}/composition")
+    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_ticker_composition_returns_top_holdings_and_sectors(client, db_session):
+    from app.services.etf_holdings_service import replace_etf_holdings, replace_sector_weightings
+
+    ticker = f"FLXC.{id(db_session)}"
+    db_session.add(Product(ticker=ticker, name="Franklin FTSE China", category="Actif", instrument_type="ETF"))
+    await db_session.flush()
+    await replace_etf_holdings(db_session, ticker, [
+        {"ticker": "0700.HK", "name": "Tencent Holdings Ltd", "weight_pct": 0.1239},
+        {"ticker": "9988.HK", "name": "Alibaba Group Holding Ltd", "weight_pct": 0.0783},
+    ])
+    await replace_sector_weightings(db_session, ticker, {"consumer_cyclical": 0.2149})
+    await db_session.flush()
+
+    r = await client.get(f"/api/dashboard/holdings/{ticker}/composition")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ticker"] == ticker
+    assert len(body["top_holdings"]) == 2
+    assert body["top_holdings"][0]["ticker"] == "0700.HK"  # sorted by weight desc
+    assert body["top_holdings_coverage_pct"] == pytest.approx((0.1239 + 0.0783) * 100, abs=0.01)
+    assert body["sector_weightings"] == [{"sector": "consumer_cyclical", "weight_pct": pytest.approx(0.2149)}]
+    assert body["bond_duration"] is None
+    assert body["holdings_updated_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_ticker_composition_exposes_bond_metrics(client, db_session):
+    from app.services.etf_holdings_service import save_etf_fetch_result
+    from datetime import datetime, timezone
+
+    ticker = f"XJSE.{id(db_session)}"
+    db_session.add(Product(ticker=ticker, name="Japan Govt Bond", category="Actif", instrument_type="Obligation"))
+    await db_session.flush()
+    await save_etf_fetch_result(
+        db_session, ticker, holdings=[], sector_weightings={},
+        fetched_at=datetime(2026, 7, 14, tzinfo=timezone.utc),
+        bond_duration=1.32, bond_maturity=8.57,
+    )
+    await db_session.flush()
+
+    r = await client.get(f"/api/dashboard/holdings/{ticker}/composition")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["bond_duration"] == pytest.approx(1.32)
+    assert body["bond_maturity"] == pytest.approx(8.57)
+    assert body["holdings_updated_at"] is not None

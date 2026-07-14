@@ -91,6 +91,7 @@ vi.mock('../api/queries', () => ({
   useCreateTransaction: () => mockUseCreateTransaction(),
   useUpdateTransaction: () => mockUseUpdateTransaction(),
   useDeleteTransaction: () => mockUseDeleteTransaction(),
+  useEtfComposition: () => ({ data: undefined, isLoading: false }),
 }));
 
 // ---------------------------------------------------------------------------

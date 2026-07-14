@@ -7,7 +7,7 @@ celery_app = Celery(
     "pie",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.tasks.prices", "app.tasks.snapshots"],
+    include=["app.tasks.prices", "app.tasks.snapshots", "app.tasks.etf_holdings"],
 )
 
 celery_app.conf.update(
@@ -31,6 +31,11 @@ celery_app.conf.update(
         "compute-monthly-snapshots": {
             "task": "app.tasks.snapshots.compute_monthly_snapshots_all_users",
             "schedule": crontab(hour=8, minute=0, day_of_month=1),
+        },
+        # Refresh ETF top-10 holdings/sector weightings weekly (composition doesn't move daily)
+        "refresh-etf-holdings": {
+            "task": "app.tasks.etf_holdings.refresh_etf_holdings",
+            "schedule": crontab(hour=6, minute=0, day_of_week="0"),
         },
     },
 )

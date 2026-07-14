@@ -17,6 +17,8 @@ import { useSystemSetting, useSetSystemSetting, useAllBrokers, usePortfolios,
   useProducts, createProduct, updateProduct, deleteProduct } from '../api/queries';
 import { useSortable } from '../hooks/useSortable';
 import ConfirmModal from '../components/ConfirmModal';
+import TickerLink from '../components/TickerLink';
+import EtfCompositionModal from '../components/EtfCompositionModal';
 import type { Broker, CommissionTier, Product } from '../types';
 import { computeCommission } from '../utils/commission';
 
@@ -470,6 +472,7 @@ function ProductManager() {
   const [isDeletingProduct, setIsDeletingProduct] = useState(false);
   const [sortCol, setSortCol] = useState<ProductSortCol>('ticker');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [compositionTicker, setCompositionTicker] = useState<string | null>(null);
 
   const toggleSort = (col: ProductSortCol) => {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -557,7 +560,9 @@ function ProductManager() {
           <tbody>
             {sortedProducts.map(p => (
               <tr key={p.ticker}>
-                <td style={{ ...tdSt, fontFamily: 'monospace', fontWeight: 600 }}>{p.ticker}</td>
+                <td style={{ ...tdSt, fontFamily: 'monospace', fontWeight: 600 }}>
+                  <TickerLink ticker={p.ticker} instrumentType={p.instrument_type} onClick={setCompositionTicker} />
+                </td>
                 <td style={tdSt}>{p.name}</td>
                 <td style={tdSt}><span style={{ padding: '2px 8px', borderRadius: 12, fontSize: '0.78rem', background: '#f0f0f0', border: '1px solid #ddd' }}>{p.category}</span></td>
                 <td style={tdSt}>{p.instrument_type || p.fee_type || '—'}</td>
@@ -635,6 +640,8 @@ function ProductManager() {
         onConfirm={handleConfirmDeleteProduct}
         onCancel={() => setProductDeleteTarget(null)}
       />
+
+      <EtfCompositionModal ticker={compositionTicker} onClose={() => setCompositionTicker(null)} />
     </div>
   );
 }

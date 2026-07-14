@@ -270,3 +270,45 @@ export interface FiscalCarryForward {
   tax_year: number;
   amount_eur: number;
 }
+
+// ── ETF look-through holdings & pool sector/company allocation ────────────
+
+export interface EtfHolding {
+  ticker: string;
+  name: string;
+  weight_pct: number;
+}
+
+export interface SectorWeighting {
+  sector: string;
+  weight_pct: number;
+}
+
+export interface EtfComposition {
+  ticker: string;
+  name: string;
+  top_holdings: EtfHolding[];
+  top_holdings_coverage_pct: number;
+  sector_weightings: SectorWeighting[];
+  bond_duration: number | null;
+  bond_maturity: number | null;
+  holdings_updated_at: string | null;
+}
+
+export interface PoolAllocationEntry {
+  key: string;
+  label: string;
+  value_eur: number;
+  pct: number;
+}
+
+export interface PoolAllocation {
+  pool_id: number;
+  pool_name: string;
+  total_eur: number;
+  by_sector: PoolAllocationEntry[];
+  by_company: PoolAllocationEntry[];
+  unclassified_eur: number;
+  unclassified_pct: number;
+  holdings_updated_at: string | null;
+}

@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import apiClient from './client';
 import type {
   Broker, AccountSummary, AssetPrice, Dashboard, DailySnapshot, DailyWithPools,
-  DailyHoldingValues, FiscalCarryForward, MonthlySnapshot, Pool, PortfolioCapitalGains, Holding, Product, Transaction, User,
+  DailyHoldingValues, EtfComposition, FiscalCarryForward, MonthlySnapshot, Pool, PoolAllocation,
+  PortfolioCapitalGains, Holding, Product, Transaction, User,
 } from '../types';
 
 // ── Portfolios ─────────────────────────────────────────────────────────────
@@ -236,6 +237,17 @@ export function usePoolProducts(poolId: number | null) {
   });
 }
 
+export function usePoolAllocation(portfolioId: number | string | undefined, poolId: number | null) {
+  return useQuery<PoolAllocation>({
+    queryKey: ['pool-allocation', portfolioId, poolId],
+    queryFn: async () =>
+      (await apiClient.get<PoolAllocation>(`/api/pools/${poolId}/allocation`, {
+        params: { portfolio_id: portfolioId },
+      })).data,
+    enabled: !!portfolioId && poolId !== null,
+  });
+}
+
 export async function createPool(body: Omit<Pool, 'id'>): Promise<Pool> {
   return (await apiClient.post<Pool>('/api/pools/', body)).data;
 }
@@ -308,6 +320,16 @@ export function useHoldingsAtDate(userId: number | string | undefined, snapDate:
       })).data,
     enabled: !!userId && !!snapDate,
     staleTime: 10 * 60 * 1000,
+  });
+}
+
+export function useEtfComposition(ticker: string | undefined) {
+  return useQuery<EtfComposition>({
+    queryKey: ['etf-composition', ticker],
+    queryFn: async () =>
+      (await apiClient.get<EtfComposition>(`/api/dashboard/holdings/${ticker}/composition`)).data,
+    enabled: !!ticker,
+    staleTime: 60 * 60 * 1000, // composition data refreshes weekly server-side
   });
 }
 

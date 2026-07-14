@@ -16,6 +16,8 @@ import { formatEUR, formatPct1, formatUnitPrice, localDateStr } from '../utils/f
 import { useCapitalGains, useDashboard, useHoldings, useProducts, usePrices } from '../api/queries';
 import type { Product } from '../types';
 import SyncBadge from '../components/SyncBadge';
+import TickerLink from '../components/TickerLink';
+import EtfCompositionModal from '../components/EtfCompositionModal';
 
 
 
@@ -202,6 +204,7 @@ export default function DashboardPage() {
   const { data: capitalGains, isLoading: cgLoading } = useCapitalGains(portfolioId!);
   const [selectedPool, setSelectedPool] = useState<string | null>(null);
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
+  const [compositionTicker, setCompositionTicker] = useState<string | null>(null);
 
   const manuelProducts = (products ?? []).filter((p) => p.instrument_type === 'Or physique');
 
@@ -529,7 +532,7 @@ export default function DashboardPage() {
                   <Tbody>
                     {poolPositions.map((pos, idx) => (
                       <Tr key={pos.ticker} style={{ backgroundColor: idx % 2 === 0 ? '#fff' : '#f5f5f5' }}>
-                        <Td><strong>{pos.ticker}</strong></Td>
+                        <Td><strong><TickerLink ticker={pos.ticker} instrumentType={pos.instrument_type} onClick={setCompositionTicker} /></strong></Td>
                         <Td>{pos.product_name}</Td>
                         <Td>{pos.quantity.toLocaleString('fr-FR', { maximumFractionDigits: 4 })}</Td>
                         <Td>
@@ -586,6 +589,10 @@ export default function DashboardPage() {
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem 2rem', fontSize: '0.9rem' }}>
                 <div>
+                  <div style={{ color: '#6A6E73', fontSize: '0.78rem', marginBottom: 2 }}>{t('common.ticker')}</div>
+                  <strong><TickerLink ticker={pos.ticker} instrumentType={pos.instrument_type} onClick={setCompositionTicker} /></strong>
+                </div>
+                <div>
                   <div style={{ color: '#6A6E73', fontSize: '0.78rem', marginBottom: 2 }}>{t('common.pool')}</div>
                   <strong>{pos.pool_name ?? '—'}{poolInfo ? ` (${poolInfo.strategy})` : ''}</strong>
                 </div>
@@ -633,6 +640,7 @@ export default function DashboardPage() {
           </Modal>
         );
       })()}
+      <EtfCompositionModal ticker={compositionTicker} onClose={() => setCompositionTicker(null)} />
     </PageSection>
   );
 }

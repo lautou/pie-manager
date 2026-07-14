@@ -1,4 +1,6 @@
-from sqlalchemy import Boolean, String, Text
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, Float, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -26,6 +28,13 @@ class Product(Base):
     # True for French large-caps subject to TTF (French Financial Transaction Tax) at 0.4%
     is_ttf_eligible: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False,
                                                    server_default="false")
+    # Bond-fund metrics (Yahoo's topHoldings.bondHoldings) — only meaningful for
+    # instrument_type == "Obligation". Not exposed by Yahoo's own UI for these funds
+    # (verified by inspecting every tab of a bond fund's page) but present in the raw API.
+    bond_duration: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bond_maturity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Last successful ETF-holdings/sector-weightings fetch — see app/tasks/etf_holdings.py.
+    holdings_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     prices: Mapped[list["AssetPrice"]] = relationship(back_populates="product")
     pool_links: Mapped[list["PoolProduct"]] = relationship(back_populates="product")

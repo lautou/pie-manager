@@ -80,7 +80,9 @@
     "broker": "Broker",
     "account": "Account",
     "portfolio": "Portfolio",
-    "snapshot": "Snapshot"
+    "snapshot": "Snapshot",
+    "sector": "Sector",
+    "company": "Company"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -116,6 +118,38 @@
     "priceUnknown": "Unknown price",
     "priceDaysOld": "Price: {{days}}d old",
     "manualPriceTooltip": "Manually entered price"
+  },
+  "holdings": {
+    "allocationTitle": "Pool composition",
+    "allocationBySector": "By sector",
+    "allocationByCompany": "By company",
+    "allocationOther": "Other (not detailed)",
+    "allocationUnclassified": "Unclassified (not yet synced)",
+    "allocationNoData": "No composition data available for this pool."
+  },
+  "etfComposition": {
+    "modalTitle": "Composition — {{ticker}}",
+    "topHoldings": "Top holdings",
+    "coverageNote": "Top {{count}} = {{pct}}% of assets",
+    "sectorWeightings": "Sector weightings",
+    "bondDuration": "Duration",
+    "bondMaturity": "Average maturity",
+    "lastUpdated": "Last updated: {{date}}",
+    "neverUpdated": "Never synced",
+    "noData": "No composition data available for this ticker."
+  },
+  "sectors": {
+    "realestate": "Real Estate",
+    "consumer_cyclical": "Consumer Cyclical",
+    "basic_materials": "Basic Materials",
+    "consumer_defensive": "Consumer Defensive",
+    "technology": "Technology",
+    "communication_services": "Communication Services",
+    "financial_services": "Financial Services",
+    "utilities": "Utilities",
+    "industrials": "Industrials",
+    "energy": "Energy",
+    "healthcare": "Healthcare"
   },
   "transactions": {
     "title": "Transactions",

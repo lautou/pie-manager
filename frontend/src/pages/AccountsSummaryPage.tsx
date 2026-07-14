@@ -14,6 +14,8 @@ import { Table, Thead, Tbody, Tr, Th, Td, SortByDirection } from '@patternfly/re
 import { formatEUR, formatPct2, formatUnitPrice } from '../utils/format';
 import { useAccountsSummary, useCapitalGains } from '../api/queries';
 import SyncBadge from '../components/SyncBadge';
+import TickerLink from '../components/TickerLink';
+import EtfCompositionModal from '../components/EtfCompositionModal';
 import { StalePriceBadge } from './HoldingsPage';
 import type { AccountPosition, AccountSummary } from '../types';
 
@@ -78,6 +80,7 @@ function AccountDetailCard({
   onAccSort: (_: React.MouseEvent, index: number, direction: SortByDirection) => void;
 }) {
   const { t } = useTranslation();
+  const [compositionTicker, setCompositionTicker] = useState<string | null>(null);
   // Per-account capital gains → per-account CUMP (not the global one)
   const { data: perAccountGains } = useCapitalGains(portfolioId, account.id);
 
@@ -164,7 +167,9 @@ function AccountDetailCard({
                 return (
                   <Tr key={pos.ticker} style={{ backgroundColor: idx % 2 === 0 ? '#fff' : '#f5f5f5' }}>
                     <Td style={{ paddingLeft: '0.5rem' }}>
-                      <strong>{pos.ticker}</strong>
+                      <strong>
+                        <TickerLink ticker={pos.ticker} instrumentType={pos.instrument_type} onClick={setCompositionTicker} />
+                      </strong>
                       <StalePriceBadge lastPriceDate={pos.last_price_date} source={pos.last_price_source} />
                     </Td>
                     <Td>{pos.product_name}</Td>
@@ -218,6 +223,7 @@ function AccountDetailCard({
           </Table>
         )}
       </CardBody>
+      <EtfCompositionModal ticker={compositionTicker} onClose={() => setCompositionTicker(null)} />
     </Card>
   );
 }

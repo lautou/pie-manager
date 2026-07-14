@@ -57,6 +57,7 @@ vi.mock('../api/queries', () => ({
   createProduct: vi.fn().mockResolvedValue({}),
   updateProduct: vi.fn().mockResolvedValue({}),
   deleteProduct: vi.fn().mockResolvedValue(undefined),
+  useEtfComposition: () => ({ data: undefined, isLoading: false }),
 }));
 
 vi.mock('../hooks/useSortable', () => ({
@@ -98,6 +99,17 @@ describe('GlobalConfigPage — ProductManager', () => {
   it('renders the Produits section heading', () => {
     render(<GlobalConfigPage />);
     expect(screen.getByText(/Produits et frais financiers/i)).toBeTruthy();
+  });
+
+  it('clicking a composable ticker (instrument_type=Action) opens the composition modal, and closing it clears the state', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+
+    await user.click(screen.getByText('AAPL'));
+    const modals = screen.getAllByTestId('modal');
+    expect(modals.length).toBeGreaterThan(0);
+
+    await user.click(screen.getByText('Close modal'));
   });
 
   it('TTF rate save button — clicking saves and shows ✓ (line 601 — ttfSaved=true branch)', async () => {

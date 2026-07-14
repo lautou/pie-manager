@@ -86,6 +86,7 @@ vi.mock('../api/queries', () => ({
   useProducts: () => mockUseProducts(),
   usePrices: (...args: any[]) => mockUsePrices(...args),
   useCapitalGains: (...args: any[]) => mockUseCapitalGains(...args),
+  useEtfComposition: () => ({ data: undefined, isLoading: false }),
 }));
 
 import DashboardPage from './DashboardPage';

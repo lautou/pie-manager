@@ -22,14 +22,14 @@ from typing import Callable, Optional, TypeVar
 
 import httpx
 
-T = TypeVar("T")
-
 from app.tasks.celery_app import celery_app
 from app.services.etf_holdings_service import (
     get_etf_tickers,
     get_direct_stock_tickers_in_etf_pools,
     save_etf_fetch_result,
 )
+
+T = TypeVar("T")
 
 SYNC_STATUS_KEY = "pie:etf_holdings:status"
 YAHOO_QUOTE_SUMMARY_URL = "https://query2.finance.yahoo.com/v10/finance/quoteSummary/{ticker}"

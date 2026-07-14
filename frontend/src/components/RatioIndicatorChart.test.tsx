@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
 import { pfCoreStubs } from '../../tests/utils/patternfly-mocks';
@@ -41,12 +41,6 @@ vi.mock('@patternfly/react-charts', () => ({
   },
   ChartGroup: ({ children }: any) => <>{children}</>,
   ChartLegend: () => <div data-testid="chart-legend" />,
-  ChartVoronoiContainer: ({ labels }: any) => {
-    if (labels) {
-      try { labels({ datum: { x: new Date('2020-01-01'), y: 42, name: 'Ratio' } }); } catch { /* ignore */ }
-    }
-    return <div data-testid="voronoi-container" />;
-  },
   ChartThemeColor: { multi: 'multi' },
 }));
 
@@ -193,7 +187,16 @@ describe('RatioIndicatorChart', () => {
     expect(screen.getByTestId('zoom-brush-overlay')).toBeInTheDocument();
   });
 
-  it('completing a drag beyond the 5px threshold zooms in and deselects the active period', () => {
+  it('mousedown calls preventDefault so native text selection never highlights axis/legend text mid-drag', () => {
+    render(<RatioIndicatorChart title="Growth" data={baseData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
+    const container = getChartContainer();
+    const event = new MouseEvent('mousedown', { clientX: 100, bubbles: true, cancelable: true });
+    const preventDefaultSpy = vi.spyOn(event, 'preventDefault');
+    act(() => { container.dispatchEvent(event); });
+    expect(preventDefaultSpy).toHaveBeenCalled();
+  });
+
+  it('completing a drag beyond the 5px threshold zooms in, deselects the active period, and shows the reset button', () => {
     render(<RatioIndicatorChart title="Growth" data={baseData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
     const container = getChartContainer();
     fireEvent.mouseDown(container, { clientX: 100 });
@@ -203,6 +206,28 @@ describe('RatioIndicatorChart', () => {
     expect(periodButton('MAX')).toHaveAttribute('aria-pressed', 'false');
     expect(screen.queryByTestId('zoom-brush-overlay')).not.toBeInTheDocument();
     expect(capturedDomain).toBeDefined();
+    expect(screen.getByText(/Réinitialiser zoom/)).toBeInTheDocument();
+  });
+
+  it('the reset-zoom button is hidden while a preset period is active', () => {
+    render(<RatioIndicatorChart title="Growth" data={baseData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
+    expect(screen.queryByText(/Réinitialiser zoom/)).not.toBeInTheDocument();
+    fireEvent.click(periodButton('1Y'));
+    expect(screen.queryByText(/Réinitialiser zoom/)).not.toBeInTheDocument();
+  });
+
+  it('clicking the reset-zoom button after a manual drag clears the domain and re-selects MAX', () => {
+    render(<RatioIndicatorChart title="Growth" data={baseData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
+    const container = getChartContainer();
+    fireEvent.mouseDown(container, { clientX: 100 });
+    fireEvent.mouseMove(container, { clientX: 400 });
+    fireEvent.mouseUp(container);
+    expect(capturedDomain).toBeDefined();
+
+    fireEvent.click(screen.getByText(/Réinitialiser zoom/));
+    expect(periodButton('MAX')).toHaveAttribute('aria-pressed', 'true');
+    expect(capturedDomain).toBeUndefined();
+    expect(screen.queryByText(/Réinitialiser zoom/)).not.toBeInTheDocument();
   });
 
   it('a drag under the 5px threshold does not zoom', () => {
@@ -299,7 +324,7 @@ describe('RatioIndicatorChart', () => {
     expect(screen.queryByTestId('zoom-brush-overlay')).not.toBeInTheDocument();
   });
 
-  it('moving the mouse without an active drag does nothing', () => {
+  it('moving the mouse without an active drag never shows a brush overlay (it updates the hover crosshair instead)', () => {
     render(<RatioIndicatorChart title="Growth" data={baseData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
     const container = getChartContainer();
     fireEvent.mouseMove(container, { clientX: 400 });
@@ -387,4 +412,83 @@ describe('RatioIndicatorChart', () => {
       expect(capturedWidth).toBe(950);
     }
   );
+
+  // ── Hover crosshair (mirrors IndexChart.tsx's tooltip) ───────────────────────
+
+  it('hovering shows a crosshair with short series names (no "(base 100)"/"(N ans)") and colored bullets', () => {
+    render(<RatioIndicatorChart title="Growth" data={baseData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
+    const container = getChartContainer();
+    // rect width=800, CHART_PADDING_LEFT=60, right=20 → plotW=720; clientX=780 → relX=720 (== plotW, included) → nearest to the dataset's last point.
+    fireEvent.mouseMove(container, { clientX: 780 });
+
+    expect(screen.getByTestId('crosshair-line')).toBeInTheDocument();
+    const tooltip = screen.getByTestId('crosshair-tooltip');
+    expect(tooltip).toHaveTextContent('S&P 500 Equal Weight / Pétrole (WTI)');
+    expect(tooltip).not.toHaveTextContent('base 100');
+    expect(tooltip).toHaveTextContent('Moyenne mobile');
+    expect(tooltip).not.toHaveTextContent('ans');
+    expect(tooltip).toHaveTextContent('110.00');
+    expect(tooltip).toHaveTextContent('105.00');
+  });
+
+  it('hovering near the start of the plot area shows the nearest (first) data point', () => {
+    render(<RatioIndicatorChart title="Growth" data={baseData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
+    const container = getChartContainer();
+    fireEvent.mouseMove(container, { clientX: 60 }); // relX=0 → nearest to the first point
+    const tooltip = screen.getByTestId('crosshair-tooltip');
+    expect(tooltip).toHaveTextContent('100.00');
+  });
+
+  it('hovering left of the plot area (relX < 0) clears the crosshair', () => {
+    render(<RatioIndicatorChart title="Growth" data={baseData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
+    const container = getChartContainer();
+    fireEvent.mouseMove(container, { clientX: 10 });
+    expect(screen.queryByTestId('crosshair-tooltip')).not.toBeInTheDocument();
+  });
+
+  it('hovering right of the plot area (relX > plotW) clears the crosshair', () => {
+    render(<RatioIndicatorChart title="Growth" data={baseData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
+    const container = getChartContainer();
+    fireEvent.mouseMove(container, { clientX: 790 });
+    expect(screen.queryByTestId('crosshair-tooltip')).not.toBeInTheDocument();
+  });
+
+  it('hovering over a collapsed (zero-width) container clears the crosshair (plotW <= 0)', () => {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+      width: 50, height: 320, top: 0, left: 0, bottom: 320, right: 50, x: 0, y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    render(<RatioIndicatorChart title="Growth" data={baseData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
+    const container = getChartContainer();
+    fireEvent.mouseMove(container, { clientX: 20 });
+    expect(screen.queryByTestId('crosshair-tooltip')).not.toBeInTheDocument();
+  });
+
+  it('the crosshair uses the current zoom domain (not the full dataset range) once zoomed', () => {
+    const wideData: RatioIndicator = { ...baseData, dates: ['2015-01-01', '2025-01-01'], ratio: [100.0, 130.0], moving_avg: [100.0, 120.0] };
+    render(<RatioIndicatorChart title="Growth" data={wideData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
+    fireEvent.click(periodButton('1Y'));
+
+    const container = getChartContainer();
+    fireEvent.mouseMove(container, { clientX: 780 }); // near the right edge of the now-zoomed (1Y) range
+    const tooltip = screen.getByTestId('crosshair-tooltip');
+    expect(tooltip).toHaveTextContent('130.00'); // the dataset's last point, within the 1Y zoom window
+  });
+
+  it('the crosshair is hidden while a brush drag is active', () => {
+    render(<RatioIndicatorChart title="Growth" data={baseData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
+    const container = getChartContainer();
+    fireEvent.mouseDown(container, { clientX: 100 });
+    fireEvent.mouseMove(container, { clientX: 400 });
+    expect(screen.queryByTestId('crosshair-tooltip')).not.toBeInTheDocument();
+  });
+
+  it('mouse leaving the chart clears the crosshair', () => {
+    render(<RatioIndicatorChart title="Growth" data={baseData} isLoading={false} aboveLabel="Up" belowLabel="Down" {...interpretationProps} />);
+    const container = getChartContainer();
+    fireEvent.mouseMove(container, { clientX: 400 });
+    expect(screen.getByTestId('crosshair-tooltip')).toBeInTheDocument();
+    fireEvent.mouseLeave(container);
+    expect(screen.queryByTestId('crosshair-tooltip')).not.toBeInTheDocument();
+  });
 });

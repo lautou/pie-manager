@@ -7,6 +7,7 @@ import {
   Chart, ChartAxis, ChartGroup, ChartLine, ChartThemeColor,
 } from '@patternfly/react-charts';
 import { VictoryZoomContainer } from 'victory-zoom-container';
+import ChartCrosshair, { type ChartCrosshairSeries, type ChartCrosshairState } from './ChartCrosshair';
 
 export type IndexView = 'total' | 'strategie' | 'pools' | 'positions';
 
@@ -71,15 +72,6 @@ interface IndexChartProps {
   CHART_PADDING_LEFT: number;
 }
 
-type IndexCrosshairSeries = { name: string; value: number; color: string };
-
-type IndexCrosshairState = {
-  xPx: number;
-  date: Date;
-  series: IndexCrosshairSeries[];
-  containerWidth: number;
-} | null;
-
 export default function IndexChart({
   indexView, setIndexView,
   zoomIndex, setZoomIndex,
@@ -97,7 +89,7 @@ export default function IndexChart({
   MIN_ZOOM_INDEX_MS, CHART_PADDING_LEFT,
 }: IndexChartProps) {
   const indexChartRef = useRef<HTMLDivElement>(null);
-  const [crosshair, setCrosshair] = useState<IndexCrosshairState>(null);
+  const [crosshair, setCrosshair] = useState<ChartCrosshairState>(null);
 
   const isPoolVisible    = (n: string) => visiblePools    === null || visiblePools.has(n);
   const isStratVisible   = (n: string) => visibleStrats   === null || visibleStrats.has(n);
@@ -184,7 +176,7 @@ export default function IndexChart({
           return nearest;
         };
 
-        const series: IndexCrosshairSeries[] = [];
+        const series: ChartCrosshairSeries[] = [];
 
         const addToSeries = (name: string, data: { x: Date; y: number }[], color: string) => {
           const pt = findNearest(data);
@@ -394,52 +386,7 @@ export default function IndexChart({
             }} />
           )}
           {/* Crosshair overlay */}
-          {crosshair && !brush?.active && (
-            <>
-              <div
-                data-testid="crosshair-line"
-                style={{
-                  position: 'absolute',
-                  left: crosshair.xPx,
-                  top: 10,
-                  width: 1,
-                  height: 'calc(100% - 80px)',
-                  borderLeft: '1px dashed rgba(60,63,66,0.5)',
-                  pointerEvents: 'none',
-                  zIndex: 11,
-                }}
-              />
-              <div
-                data-testid="crosshair-tooltip"
-                style={{
-                  position: 'absolute',
-                  left: crosshair.xPx + 8 > crosshair.containerWidth - 160
-                    ? crosshair.xPx - 160
-                    : crosshair.xPx + 8,
-                  top: 16,
-                  background: 'rgba(21,21,21,0.85)',
-                  color: '#fff',
-                  borderRadius: 4,
-                  padding: '4px 8px',
-                  fontSize: '0.78rem',
-                  pointerEvents: 'none',
-                  zIndex: 12,
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                <div style={{ marginBottom: 2, fontSize: '0.75rem', color: '#ccc' }}>
-                  {crosshair.date.toLocaleDateString('fr-FR')}
-                </div>
-                {crosshair.series.map((s) => (
-                  <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, backgroundColor: s.color, flexShrink: 0 }} />
-                    <span>{s.name}: </span>
-                    <span style={{ fontWeight: 'bold' }}>{s.value.toFixed(2)}</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
+          <ChartCrosshair crosshair={brush?.active ? null : crosshair} />
           <div ref={chartContainerRef} style={{ width: '100%', height: '100%' }}>
             {indexView === 'total' && totalIndexData.length > 0 && (
               <Chart

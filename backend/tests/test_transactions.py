@@ -1185,11 +1185,11 @@ async def test_create_transaction_balance_eur_scoped_per_portfolio_shared_broker
     Regression test: a broker (account_id) shared by two portfolios must NOT
     leak balance_eur between them when computing the running balance.
 
-    Scenario (real bug): Degiro used by both Lolo (portfolio 1) and Katiuska
-    (portfolio 2). Lolo's most recent transaction has balance_eur=35.56€.
-    Katiuska's own last known balance is 0.94€. Depositing 2210€ into
-    Katiuska's Degiro account must yield 0.94 + 2210 = 2210.94€ — NOT
-    35.56 + 2210 = 2245.56€ (Lolo's balance leaking into Katiuska).
+    Scenario (real bug): Degiro used by both Portfolio 1 and Portfolio 2.
+    Portfolio 1's most recent transaction has balance_eur=35.56€.
+    Portfolio 2's own last known balance is 0.94€. Depositing 2210€ into
+    Portfolio 2's Degiro account must yield 0.94 + 2210 = 2210.94€ — NOT
+    35.56 + 2210 = 2245.56€ (Portfolio 1's balance leaking into Portfolio 2).
     """
     from app.models.portfolio import Portfolio
     from app.models.broker import Broker
@@ -1215,7 +1215,7 @@ async def test_create_transaction_balance_eur_scoped_per_portfolio_shared_broker
     db_session.add(Product(ticker="FRAIS.COURTAGE.EUR", name="Frais courtage", category="Frais", currency="EUR"))
     await db_session.flush()
 
-    # Portfolio A (Lolo-like): larger, more recent balance on the shared broker
+    # Portfolio A (Portfolio-1-like): larger, more recent balance on the shared broker
     db_session.add(TxModel(
         portfolio_id=pid_a, account_id=aid, date=date(2026, 6, 3), type="Frais",
         ticker="FRAIS.COURTAGE.EUR", currency="EUR", exchange_rate=1.0,
@@ -1223,7 +1223,7 @@ async def test_create_transaction_balance_eur_scoped_per_portfolio_shared_broker
         total_amount=-3.0, total_amount_eur=-3.0,
         balance_eur=35.56, balance_currency=35.56,
     ))
-    # Portfolio B (Katiuska-like): smaller, older balance on the SAME broker
+    # Portfolio B (Portfolio-2-like): smaller, older balance on the SAME broker
     db_session.add(TxModel(
         portfolio_id=pid_b, account_id=aid, date=date(2026, 3, 16), type="Frais",
         ticker="FRAIS.COURTAGE.EUR", currency="EUR", exchange_rate=1.0,

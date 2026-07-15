@@ -355,11 +355,11 @@ rewrite. Revolut/Portfolio 1 was corrected this way (confirmed real balance: 0,0
 across brokers — do not assume one, and do not invent one under pressure to "fix" a reported
 gap.** Two formulas were each individually confirmed correct for *different* brokers in the same
 investigation, and each was *wrong* for the other:
-- Revolut/Lolo: real EUR wallet = 0€ (user-confirmed). `cash_balance_eur` said -108.20€ (wrong).
-  `SUM(total_amount_eur) WHERE currency='EUR'` gave exactly 0.00€ (right, by luck of Revolut's
-  fully-segregated EUR/JPY wallet architecture).
-- IBKR/Lolo: real EUR balance = 1.74€ (user-confirmed) = `cash_balance_eur` exactly (right, this
-  time). `SUM(total_amount_eur) WHERE currency='EUR'` gave -18.25€ (wrong here).
+- Revolut/Portfolio 1: real EUR wallet = 0€ (user-confirmed). `cash_balance_eur` said -108.20€
+  (wrong). `SUM(total_amount_eur) WHERE currency='EUR'` gave exactly 0.00€ (right, by luck of
+  Revolut's fully-segregated EUR/JPY wallet architecture).
+- IBKR/Portfolio 1: real EUR balance = 1.74€ (user-confirmed) = `cash_balance_eur` exactly
+  (right, this time). `SUM(total_amount_eur) WHERE currency='EUR'` gave -18.25€ (wrong here).
 
 This means the two brokers settle currency activity differently in ways this app's data model
 doesn't cleanly capture, and no single query safely tells you which broker behaves which way.

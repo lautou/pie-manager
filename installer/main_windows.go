@@ -76,6 +76,123 @@ func isWSL2Ready() bool {
 	return err == nil && strings.EqualFold(out, "Enabled")
 }
 
+// enableWindowsFeature enables a Windows optional feature via DISM.
+// Idempotent — safe to call even if the feature is already enabled.
+func enableWindowsFeature(name string) error {
+	_, err := runPS(fmt.Sprintf(
+		`Enable-WindowsOptionalFeature -Online -FeatureName %s -All -NoRestart -ErrorAction Stop`, name))
+	return err
+}
+
+// isWingetAvailable reports whether winget is resolvable on PATH.
+func isWingetAvailable() bool {
+	_, err := exec.LookPath("winget")
+	return err == nil
+}
+
+// addAppxPackage installs a local package file for the current user via
+// Add-AppxPackage — the standard, documented way to sideload these packages
+// (WSL, winget, VCLibs, UI.Xaml) when run as an elevated interactive user,
+// which is how this installer is actually launched (UAC, not a service
+// account). run() is used so any failure carries the command's combined
+// output in the returned error (unlike the streamed-to-console exec.Command
+// calls elsewhere in this file).
+//
+// NOT Add-AppxProvisionedPackage: that cmdlet requires the package to pass
+// an internal "IsStagedPackageStoreSigned" check, which the WSL msixbundle
+// happens to satisfy but VCLibs's plain sideload .appx does not (confirmed
+// live via C:\Windows\Logs\DISM\dism.log: "Failed while checking
+// IsStagedPackageStoreSigned" → HRESULT 0x80070490) — provisioning is built
+// for machine-wide staging of Store-packaged content, not for sideloading
+// arbitrary redistributable framework packages like this installer needs.
+//
+// A failure is swallowed when it matches isAppxAlreadyNewerError — see that
+// function's comment (confirmed live on a real Windows 11 VM, elevated
+// non-SYSTEM user: this exact case hit for Microsoft.UI.Xaml).
+func addAppxPackage(path string) error {
+	err := run("powershell", "-NoProfile", "-NonInteractive", "-Command",
+		fmt.Sprintf(`Add-AppxPackage -Path "%s"`, path))
+	if err != nil && isAppxAlreadyNewerError(err.Error()) {
+		return nil
+	}
+	return err
+}
+
+// installWSLFromGitHub downloads and installs the official WSL package
+// directly from Microsoft's GitHub releases, bypassing the Microsoft Store.
+// This is Microsoft's own documented fallback for machines where the Store
+// isn't provisioned (e.g. a fresh local-account Windows install) — see
+// https://github.com/microsoft/WSL/releases and
+// https://learn.microsoft.com/en-us/windows/wsl/install-manual.
+func installWSLFromGitHub() error {
+	url, err := githubLatestAssetURL("microsoft/WSL", "_x64_ARM64.msixbundle")
+	if err != nil {
+		return fmt.Errorf("resolving WSL package URL: %w", err)
+	}
+	dest := filepath.Join(os.TempDir(), "pie-manager-wsl.msixbundle")
+	if err := downloadFile(url, dest); err != nil {
+		return fmt.Errorf("downloading WSL package: %w", err)
+	}
+	defer os.Remove(dest)
+	if err := addAppxPackage(dest); err != nil {
+		return fmt.Errorf("installing WSL package: %w", err)
+	}
+	return nil
+}
+
+const uiXamlNuGetVersion = "2.8.6"
+const uiXamlAppxSuffix = "tools/AppX/x64/Release/Microsoft.UI.Xaml.2.8.appx"
+
+// installWingetFromGitHub installs winget (App Installer) and its two
+// required framework dependencies directly from Microsoft's official
+// distribution channels, bypassing the Microsoft Store — see
+// https://github.com/microsoft/winget-cli/releases and
+// https://learn.microsoft.com/en-us/windows/package-manager/winget/.
+func installWingetFromGitHub() error {
+	tmp := os.TempDir()
+
+	// 1. Microsoft.VCLibs — stable Microsoft-hosted direct link.
+	vclibs := filepath.Join(tmp, "pie-manager-vclibs.appx")
+	if err := downloadFile("https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx", vclibs); err != nil {
+		return fmt.Errorf("downloading VCLibs: %w", err)
+	}
+	defer os.Remove(vclibs)
+	if err := addAppxPackage(vclibs); err != nil {
+		return fmt.Errorf("installing VCLibs: %w", err)
+	}
+
+	// 2. Microsoft.UI.Xaml — only distributed via NuGet, no direct appx download exists.
+	nupkg := filepath.Join(tmp, "pie-manager-ui-xaml.nupkg")
+	nupkgURL := fmt.Sprintf("https://www.nuget.org/api/v2/package/Microsoft.UI.Xaml/%s", uiXamlNuGetVersion)
+	if err := downloadFile(nupkgURL, nupkg); err != nil {
+		return fmt.Errorf("downloading Microsoft.UI.Xaml: %w", err)
+	}
+	defer os.Remove(nupkg)
+	xamlAppx := filepath.Join(tmp, "pie-manager-ui-xaml.appx")
+	if err := extractZipEntryBySuffix(nupkg, uiXamlAppxSuffix, xamlAppx); err != nil {
+		return fmt.Errorf("extracting Microsoft.UI.Xaml: %w", err)
+	}
+	defer os.Remove(xamlAppx)
+	if err := addAppxPackage(xamlAppx); err != nil {
+		return fmt.Errorf("installing Microsoft.UI.Xaml: %w", err)
+	}
+
+	// 3. winget itself.
+	url, err := githubLatestAssetURL("microsoft/winget-cli", "Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle")
+	if err != nil {
+		return fmt.Errorf("resolving winget package URL: %w", err)
+	}
+	dest := filepath.Join(tmp, "pie-manager-winget.msixbundle")
+	if err := downloadFile(url, dest); err != nil {
+		return fmt.Errorf("downloading winget: %w", err)
+	}
+	defer os.Remove(dest)
+	if err := addAppxPackage(dest); err != nil {
+		return fmt.Errorf("installing winget: %w", err)
+	}
+	return nil
+}
+
 // refreshPath reloads PATH from the Windows registry into the current
 // process environment. Required after winget installs a binary — the
 // installer updates the registry PATH but the running process still holds
@@ -195,17 +312,48 @@ func main() {
 		fmt.Println("WSL2 déjà installé.")
 		logMessage("SKIP: WSL2 already installed")
 	} else {
+		// Enable the two required optional features ourselves first. wsl
+		// --install is supposed to do this too, but on a fresh local-account
+		// Windows install (Microsoft Store never provisioned) it can fail
+		// before even reaching this step. Doing it directly via DISM removes
+		// that dependency; it's idempotent and harmless if already enabled.
+		enableWindowsFeature("Microsoft-Windows-Subsystem-Linux") //nolint:errcheck — best-effort, wsl --install retries this too
+		enableWindowsFeature("VirtualMachinePlatform")            //nolint:errcheck
+
 		logMessage("INFO: running wsl --install --no-distribution...")
 		wsl := exec.Command("wsl", "--install", "--no-distribution")
 		wsl.Stdout = os.Stdout
 		wsl.Stderr = os.Stderr
 		if err := wsl.Run(); err != nil {
-			logMessage(fmt.Sprintf("FATAL: WSL2 install failed: %v", err))
-			popup("Erreur", fmt.Sprintf("L'installation de WSL2 a échoué.\nConsultez le fichier journal :\n%s", logFilePath))
+			logMessage(fmt.Sprintf("WARN: wsl --install failed (%v) — Microsoft Store may be unavailable, falling back to direct install from GitHub", err))
+			if fbErr := installWSLFromGitHub(); fbErr != nil {
+				logMessage(fmt.Sprintf("FATAL: WSL2 install failed (Store method and GitHub fallback both failed): %v", fbErr))
+				popup("Erreur", fmt.Sprintf("L'installation de WSL2 a échoué.\nConsultez le fichier journal :\n%s", logFilePath))
+				os.Exit(1)
+			}
+			logMessage("OK: WSL2 installed via GitHub fallback (Microsoft Store unavailable)")
+		} else {
+			logMessage("OK: WSL2 install succeeded")
+		}
+		systemChanged = true
+	}
+
+	// ── winget ───────────────────────────────────────────────────────────────
+	// Bootstrap winget itself if missing, before the Podman CLI/Docker Compose
+	// steps below (both depend on it). Same root cause as the WSL2 fallback
+	// above: a fresh local-account Windows install may never have provisioned
+	// the Microsoft Store, and winget is normally provisioned through it.
+	if !isWingetAvailable() {
+		fmt.Println("=== PIE Manager — Installation de winget ===")
+		logMessage("WARN: winget not found — installing App Installer directly from GitHub (Microsoft Store unavailable or not provisioned)")
+		if err := installWingetFromGitHub(); err != nil {
+			logMessage(fmt.Sprintf("FATAL: could not install winget: %v", err))
+			popup("Erreur", fmt.Sprintf("winget est introuvable et son installation de secours a échoué.\nConsultez le fichier journal :\n%s", logFilePath))
 			os.Exit(1)
 		}
-		logMessage("OK: WSL2 install succeeded")
-		systemChanged = true
+		logMessage("OK: winget installed via GitHub fallback")
+		refreshPath()
+		logMessage("INFO: PATH refreshed from registry")
 	}
 
 	// ── Podman CLI ───────────────────────────────────────────────────────────
@@ -341,7 +489,7 @@ func main() {
 		os.Exit(1)
 	}
 	os.WriteFile(filepath.Join(target, "compose-prod.yaml"), composeProd, 0644) //nolint:errcheck
-	os.WriteFile(filepath.Join(target, "haproxy.cfg"), haproxyCfg, 0644)         //nolint:errcheck
+	os.WriteFile(filepath.Join(target, "haproxy.cfg"), haproxyCfg, 0644)        //nolint:errcheck
 
 	// Always overwrite .env with the current version.
 	// Preserve the existing port if one is configured; otherwise find a free one.

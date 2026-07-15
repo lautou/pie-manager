@@ -35,9 +35,14 @@ back to update them. Distinguish:
 The Go installer (`installer/`) has two categories of functions:
 
 **Fully testable (must be 100% covered):** `findAvailablePort`, `readAppPort`,
-`readInstalledVersion`, `updateEnvPort`, `detectComposeCmd`, `copyFile`.
+`readInstalledVersion`, `updateEnvPort`, `detectComposeCmd`, `copyFile`,
+`githubLatestAssetURL`, `downloadFile`, `extractZipEntryBySuffix`.
 These pure utility functions live in `common.go` (shared Linux/Windows) and
-`install.go`/`start.go` (Linux only), tested in `install_test.go`.
+`install.go`/`start.go` (Linux only), tested in `install_test.go`/`common_test.go`.
+The last three have no actual Windows dependency (plain HTTP + zip) despite existing
+to support a Windows-only fallback — see "Store-independent WSL2/winget install" below —
+so they're written as real testable functions instead of being dumped into the
+untestable bucket just because their caller lives in `main_windows.go`.
 
 **Intentionally untestable:** `runInstall`, `runStartWithCompose`, `forceRecreate`,
 `notify`, `podmanImageExists`, `focusExistingWindow`, `openBrowser`,
@@ -831,6 +836,25 @@ APP_PORT=<port>
 ```
 
 ### Windows gotchas (do not repeat these mistakes)
+
+**Store-independent WSL2/winget install** — `wsl --install --no-distribution` fetches the
+actual WSL2 engine as a Microsoft Store app, and `winget` itself is normally provisioned
+through the Store too; both are silently absent on a fresh **local-account** Windows install
+(Store provisioning never triggers without a Microsoft-account first login) — confirmed live
+in a test VM. `main_windows.go` now enables the two required optional features directly via
+DISM (`enableWindowsFeature`, bypassing `wsl --install`'s own flaky attempt at this), and
+falls back to downloading the official `.msixbundle` packages straight from
+[microsoft/WSL](https://github.com/microsoft/WSL/releases) and
+[microsoft/winget-cli](https://github.com/microsoft/winget-cli/releases) releases
+(`installWSLFromGitHub`/`installWingetFromGitHub`) when the Store-dependent path fails —
+Microsoft's own documented offline/enterprise install method, not a hack.
+
+`Add-AppxPackage` itself is confirmed live (real elevated non-SYSTEM user, test VM) to work
+correctly for VCLibs/UI.Xaml/winget. The one real failure mode hit live is HRESULT
+`0x80073D06` ("a higher version of this package is already installed") — some Windows 11
+builds ship a newer in-box framework package than the version this installer pins, and AppX
+dependency resolution only requires "at least this version," so it's harmless. `addAppxPackage`
+treats this specific HRESULT as success (`isAppxAlreadyNewerError` in `common.go`).
 
 **HAProxy port 80 forbidden in rootless Podman** — HAProxy must listen on port 8080 internally,
 mapped to `APP_PORT:8080` in compose. Port 80 causes `Permission denied` at startup.

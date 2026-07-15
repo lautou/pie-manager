@@ -16,6 +16,18 @@ jobs:
           go-version: '1.22'
           cache-dependency-path: installer/go.sum
 
+      - name: Install osslsigncode and stage signing certificate
+        env:
+          PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
+          PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
+        run: |
+          sudo apt-get update && sudo apt-get install -y osslsigncode
+          echo "$PFX_BASE64" | base64 -d > "$RUNNER_TEMP/codesign.pfx"
+          # Self-signed cert: extract the public half to verify our own signature against
+          # (osslsigncode verify's default CA bundle has no reason to trust it, by design).
+          openssl pkcs12 -in "$RUNNER_TEMP/codesign.pfx" -passin "pass:$PFX_PASSWORD" \
+            -nokeys -clcerts -out "$RUNNER_TEMP/codesign-public.pem"
+
       - name: Copy assets for embed
         run: |
           mkdir -p installer/assets installer/launcher/assets
@@ -36,6 +48,16 @@ jobs:
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
             -ldflags="-H windowsgui -s -w -X main.Version=${VERSION}" \
             -o ../assets/launcher.exe .
+
+      - name: Sign launcher.exe
+        env:
+          PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
+        run: |
+          osslsigncode sign -pkcs12 "$RUNNER_TEMP/codesign.pfx" -pass "$PFX_PASSWORD" \
+            -h sha256 -n "PIE Manager" -i "${{ github.server_url }}/${{ github.repository }}" \
+            -t "http://timestamp.digicert.com" \
+            -in installer/assets/launcher.exe -out installer/assets/launcher.exe.signed
+          mv installer/assets/launcher.exe.signed installer/assets/launcher.exe
 
       - name: go mod tidy
         run: cd installer && go mod tidy
@@ -67,6 +89,22 @@ jobs:
           # Generic aliases
           cp "pie-manager-linux-amd64-${VERSION}" pie-manager-linux-amd64
           cp "pie-manager-windows-amd64-${VERSION}.exe" pie-manager-windows-amd64.exe
+
+      - name: Sign Windows installer executable
+        env:
+          PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cd installer
+          osslsigncode sign -pkcs12 "$RUNNER_TEMP/codesign.pfx" -pass "$PFX_PASSWORD" \
+            -h sha256 -n "PIE Manager" -i "${{ github.server_url }}/${{ github.repository }}" \
+            -t "http://timestamp.digicert.com" \
+            -in "pie-manager-windows-amd64-${VERSION}.exe" \
+            -out "pie-manager-windows-amd64-${VERSION}.exe.signed"
+          mv "pie-manager-windows-amd64-${VERSION}.exe.signed" "pie-manager-windows-amd64-${VERSION}.exe"
+          cp "pie-manager-windows-amd64-${VERSION}.exe" pie-manager-windows-amd64.exe
+          osslsigncode verify -CAfile "$RUNNER_TEMP/codesign-public.pem" "pie-manager-windows-amd64-${VERSION}.exe" | grep -q "Signature verification: ok"
+          rm -f "$RUNNER_TEMP/codesign.pfx"
 
       - name: Smoke test — Linux binary executes
         run: |

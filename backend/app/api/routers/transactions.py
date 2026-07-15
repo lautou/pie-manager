@@ -201,8 +201,12 @@ async def list_transactions(
     return result.scalars().all()
 
 
-@router.post("/", response_model=TransactionOut, status_code=201)
-async def create_transaction(body: TransactionCreate, db: AsyncSession = Depends(get_db)):
+async def create_transaction_core(body: TransactionCreate, db: AsyncSession) -> Transaction:
+    """Everything create_transaction does up to (but not including) commit/refresh/snapshot
+    trigger. Extracted so the bulk-import feature can call this once per row inside a single
+    atomic DB transaction — calling the route function N times would commit each row
+    individually, making an all-or-nothing rollback across the whole import impossible.
+    """
     # Verify account ownership: the account must belong to the same portfolio
     acct_result = await db.execute(select(Broker).where(Broker.id == body.account_id))
     account = acct_result.scalar_one_or_none()
@@ -419,6 +423,12 @@ async def create_transaction(body: TransactionCreate, db: AsyncSession = Depends
                     fee_tx.balance_currency = fee_tx.balance_eur
                 await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, -fee_amount, fee_tx.type, fee_tx.ticker, fee_tx.operation)
 
+    return tx
+
+
+@router.post("/", response_model=TransactionOut, status_code=201)
+async def create_transaction(body: TransactionCreate, db: AsyncSession = Depends(get_db)):
+    tx = await create_transaction_core(body, db)
     await db.commit()
     await db.refresh(tx)
     _trigger_snapshot_recompute(tx.portfolio_id, tx.date)

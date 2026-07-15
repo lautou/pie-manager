@@ -72,6 +72,7 @@ import RefreshBanner from './components/RefreshBanner';
 import PortfolioSelectPage from './pages/PortfolioSelectPage';
 import DashboardPage from './pages/DashboardPage';
 import TransactionsPage from './pages/TransactionsPage';
+import TransactionImportPage from './pages/TransactionImportPage';
 import PerformancePage from './pages/PerformancePage';
 import HoldingsPage from './pages/HoldingsPage';
 import ManualPricePage from './pages/ManualPricePage';
@@ -106,6 +107,9 @@ function AppNav({ portfolioId }: { portfolioId: string }) {
         </NavItem>
         <NavItem>
           <RouterNavLink to={`/portfolio/${portfolioId}/transactions`}>{t('nav.transactions')}</RouterNavLink>
+        </NavItem>
+        <NavItem>
+          <RouterNavLink to={`/portfolio/${portfolioId}/import`}>{t('nav.import')}</RouterNavLink>
         </NavItem>
         <NavItem>
           <RouterNavLink to={`/portfolio/${portfolioId}/performance`}>{t('nav.performance')}</RouterNavLink>
@@ -306,6 +310,7 @@ function PortfolioRoutes() {
         <Route path="positions" element={<HoldingsPage />} />
         <Route path="rebalancing" element={<RebalancingPage />} />
         <Route path="transactions" element={<TransactionsPage />} />
+        <Route path="import" element={<TransactionImportPage />} />
         <Route path="performance" element={<PerformancePage />} />
         <Route path="prices" element={<ManualPricePage />} />
         <Route path="synthese" element={<AccountsSummaryPage />} />

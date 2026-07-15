@@ -180,7 +180,8 @@ export interface TransactionPayload {
 // Transactions affect balances, holdings, snapshots, dashboard KPIs and TRI.
 // IMPORTANT: query keys store portfolioId as a STRING (from useParams), but
 // the API returns portfolio_id as a number — use String() to match exactly.
-function _invalidatePortfolioQueries(qc: ReturnType<typeof useQueryClient>, portfolioId: number | string) {
+// Exported so useCommitImport (bulk import) can reuse it after a successful commit.
+export function invalidatePortfolioQueries(qc: ReturnType<typeof useQueryClient>, portfolioId: number | string) {
   const pid = String(portfolioId);
   qc.invalidateQueries({ queryKey: ['transactions', pid] });
   qc.invalidateQueries({ queryKey: ['accounts-summary', pid] });
@@ -196,7 +197,7 @@ export function useCreateTransaction() {
   const qc = useQueryClient();
   return useMutation<Transaction, Error, TransactionPayload>({
     mutationFn: async (body) => (await apiClient.post<Transaction>('/api/transactions/', body)).data,
-    onSuccess: (data) => _invalidatePortfolioQueries(qc, data.portfolio_id),
+    onSuccess: (data) => invalidatePortfolioQueries(qc, data.portfolio_id),
   });
 }
 
@@ -205,7 +206,7 @@ export function useUpdateTransaction() {
   return useMutation<Transaction, Error, { id: number } & Partial<TransactionPayload>>({
     mutationFn: async ({ id, ...body }) =>
       (await apiClient.put<Transaction>(`/api/transactions/${id}`, body)).data,
-    onSuccess: (data) => _invalidatePortfolioQueries(qc, data.portfolio_id),
+    onSuccess: (data) => invalidatePortfolioQueries(qc, data.portfolio_id),
   });
 }
 
@@ -213,7 +214,90 @@ export function useDeleteTransaction() {
   const qc = useQueryClient();
   return useMutation<void, Error, { id: number; portfolio_id: number }>({
     mutationFn: async ({ id }) => { await apiClient.delete(`/api/transactions/${id}`); },
-    onSuccess: (_, vars) => _invalidatePortfolioQueries(qc, vars.portfolio_id),
+    onSuccess: (_, vars) => invalidatePortfolioQueries(qc, vars.portfolio_id),
+  });
+}
+
+// ── Bulk transaction import (Excel) ─────────────────────────────────────────
+
+export interface ImportRowResolved {
+  portfolio_id: number;
+  account_id: number;
+  portfolio_name: string;
+  account_name: string;
+  date: string;
+  type: string;
+  operation: string | null;
+  ticker: string;
+  currency: string;
+  exchange_rate: number;
+  quantity: number;
+  unit_price: number;
+  courtage_eur: number;
+  ttf_eur: number;
+}
+
+export interface ImportDuplicateRef {
+  kind: 'db' | 'file';
+  transaction_id?: number | null;
+  row_number?: number | null;
+}
+
+export interface ImportRowResult {
+  row_number: number;
+  status: 'ok' | 'error' | 'duplicate';
+  sens: string | null;
+  resolved: ImportRowResolved | null;
+  errors: string[];
+  warnings: string[];
+  duplicate_of: ImportDuplicateRef | null;
+}
+
+export interface ImportSummary {
+  total_rows: number;
+  ok: number;
+  errors: number;
+  duplicates: number;
+}
+
+export interface ImportValidateResponse {
+  rows: ImportRowResult[];
+  summary: ImportSummary;
+}
+
+export interface ImportCommitResponse {
+  status: string;
+  imported_count: number;
+  created_transaction_ids: number[];
+}
+
+export function useValidateImport() {
+  return useMutation<ImportValidateResponse, Error, File>({
+    mutationFn: async (file) => {
+      const form = new FormData();
+      form.append('file', file);
+      return (await apiClient.post<ImportValidateResponse>(
+        '/api/transactions/import/validate', form, { headers: { 'Content-Type': 'multipart/form-data' } },
+      )).data;
+    },
+  });
+}
+
+export function useCommitImport() {
+  const qc = useQueryClient();
+  return useMutation<
+    ImportCommitResponse, Error,
+    { file: File; includeRows: number[]; portfolioId: number | string }
+  >({
+    mutationFn: async ({ file, includeRows }) => {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('include_rows', JSON.stringify(includeRows));
+      return (await apiClient.post<ImportCommitResponse>(
+        '/api/transactions/import/commit', form, { headers: { 'Content-Type': 'multipart/form-data' } },
+      )).data;
+    },
+    onSuccess: (_, vars) => invalidatePortfolioQueries(qc, vars.portfolioId),
   });
 }
 

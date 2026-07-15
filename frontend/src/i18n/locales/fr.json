@@ -5,6 +5,7 @@
     "rebalancing": "Rééquilibrage",
     "accounts": "Comptes",
     "transactions": "Transactions",
+    "import": "Import Excel",
     "performance": "Performance",
     "manualPrices": "Prix manuels",
     "capitalGains": "Plus-values",
@@ -232,6 +233,41 @@
     "brokerageAutoNote": "Courtage et TTF créés automatiquement comme frais liés à cette transaction.",
     "weekendFXNote": "⚠️ Week-end NY — change payant ({{rate}}%)",
     "fxVolumeNote": "{{volume}}€ échangés ce mois / {{limit}}€ gratuits"
+  },
+  "import": {
+    "title": "Import de transactions",
+    "intro": "Téléchargez le modèle Excel, remplissez vos transactions, puis importez-les après vérification.",
+    "downloadTemplate": "Télécharger le modèle",
+    "chooseFile": "Sélectionner un fichier Excel (.xlsx)",
+    "validating": "Validation en cours…",
+    "importing": "Import en cours…",
+    "confirmImport": "Importer les lignes sélectionnées ({{count}})",
+    "summary": "{{ok}} valide(s) / {{errors}} erreur(s) / {{duplicates}} doublon(s)",
+    "columns": {
+      "rowNumber": "#",
+      "include": "Inclure",
+      "status": "Statut",
+      "sens": "Sens",
+      "portfolio": "Portefeuille",
+      "account": "Compte",
+      "ticker": "Ticker",
+      "date": "Date",
+      "quantity": "Quantité",
+      "unitPrice": "Prix unitaire",
+      "currency": "Devise",
+      "brokerage": "Courtage",
+      "ttf": "TTF",
+      "error": "Erreur"
+    },
+    "status": {
+      "ok": "OK",
+      "error": "Erreur",
+      "duplicate": "Doublon"
+    },
+    "successMessage": "{{count}} transaction(s) importée(s) avec succès.",
+    "errorMessage": "Échec de l'import : {{message}}",
+    "duplicateOfDb": "Doublon de la transaction #{{id}}",
+    "duplicateOfFile": "Doublon de la ligne {{row}} du fichier"
   },
   "brokers": {
     "title": "Brokers",

@@ -15,6 +15,7 @@ import {
   usePortfolios, usePortfolio, useCreatePortfolio, useRenamePortfolio, useDeletePortfolio,
   useBrokers, useAccountsSummary, useProducts,
   useTransactions, useCreateTransaction, useUpdateTransaction, useDeleteTransaction,
+  useValidateImport, useCommitImport,
   usePools, usePoolProducts,
   usePrices, useCreatePrice,
   useHoldings, useHoldingsAtDate,
@@ -408,6 +409,56 @@ describe('api/queries React Query hooks', () => {
       expect(qc.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['transactions', '3'] });
       expect(qc.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['accounts-summary', '3'] });
       expect(qc.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['snapshots'] });
+    });
+  });
+
+  // ── Bulk transaction import ──────────────────────────────────────────────────
+
+  describe('useValidateImport', () => {
+    it('POSTs the file as multipart form data to /api/transactions/import/validate', async () => {
+      const responseBody = { rows: [], summary: { total_rows: 0, ok: 0, errors: 0, duplicates: 0 } };
+      mockPost.mockResolvedValueOnce({ data: responseBody } as any);
+
+      const wrapper = makeWrapper();
+      const { result } = renderHook(() => useValidateImport(), { wrapper });
+
+      const file = new File(['dummy'], 'import.xlsx');
+      const data = await result.current.mutateAsync(file);
+
+      expect(mockPost).toHaveBeenCalledWith(
+        '/api/transactions/import/validate',
+        expect.any(FormData),
+        { headers: { 'Content-Type': 'multipart/form-data' } },
+      );
+      const sentForm = mockPost.mock.calls[0][1] as FormData;
+      expect(sentForm.get('file')).toBe(file);
+      expect(data).toEqual(responseBody);
+    });
+  });
+
+  describe('useCommitImport', () => {
+    it('POSTs the file + include_rows as multipart form data and invalidates portfolio caches', async () => {
+      const responseBody = { status: 'ok', imported_count: 2, created_transaction_ids: [10, 11] };
+      mockPost.mockResolvedValueOnce({ data: responseBody } as any);
+
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      vi.spyOn(qc, 'invalidateQueries');
+      const wrapper = makeWrapper(qc);
+      const { result } = renderHook(() => useCommitImport(), { wrapper });
+
+      const file = new File(['dummy'], 'import.xlsx');
+      const data = await result.current.mutateAsync({ file, includeRows: [2, 3], portfolioId: 7 });
+
+      expect(mockPost).toHaveBeenCalledWith(
+        '/api/transactions/import/commit',
+        expect.any(FormData),
+        { headers: { 'Content-Type': 'multipart/form-data' } },
+      );
+      const sentForm = mockPost.mock.calls[0][1] as FormData;
+      expect(sentForm.get('file')).toBe(file);
+      expect(sentForm.get('include_rows')).toBe('[2,3]');
+      expect(data).toEqual(responseBody);
+      expect(qc.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['transactions', '7'] });
     });
   });
 

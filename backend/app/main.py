@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routers import portfolios, products, brokers, transactions, pools, prices, snapshots, dashboard, admin
-from app.api.routers import holdings, rebalancing, analytics, pv, fiscal, indicators
+from app.api.routers import holdings, rebalancing, analytics, pv, fiscal, indicators, transaction_import
 
 
 @asynccontextmanager
@@ -72,6 +72,7 @@ app.include_router(admin.router, prefix="/api/admin")
 app.include_router(pv.router, prefix="/api/pv")
 app.include_router(fiscal.router, prefix="/api/fiscal")
 app.include_router(indicators.router, prefix="/api/indicators")
+app.include_router(transaction_import.router, prefix="/api/transactions/import")
 
 
 @app.get("/health")

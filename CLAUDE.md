@@ -641,6 +641,20 @@ pie-manager start                 # or GNOME icon
 - Images are version-tagged: `quay.io/ltourreau/pie-manager-backend:1.0.0` (pinned in `.env` via `APP_VERSION`)
 - Build + push automated via `publish-images.yml` on tag `vX.X.X`
 
+### Windows executable code signing
+
+`build-installer.yml` Authenticode-signs `launcher.exe` and `pie-manager-windows-amd64*.exe`
+using a self-signed `CN=PIEManager` certificate (`osslsigncode`, since the whole workflow runs
+on `ubuntu-latest` with no Windows runner — the Windows binaries are cross-compiled, not built
+natively). Signing includes an RFC-3161 timestamp (`timestamp.digicert.com`), so the signature
+stays valid after the certificate expires (2031). The PFX and its password live only as the
+GitHub secrets `WINDOWS_CODESIGN_PFX_BASE64`/`WINDOWS_CODESIGN_PFX_PASSWORD` — a personal
+backup of the PFX exists outside the repo/VM, not tracked here.
+
+**This does not remove the Windows SmartScreen "Unknown Publisher" warning** — only a
+CA-issued certificate with accumulated reputation does that. It provides a valid, verifiable,
+non-expiring signature (integrity/authenticity), nothing more.
+
 ### Installed files (Linux)
 ```
 ~/.local/share/pie-manager/   compose-prod.yaml, haproxy.cfg, .env, pie-manager (binary), VERSION

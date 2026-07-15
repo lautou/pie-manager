@@ -116,6 +116,16 @@ export const pfCoreStubs = {
       />
     </div>
   ),
+  Checkbox: ({ id, 'aria-label': ariaLabel, isChecked, isDisabled, onChange }: any) => (
+    <input
+      id={id}
+      type="checkbox"
+      aria-label={ariaLabel}
+      checked={isChecked}
+      disabled={isDisabled}
+      onChange={(e: any) => onChange?.(e, e.target.checked)}
+    />
+  ),
   TextInput: ({ value, onChange, placeholder, validated, 'aria-label': ariaLabel, type, onKeyDown, onPaste }: any) => (
     <input
       type={type || 'text'}

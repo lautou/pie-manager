@@ -17,6 +17,7 @@ PIE Manager permet de suivre plusieurs portefeuilles d'investissement depuis une
 - **Plus-values (CUMP/WACOP)** — calcul automatique des plus-values latentes et réalisées
 - **Rééquilibrage** — outil de rééquilibrage par rapport aux allocations cibles
 - **Prix manuels** — saisie manuelle des prix pour les produits non cotés
+- **Import Excel** — import en masse de transactions depuis un modèle Excel téléchargeable, avec prévisualisation, détection de doublons et validation avant import
 - **Synchronisation Yahoo Finance** — mise à jour des cours toutes les 15 minutes
 - **Snapshots journaliers** — historique de valorisation (jours ouvrés)
 - **Sauvegarde et restauration** — depuis l'interface d'administration

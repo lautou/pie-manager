@@ -5,6 +5,7 @@
     "rebalancing": "Rebalancing",
     "accounts": "Accounts",
     "transactions": "Transactions",
+    "import": "Excel Import",
     "performance": "Performance",
     "manualPrices": "Manual Prices",
     "capitalGains": "Capital Gains",
@@ -222,6 +223,41 @@
     "brokerageAutoNote": "Brokerage and TTF created automatically as fees linked to this transaction.",
     "weekendFXNote": "⚠️ NY weekend — FX fee applies ({{rate}}%)",
     "fxVolumeNote": "{{volume}}€ exchanged this month / {{limit}}€ free"
+  },
+  "import": {
+    "title": "Transaction import",
+    "intro": "Download the Excel template, fill in your transactions, then import them after review.",
+    "downloadTemplate": "Download template",
+    "chooseFile": "Select an Excel file (.xlsx)",
+    "validating": "Validating…",
+    "importing": "Importing…",
+    "confirmImport": "Import selected rows ({{count}})",
+    "summary": "{{ok}} valid / {{errors}} error(s) / {{duplicates}} duplicate(s)",
+    "columns": {
+      "rowNumber": "#",
+      "include": "Include",
+      "status": "Status",
+      "sens": "Direction",
+      "portfolio": "Portfolio",
+      "account": "Account",
+      "ticker": "Ticker",
+      "date": "Date",
+      "quantity": "Quantity",
+      "unitPrice": "Unit price",
+      "currency": "Currency",
+      "brokerage": "Brokerage",
+      "ttf": "TTF",
+      "error": "Error"
+    },
+    "status": {
+      "ok": "OK",
+      "error": "Error",
+      "duplicate": "Duplicate"
+    },
+    "successMessage": "{{count}} transaction(s) imported successfully.",
+    "errorMessage": "Import failed: {{message}}",
+    "duplicateOfDb": "Duplicate of transaction #{{id}}",
+    "duplicateOfFile": "Duplicate of row {{row}} in the file"
   },
   "brokers": {
     "title": "Brokers",

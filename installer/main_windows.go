@@ -419,6 +419,25 @@ func main() {
 			logMessage("OK: RunOnce entry registered for auto-resume after reboot")
 		}
 
+		// RunOnce alone is unreliable here: confirmed live that it can survive
+		// completely unconsumed after a reboot (Windows always deletes a
+		// RunOnce value immediately before running it, success or failure —
+		// a surviving value means it was never attempted at all), which
+		// matches a documented class of quirk with RunOnce entries pointing
+		// at a requireAdministrator-manifested executable. A Scheduled Task
+		// with RunLevel Highest is Microsoft's own recommended mechanism for
+		// reliably resuming an elevated process at the next logon; register
+		// one as a backup alongside RunOnce. Cleaned up once resumed (below).
+		resumeTaskCmd := fmt.Sprintf(`$action = New-ScheduledTaskAction -Execute "%s"
+$trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -RunLevel Highest -LogonType Interactive
+Register-ScheduledTask -TaskName "PIEManagerResume" -Action $action -Trigger $trigger -Principal $principal -Settings (New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries) -Force | Out-Null`, exePath)
+		if _, err := runPS(resumeTaskCmd); err != nil {
+			logMessage(fmt.Sprintf("WARN: could not register resume scheduled task: %v", err))
+		} else {
+			logMessage("OK: resume scheduled task registered (elevated, at logon — backs up RunOnce)")
+		}
+
 		popup("Redémarrage requis",
 			"WSL2 et Podman CLI ont été installés.\n\nUn redémarrage est nécessaire. L'installeur reprendra automatiquement après le redémarrage pour finaliser la configuration.\n\nCliquez OK pour redémarrer.")
 		run("shutdown", "/r", "/t", "5") //nolint:errcheck
@@ -426,6 +445,11 @@ func main() {
 		os.Exit(0)
 	}
 	logMessage("INFO: no reboot required (nothing changed or reboot already done)")
+
+	// Best-effort cleanup of the resume scheduled task registered above (if
+	// any) — it's only needed to survive the one reboot; a no-op when it was
+	// never created (fresh install, no reboot needed).
+	runPS(`Unregister-ScheduledTask -TaskName "PIEManagerResume" -Confirm:$false -ErrorAction SilentlyContinue`) //nolint:errcheck
 
 	// ── Podman Machine ───────────────────────────────────────────────────────
 	// Only reachable once WSL2 is fully operational (no reboot pending).

@@ -1,0 +1,44 @@
+{
+  "RT_GROUP_ICON": {
+    "APP": {
+      "0000": ["../256x256.png"]
+    }
+  },
+  "RT_MANIFEST": {
+    "#1": {
+      "0409": {
+        "identity": {
+          "name": "PIEManagerPrerequisiteInstaller",
+          "version": "1.0.0.0"
+        },
+        "description": "PIE Manager - WSL2 + Podman prerequisite installer",
+        "minimum-os": "win10",
+        "execution-level": "administrator",
+        "ui-access": false,
+        "long-path-aware": true
+      }
+    }
+  },
+  "RT_VERSION": {
+    "#1": {
+      "0000": {
+        "fixed": {
+          "file_version": "1.0.0.0",
+          "product_version": "1.0.0.0"
+        },
+        "info": {
+          "0409": {
+            "CompanyName": "PIE Manager",
+            "FileDescription": "PIE Manager - Prerequisite Installer",
+            "FileVersion": "1.0.0.0",
+            "InternalName": "pie-manager",
+            "LegalCopyright": "",
+            "OriginalFilename": "pie-manager-windows-amd64.exe",
+            "ProductName": "PIE Manager",
+            "ProductVersion": "1.0.0.0"
+          }
+        }
+      }
+    }
+  }
+}

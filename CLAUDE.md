@@ -783,6 +783,16 @@ backup of the PFX exists outside the repo/VM, not tracked here.
 CA-issued certificate with accumulated reputation does that. It provides a valid, verifiable,
 non-expiring signature (integrity/authenticity), nothing more.
 
+**The UAC prompt and the Firewall "allow this app" prompt read the publisher from two
+different, unrelated places.** UAC shows "Éditeur vérifié: PIEManager" because it validates
+the Authenticode signature. The Firewall prompt shows "Éditeur: Inconnu" regardless of
+signing, because it reads the `CompanyName`/`ProductName` fields from the binary's embedded
+VERSIONINFO resource — confirmed live via `(Get-Item exe).VersionInfo`, all fields blank on
+the main installer even though `main.syso` exists in `installer/`. `launcher.exe` doesn't
+have this gap (its `winres.json`/`.syso` are generated with those fields set). Fixable by
+regenerating `main.syso` with `CompanyName`/`ProductName` populated the same way; not done
+yet since it's purely cosmetic.
+
 ### Installed files (Linux)
 ```
 ~/.local/share/pie-manager/   compose-prod.yaml, haproxy.cfg, .env, pie-manager (binary), VERSION
@@ -861,16 +871,38 @@ mapped to `APP_PORT:8080` in compose. Port 80 causes `Permission denied` at star
 
 **`podman-restart.service` enable via SSH** — `systemctl --user enable` fails silently when
 `~/.config/systemd/user/default.target.wants/` is owned by root (Podman Machine default).
-Fix: create symlink directly:
-```bash
-podman machine ssh -- sudo chown -R user:user /home/user/.config
-podman machine ssh -- ln -s /usr/lib/systemd/user/podman-restart.service \
-  /home/user/.config/systemd/user/default.target.wants/podman-restart.service
-podman machine ssh -- bash -c "XDG_RUNTIME_DIR=/run/user/1000 systemctl --user daemon-reload"
-```
+Fix: create the symlink directly after fixing ownership, chaining the steps with `&&`.
+
+**`podman machine ssh` mangles a compound `&&`-chained command passed as `"bash", "-c",
+cmd`** — confirmed live and matches an independent upstream report
+([containers/podman#13517](https://github.com/containers/podman/issues/13517)): it re-joins
+multiple trailing arguments before forwarding them over SSH, so `bash`, `-c`, and the command
+string arrive at the remote shell re-split on whitespace — only the first word after `-c`
+survives as its actual script argument (observed live as a bare `sudo` invocation dumping its
+usage text, silently no-op'ing the whole setup step). Fix: pass the full compound command as
+the **sole** trailing argument after `--`, no separate `"bash", "-c"` — the remote SSH server
+already wraps a single command string in a shell itself.
 
 **Podman machine start at login** — the Task Scheduler VBS uses `True` (wait) + retry loop
 (up to 5 attempts, 5s between) because WSL2 may not be ready immediately at login.
+
+**RunOnce key must be created before it's written to** — `HKCU\...\RunOnce` isn't guaranteed
+to exist on every profile; a bare `Set-ItemProperty` fails with `PathNotFound` when it's
+missing (confirmed live on a fresh profile). Fix: `New-Item -Force` the key immediately
+before `Set-ItemProperty`. Even with this fix, RunOnce auto-resume after reboot is
+**intermittent** on at least one test VM (confirmed working several times, silently didn't
+fire several other times, same VM/build) — cause not yet root-caused. Since the installer's
+own SKIP-logic makes every step idempotent, a manual re-launch of the `.exe` after reboot is
+always a safe, equivalent fallback if RunOnce doesn't fire on its own.
+
+**Known open bug: the final "Succès" popup doesn't render.** The install itself completes
+correctly (confirmed via containers running + `/api/admin/health` returning 200) but the
+closing `popup("Succès", ...)` call never shows a visible window — confirmed by direct visual
+check, not just a diagnostic blind spot. Every other `popup()` call in this file (including
+the structurally-identical "Redémarrage requis" one) renders fine, so the cause isn't obvious
+from a code read alone; needs live debugging (e.g. Process Explorer/Spy++) to find. The
+process sits alive waiting for a click that can't happen — closing the console window
+manually is a safe workaround once the log/container state confirms success.
 
 **Image cleanup** — use targeted removal of old pie-manager versions only, never `podman image prune -af`
 which would delete images from other projects on the machine.

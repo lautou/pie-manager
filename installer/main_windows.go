@@ -409,7 +409,10 @@ func main() {
 		// Register RunOnce so Windows auto-resumes this installer after the
 		// user logs back in. RunOnce runs in the user session (correct HKCU
 		// and %USERPROFILE%), then Windows deletes the entry automatically.
-		runOnceCmd := fmt.Sprintf(`Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce" -Name "PIEManagerResume" -Value '"%s"'`, exePath)
+		// The RunOnce key isn't guaranteed to exist on every profile (confirmed
+		// live: Set-ItemProperty alone failed with "PathNotFound" on a fresh
+		// local account) — New-Item -Force creates it if missing, no-ops if not.
+		runOnceCmd := fmt.Sprintf(`New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce" -Force | Out-Null; Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce" -Name "PIEManagerResume" -Value '"%s"'`, exePath)
 		if _, err := runPS(runOnceCmd); err != nil {
 			logMessage(fmt.Sprintf("WARN: could not register RunOnce: %v", err))
 		} else {
@@ -474,7 +477,11 @@ func main() {
 		`ln -sf /usr/lib/systemd/user/podman-restart.service ` +
 		`~/.config/systemd/user/default.target.wants/podman-restart.service && ` +
 		`XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user daemon-reload`
-	if err := run("podman", "machine", "ssh", "--", "bash", "-c", setupCmd); err != nil {
+	// Passed as the sole trailing argument, not split as "bash", "-c", setupCmd —
+	// podman machine ssh re-joins multiple trailing args before forwarding over
+	// SSH and mangles compound commands with && (containers/podman#13517); the
+	// remote SSH server already wraps a single command string in a shell itself.
+	if err := run("podman", "machine", "ssh", "--", setupCmd); err != nil {
 		logMessage(fmt.Sprintf("WARN: could not configure podman-restart.service: %v", err))
 	} else {
 		logMessage("OK: podman-restart.service enabled via symlink — containers will auto-restart at machine start")

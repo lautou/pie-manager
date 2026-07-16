@@ -870,6 +870,17 @@ falls back to downloading the official `.msixbundle` packages straight from
 (`installWSLFromGitHub`/`installWingetFromGitHub`) when the Store-dependent path fails —
 Microsoft's own documented offline/enterprise install method, not a hack.
 
+**WSL2 readiness must check the actual engine, not just DISM feature flags.** `isWSL2Ready()`
+used to check only whether `Microsoft-Windows-Subsystem-Linux`/`VirtualMachinePlatform`
+report `State=Enabled`. Confirmed live: both can report `Enabled` (with `RestartNeeded=False`,
+so not a pending-reboot issue either) while the WSL kernel/engine was never installed — e.g.
+the features were toggled independently, or an earlier run enabled them via DISM but was
+interrupted before `wsl --install` finished. The installer then logged "WSL2 déjà installé"
+and skipped straight to Podman machine init, which failed with a confusing "WSL isn't
+installed" error. Fixed: `isWSL2Ready()` now runs `wsl --status` directly — it exercises the
+real engine and requires both features anyway, so it's a single, reliable signal instead of
+two flags that can drift from actual system state.
+
 `Add-AppxPackage` itself is confirmed live (real elevated non-SYSTEM user, test VM) to work
 correctly for VCLibs/UI.Xaml/winget. The one real failure mode hit live is HRESULT
 `0x80073D06` ("a higher version of this package is already installed") — some Windows 11

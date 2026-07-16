@@ -278,9 +278,18 @@ func configureWSL() error {
 	return os.WriteFile(filepath.Join(userProfile, ".wslconfig"), []byte(content), 0644)
 }
 
+// topmostOwnerPS is prepended to every MessageBox popup script. A MessageBox
+// shown with no owner has no z-order relationship to the installer's console
+// window and can render behind it — confirmed live, not just theoretical.
+// Giving it an invisible, TopMost owner form forces it above the console.
+const topmostOwnerPS = `Add-Type -AssemblyName System.Windows.Forms
+$owner = New-Object System.Windows.Forms.Form
+$owner.TopMost = $true
+$owner.StartPosition = 'CenterScreen'
+`
+
 func popup(title, msg string) {
-	ps := fmt.Sprintf(`Add-Type -AssemblyName System.Windows.Forms
-[System.Windows.Forms.MessageBox]::Show("%s","%s","OK","Information")`, msg, title)
+	ps := topmostOwnerPS + fmt.Sprintf(`[System.Windows.Forms.MessageBox]::Show($owner,"%s","%s","OK","Information")`, msg, title)
 	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", ps)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: noWindow}
 	cmd.Run() //nolint:errcheck
@@ -288,8 +297,7 @@ func popup(title, msg string) {
 
 // popupYesNo shows a Yes/No MessageBox and reports whether the user clicked Yes.
 func popupYesNo(title, msg string) bool {
-	ps := fmt.Sprintf(`Add-Type -AssemblyName System.Windows.Forms
-[System.Windows.Forms.MessageBox]::Show("%s","%s","YesNo","Question")`, msg, title)
+	ps := topmostOwnerPS + fmt.Sprintf(`[System.Windows.Forms.MessageBox]::Show($owner,"%s","%s","YesNo","Question")`, msg, title)
 	out, err := runPS(ps)
 	if err != nil {
 		return false
@@ -298,15 +306,17 @@ func popupYesNo(title, msg string) bool {
 }
 
 // acquireSingleInstanceLock reports whether this process is the only running
-// instance, via a named Windows mutex. RunOnce and the resume Scheduled Task
-// (see the reboot-resume block below) are two independent, redundant
-// auto-resume mechanisms — confirmed live that both can fire for the same
-// logon, launching two concurrent installer processes that then race on the
-// same podman machine (one saw "podman machine init failed: exit status
-// 125" from the collision). The mutex handle is deliberately leaked for the
-// life of the process — Windows releases it automatically on exit — so a
-// second instance's CreateMutex call reports ERROR_ALREADY_EXISTS and it can
-// exit immediately instead of racing the first.
+// instance, via a named Windows mutex. Originally added after RunOnce and the
+// resume Scheduled Task (see the reboot-resume block below) were both
+// registered as redundant auto-resume mechanisms and confirmed live to both
+// fire for the same logon, racing on the same podman machine ("podman
+// machine init failed: exit status 125" from the collision). Only one resume
+// mechanism is registered now (see the reboot-resume block), which removes
+// that specific race — this lock is kept as a general defensive guard (e.g.
+// a manual double-launch of the resumed installer). The mutex handle is
+// deliberately leaked for the life of the process — Windows releases it
+// automatically on exit — so a second instance's CreateMutex call reports
+// ERROR_ALREADY_EXISTS and it can exit immediately instead of racing the first.
 func acquireSingleInstanceLock() bool {
 	kernel32 := syscall.NewLazyDLL("kernel32.dll")
 	createMutexW := kernel32.NewProc("CreateMutexW")
@@ -326,7 +336,7 @@ func main() {
 	logFilePath = filepath.Join(filepath.Dir(exePath), "install-prereq.log")
 
 	if !acquireSingleInstanceLock() {
-		logMessage("INFO: another instance is already running (RunOnce and the resume Scheduled Task both fired) - exiting")
+		logMessage("INFO: another instance is already running - exiting")
 		os.Exit(0)
 	}
 
@@ -447,28 +457,21 @@ func main() {
 	if systemChanged && rebootPending() {
 		logMessage("INFO: reboot required (CBS registry key present)")
 
-		// Register RunOnce so Windows auto-resumes this installer after the
-		// user logs back in. RunOnce runs in the user session (correct HKCU
-		// and %USERPROFILE%), then Windows deletes the entry automatically.
-		// The RunOnce key isn't guaranteed to exist on every profile (confirmed
-		// live: Set-ItemProperty alone failed with "PathNotFound" on a fresh
-		// local account) — New-Item -Force creates it if missing, no-ops if not.
-		runOnceCmd := fmt.Sprintf(`New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce" -Force | Out-Null; Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce" -Name "PIEManagerResume" -Value '"%s"'`, exePath)
-		if _, err := runPS(runOnceCmd); err != nil {
-			logMessage(fmt.Sprintf("WARN: could not register RunOnce: %v", err))
-		} else {
-			logMessage("OK: RunOnce entry registered for auto-resume after reboot")
-		}
-
-		// RunOnce alone is unreliable here: confirmed live that it can survive
-		// completely unconsumed after a reboot (Windows always deletes a
-		// RunOnce value immediately before running it, success or failure —
-		// a surviving value means it was never attempted at all), which
-		// matches a documented class of quirk with RunOnce entries pointing
-		// at a requireAdministrator-manifested executable. A Scheduled Task
-		// with RunLevel Highest is Microsoft's own recommended mechanism for
-		// reliably resuming an elevated process at the next logon; register
-		// one as a backup alongside RunOnce. Cleaned up once resumed (below).
+		// Register a Scheduled Task so Windows auto-resumes this installer at
+		// the next logon. This used to run ALONGSIDE a RunOnce registry entry
+		// as a reliability backup (RunOnce can survive a reboot completely
+		// unconsumed — a documented quirk with RunOnce entries pointing at a
+		// requireAdministrator-manifested executable). That redundancy was
+		// removed: RunOnce and this Scheduled Task each trigger their own,
+		// independent elevation event at logon — confirmed live, one fires
+		// silently (no visible prompt) while the other shows a real UAC
+		// consent dialog — and neither can be suppressed by the other, since
+		// elevation happens before either process's code (including the
+		// single-instance mutex above) ever runs. Registering only one
+		// mechanism is the only way to guarantee exactly one elevation event
+		// per reboot. The Scheduled Task is kept over RunOnce because it is
+		// Microsoft's documented mechanism for reliably resuming an elevated
+		// process at logon and does not share RunOnce's silent-no-fire quirk.
 		resumeTaskCmd := fmt.Sprintf(`$action = New-ScheduledTaskAction -Execute "%s"
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -RunLevel Highest -LogonType Interactive
@@ -476,7 +479,7 @@ Register-ScheduledTask -TaskName "PIEManagerResume" -Action $action -Trigger $tr
 		if _, err := runPS(resumeTaskCmd); err != nil {
 			logMessage(fmt.Sprintf("WARN: could not register resume scheduled task: %v", err))
 		} else {
-			logMessage("OK: resume scheduled task registered (elevated, at logon — backs up RunOnce)")
+			logMessage("OK: resume scheduled task registered (elevated, at logon)")
 		}
 
 		popup("Redémarrage requis",

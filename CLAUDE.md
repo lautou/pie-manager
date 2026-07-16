@@ -897,41 +897,42 @@ already wraps a single command string in a shell itself.
 **Podman machine start at login** — the Task Scheduler VBS uses `True` (wait) + retry loop
 (up to 5 attempts, 5s between) because WSL2 may not be ready immediately at login.
 
-**RunOnce key must be created before it's written to** — `HKCU\...\RunOnce` isn't guaranteed
-to exist on every profile; a bare `Set-ItemProperty` fails with `PathNotFound` when it's
-missing (confirmed live on a fresh profile). Fix: `New-Item -Force` the key immediately
-before `Set-ItemProperty`. Even with this fix, RunOnce auto-resume after reboot is
-**intermittent** on at least one test VM (confirmed working several times, silently didn't
-fire several other times, same VM/build). Root cause narrowed but not fully pinned down: a
-failed-to-fire RunOnce entry survives completely **unconsumed** in the registry — Windows
-always deletes a RunOnce value immediately before running it, success or failure, so a
-surviving value means Windows never even attempted it that boot, not that elevation was
-silently declined. This matches a documented class of quirk with RunOnce pointing at a
-`requireAdministrator`-manifested executable. Mitigated (not root-caused) by also registering
-a Scheduled Task (`RunLevel Highest`, `-AtLogOn -User $env:USERNAME`) as a backup alongside
-RunOnce — Microsoft's own documented mechanism for reliably resuming an elevated process at
-logon — self-unregistered once the resume actually happens. Since the installer's own
-SKIP-logic makes every step idempotent regardless, a manual re-launch of the `.exe` after
-reboot remains a safe fallback if both mechanisms fail to fire.
+**Auto-resume after reboot uses a single Scheduled Task, not RunOnce — do not add RunOnce
+back.** An earlier version registered both a `HKCU\...\RunOnce` entry AND a Scheduled Task
+(`RunLevel Highest`, `-AtLogOn -User $env:USERNAME`) as redundant auto-resume mechanisms,
+since RunOnce alone was intermittent on at least one test VM: a failed-to-fire RunOnce entry
+survives completely **unconsumed** in the registry (Windows always deletes a RunOnce value
+immediately before running it, success or failure, so a surviving value means it was never
+attempted that boot at all — a documented class of quirk with RunOnce pointing at a
+`requireAdministrator`-manifested executable). The Scheduled Task backup was added to cover
+that flakiness. **This redundancy was then confirmed live to actively cause the worse bug it
+was meant to guard against**: both mechanisms fired for the same logon, and — critically —
+each one triggers its own elevation event *before* any of our code (including a
+`CreateMutexW`-based single-instance lock, `acquireSingleInstanceLock` in
+`main_windows.go`) ever runs, since Windows decides whether to elevate before the process
+image executes. Confirmed live as one silent auto-elevation plus one visible UAC consent
+dialog for the same logon — a mutex can only stop the *second* instance from doing duplicate
+work once both have already elevated, it cannot suppress the extra prompt itself. The only
+fix that actually prevents the double elevation event is registering a single mechanism.
+RunOnce was dropped; the Scheduled Task was kept, since it is Microsoft's documented
+mechanism for reliably resuming an elevated process at logon and doesn't share RunOnce's
+silent-no-fire quirk. The single-instance mutex is kept anyway as a general defensive guard
+(e.g. a manual double-launch of the resumed installer), just no longer covering this specific
+race. Since the installer's own SKIP-logic makes every step idempotent regardless, a manual
+re-launch of the `.exe` after reboot remains a safe fallback if the Scheduled Task ever fails
+to fire.
 
-**Having two redundant auto-resume mechanisms means both can fire for the same logon** —
-confirmed live: RunOnce and the resume Scheduled Task both triggered on one boot, launching
-two concurrent installer processes that raced on the same Podman machine (one hit `podman
-machine init failed: exit status 125` from the collision; the other completed normally).
-Fixed with a named Windows mutex (`acquireSingleInstanceLock`, `CreateMutexW` via syscall,
-checked at the very top of `main()` before any other work) — a second instance sees
-`ERROR_ALREADY_EXISTS` and exits immediately instead of racing the first. The handle is
-deliberately never closed; Windows releases it automatically when the process exits.
-
-**The final success popup's rendering is intermittent, not deterministically broken.** First
-observed as a total, repeatable failure (confirmed by direct visual check, not just a
-diagnostic blind spot) with the install otherwise completing correctly (containers running,
-`/api/admin/health` returning 200) — but a later run with identical code showed the same
-popup rendering fine. Every `popup()`/`popupYesNo()` call in this file uses the same code
-path, so the cause is some external timing/focus condition, not a code defect tied to this
-specific call; not yet root-caused. If it doesn't appear, the process sits alive waiting for
-a click that can't happen — closing the console window manually is a safe workaround once
-the log/container state confirms success.
+**RESOLVED — the "intermittent" final popup was never failing to render, it was rendering
+BEHIND the console window.** A `MessageBox.Show(msg, title, ...)` call with no owner window
+has no z-order relationship to the installer's own console window — Windows is free to leave
+it behind the (still-focused) console, silently, with no error. Confirmed live via screenshot:
+the popup was present and fully functional, just hidden under the console the whole time.
+Fixed by giving every popup an invisible, `TopMost`-set owner `Form` (`topmostOwnerPS` in
+`main_windows.go`, prepended to both `popup()`'s and `popupYesNo()`'s script) — an owned
+window is kept above its owner in z-order, and a `TopMost` owner keeps it above unrelated
+windows too. Accessing `$owner` in `MessageBox.Show($owner, ...)` is what forces the form's
+native handle into existence even though `.Show()` is never called on it — no visible extra
+window appears.
 
 **Final popup asks Yes/No to launch immediately, and both a Desktop and Start Menu shortcut
 are created** — `popupYesNo()` (mirrors `popup()`, `MessageBoxButtons.YesNo` +

@@ -914,6 +914,15 @@ logon — self-unregistered once the resume actually happens. Since the installe
 SKIP-logic makes every step idempotent regardless, a manual re-launch of the `.exe` after
 reboot remains a safe fallback if both mechanisms fail to fire.
 
+**Having two redundant auto-resume mechanisms means both can fire for the same logon** —
+confirmed live: RunOnce and the resume Scheduled Task both triggered on one boot, launching
+two concurrent installer processes that raced on the same Podman machine (one hit `podman
+machine init failed: exit status 125` from the collision; the other completed normally).
+Fixed with a named Windows mutex (`acquireSingleInstanceLock`, `CreateMutexW` via syscall,
+checked at the very top of `main()` before any other work) — a second instance sees
+`ERROR_ALREADY_EXISTS` and exits immediately instead of racing the first. The handle is
+deliberately never closed; Windows releases it automatically when the process exits.
+
 **The final success popup's rendering is intermittent, not deterministically broken.** First
 observed as a total, repeatable failure (confirmed by direct visual check, not just a
 diagnostic blind spot) with the install otherwise completing correctly (containers running,

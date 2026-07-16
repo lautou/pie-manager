@@ -68,13 +68,22 @@ func isAdmin() bool {
 	return err == nil
 }
 
+// isWSL2Ready reports whether the WSL2 engine actually works, not just
+// whether its two prerequisite optional features are enabled. Confirmed
+// live: Microsoft-Windows-Subsystem-Linux and VirtualMachinePlatform can
+// both report State=Enabled (with RestartNeeded=False, so it isn't a
+// pending-reboot issue either) while the WSL kernel/engine itself was never
+// installed — e.g. the features were toggled independently, or an earlier
+// install run was interrupted after enabling them but before `wsl --install`
+// finished. A feature-flags-only check treats that state as "ready", so the
+// whole WSL2 install block is skipped, and Podman machine init then fails
+// with a confusing "WSL isn't installed" error right after the installer
+// logged "already installed". `wsl --status` exercises the actual engine
+// (it also requires both features to be enabled, so this alone subsumes the
+// old feature checks) and is the only reliable readiness signal.
 func isWSL2Ready() bool {
-	out, err := runPS(`(Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux).State`)
-	if err != nil || !strings.EqualFold(out, "Enabled") {
-		return false
-	}
-	out, err = runPS(`(Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform).State`)
-	return err == nil && strings.EqualFold(out, "Enabled")
+	_, err := runPS(`wsl --status`)
+	return err == nil
 }
 
 // enableWindowsFeature enables a Windows optional feature via DISM.

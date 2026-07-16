@@ -14,6 +14,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unsafe"
 )
 
 //go:embed assets/compose-prod.yaml
@@ -296,9 +297,38 @@ func popupYesNo(title, msg string) bool {
 	return out == "Yes"
 }
 
+// acquireSingleInstanceLock reports whether this process is the only running
+// instance, via a named Windows mutex. RunOnce and the resume Scheduled Task
+// (see the reboot-resume block below) are two independent, redundant
+// auto-resume mechanisms — confirmed live that both can fire for the same
+// logon, launching two concurrent installer processes that then race on the
+// same podman machine (one saw "podman machine init failed: exit status
+// 125" from the collision). The mutex handle is deliberately leaked for the
+// life of the process — Windows releases it automatically on exit — so a
+// second instance's CreateMutex call reports ERROR_ALREADY_EXISTS and it can
+// exit immediately instead of racing the first.
+func acquireSingleInstanceLock() bool {
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	createMutexW := kernel32.NewProc("CreateMutexW")
+	name, err := syscall.UTF16PtrFromString("PIEManagerInstallerSingleInstance")
+	if err != nil {
+		return true // can't build the name — don't block install over this
+	}
+	handle, _, _ := createMutexW.Call(0, 0, uintptr(unsafe.Pointer(name)))
+	if handle == 0 {
+		return true // mutex creation failed — don't block install over this
+	}
+	return syscall.GetLastError() != syscall.ERROR_ALREADY_EXISTS
+}
+
 func main() {
 	exePath, _ := os.Executable()
 	logFilePath = filepath.Join(filepath.Dir(exePath), "install-prereq.log")
+
+	if !acquireSingleInstanceLock() {
+		logMessage("INFO: another instance is already running (RunOnce and the resume Scheduled Task both fired) - exiting")
+		os.Exit(0)
+	}
 
 	logMessage("=== PIE Manager — Prerequisite Installer ===")
 

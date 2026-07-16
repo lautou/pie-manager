@@ -404,6 +404,13 @@ statement without re-keying every row in the UI. This is a deliberate, narrow ex
 `create_transaction_core` (see below), never a parallel write path, so every existing
 sign/fee/balance rule and its 72+ tests apply unchanged.
 
+**Frontend entry points**: `TransactionImportPage.tsx`, routed at
+`/portfolio/:portfolioId/import`, reachable via the "Importer" sidebar nav item (between
+Transactions and Performance) **and** a shortcut button directly on each portfolio's card on
+`PortfolioSelectPage.tsx` (next to Ouvrir/Renommer/Supprimer) — added since new users landing
+on the portfolio-selection screen otherwise had no visible path to bulk import without first
+opening a portfolio and finding the nav item.
+
 **`create_transaction_core` extraction.** `create_transaction` (the `POST /api/transactions/`
 route) used to `await db.commit()` at the end of its own body. Importing N rows by calling
 that route function N times would commit each row individually, making an all-or-nothing
@@ -787,11 +794,15 @@ non-expiring signature (integrity/authenticity), nothing more.
 different, unrelated places.** UAC shows "Éditeur vérifié: PIEManager" because it validates
 the Authenticode signature. The Firewall prompt shows "Éditeur: Inconnu" regardless of
 signing, because it reads the `CompanyName`/`ProductName` fields from the binary's embedded
-VERSIONINFO resource — confirmed live via `(Get-Item exe).VersionInfo`, all fields blank on
-the main installer even though `main.syso` exists in `installer/`. `launcher.exe` doesn't
-have this gap (its `winres.json`/`.syso` are generated with those fields set). Fixable by
-regenerating `main.syso` with `CompanyName`/`ProductName` populated the same way; not done
-yet since it's purely cosmetic.
+VERSIONINFO resource, separate from the manifest/icon. Fixed: `installer/winres/winres.json`
+(go-winres, same tool/format as `installer/launcher/winres/winres.json`) regenerates
+`installer/main.syso` with those fields populated — regenerate via
+`go run github.com/tc-hib/go-winres@latest make --in winres/winres.json --out main --arch amd64`,
+then rename the resulting `main_windows_amd64.syso` to `main.syso` (`--no-suffix` strips the
+`.syso` extension entirely rather than just the arch suffix, which Go's build silently won't
+pick up — confirmed live, don't use that flag here). Avoid non-ASCII characters (em dash, `—`)
+in any winres.json text field — one silently killed RT_VERSION generation entirely (RT_MANIFEST
+still worked) with no error from the tool, confirmed by regenerating without it.
 
 ### Installed files (Linux)
 ```
@@ -891,18 +902,27 @@ to exist on every profile; a bare `Set-ItemProperty` fails with `PathNotFound` w
 missing (confirmed live on a fresh profile). Fix: `New-Item -Force` the key immediately
 before `Set-ItemProperty`. Even with this fix, RunOnce auto-resume after reboot is
 **intermittent** on at least one test VM (confirmed working several times, silently didn't
-fire several other times, same VM/build) — cause not yet root-caused. Since the installer's
-own SKIP-logic makes every step idempotent, a manual re-launch of the `.exe` after reboot is
-always a safe, equivalent fallback if RunOnce doesn't fire on its own.
+fire several other times, same VM/build). Root cause narrowed but not fully pinned down: a
+failed-to-fire RunOnce entry survives completely **unconsumed** in the registry — Windows
+always deletes a RunOnce value immediately before running it, success or failure, so a
+surviving value means Windows never even attempted it that boot, not that elevation was
+silently declined. This matches a documented class of quirk with RunOnce pointing at a
+`requireAdministrator`-manifested executable. Mitigated (not root-caused) by also registering
+a Scheduled Task (`RunLevel Highest`, `-AtLogOn -User $env:USERNAME`) as a backup alongside
+RunOnce — Microsoft's own documented mechanism for reliably resuming an elevated process at
+logon — self-unregistered once the resume actually happens. Since the installer's own
+SKIP-logic makes every step idempotent regardless, a manual re-launch of the `.exe` after
+reboot remains a safe fallback if both mechanisms fail to fire.
 
-**Known open bug: the final "Succès" popup doesn't render.** The install itself completes
-correctly (confirmed via containers running + `/api/admin/health` returning 200) but the
-closing `popup("Succès", ...)` call never shows a visible window — confirmed by direct visual
-check, not just a diagnostic blind spot. Every other `popup()` call in this file (including
-the structurally-identical "Redémarrage requis" one) renders fine, so the cause isn't obvious
-from a code read alone; needs live debugging (e.g. Process Explorer/Spy++) to find. The
-process sits alive waiting for a click that can't happen — closing the console window
-manually is a safe workaround once the log/container state confirms success.
+**The final "Succès" popup rendering is intermittent, not deterministically broken.** First
+observed as a total, repeatable failure (confirmed by direct visual check, not just a
+diagnostic blind spot) with the install otherwise completing correctly (containers running,
+`/api/admin/health` returning 200) — but a later run with identical code showed the same
+popup rendering fine. Every `popup()` call in this file uses the same code path, so the cause
+is some external timing/focus condition, not a code defect tied to this specific call; not
+yet root-caused. If it doesn't appear, the process sits alive waiting for a click that can't
+happen — closing the console window manually is a safe workaround once the log/container
+state confirms success.
 
 **Image cleanup** — use targeted removal of old pie-manager versions only, never `podman image prune -af`
 which would delete images from other projects on the machine.

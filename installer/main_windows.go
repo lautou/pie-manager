@@ -285,6 +285,17 @@ func popup(title, msg string) {
 	cmd.Run() //nolint:errcheck
 }
 
+// popupYesNo shows a Yes/No MessageBox and reports whether the user clicked Yes.
+func popupYesNo(title, msg string) bool {
+	ps := fmt.Sprintf(`Add-Type -AssemblyName System.Windows.Forms
+[System.Windows.Forms.MessageBox]::Show("%s","%s","YesNo","Question")`, msg, title)
+	out, err := runPS(ps)
+	if err != nil {
+		return false
+	}
+	return out == "Yes"
+}
+
 func main() {
 	exePath, _ := os.Executable()
 	logFilePath = filepath.Join(filepath.Dir(exePath), "install-prereq.log")
@@ -657,8 +668,30 @@ $s.Save()`, shortcutPath, launcherExePath)
 		logMessage("OK: Start Menu shortcut created")
 	}
 
-	popup("Succès",
-		"PIE Manager est installé et démarré.\nUtilisez le raccourci 'PIE Manager' dans le menu Démarrer.")
+	// Desktop shortcut → same target. [Environment]::GetFolderPath resolves the
+	// real Desktop path even if it's been redirected (e.g. OneDrive Known
+	// Folder Move), unlike hardcoding %USERPROFILE%\Desktop.
+	psDesktopShortcut := fmt.Sprintf(`
+$desktop = [Environment]::GetFolderPath('Desktop')
+$ws = New-Object -ComObject WScript.Shell
+$s  = $ws.CreateShortcut((Join-Path $desktop 'PIE Manager.lnk'))
+$s.TargetPath  = '%s'
+$s.Description = 'PIE Manager — Portfolio Tracker'
+$s.Save()`, launcherExePath)
+	if _, err := runPS(psDesktopShortcut); err != nil {
+		logMessage(fmt.Sprintf("WARN: could not create desktop shortcut: %v", err))
+	} else {
+		logMessage("OK: Desktop shortcut created")
+	}
+
+	if popupYesNo("Succès",
+		"PIE Manager est installé et démarré.\n\nVoulez-vous lancer PIE Manager maintenant ?") {
+		if err := exec.Command(launcherExePath).Start(); err != nil {
+			logMessage(fmt.Sprintf("WARN: could not launch PIE Manager: %v", err))
+		} else {
+			logMessage("OK: PIE Manager launched")
+		}
+	}
 
 	logMessage("=== END ===")
 }

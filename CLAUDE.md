@@ -914,15 +914,26 @@ logon — self-unregistered once the resume actually happens. Since the installe
 SKIP-logic makes every step idempotent regardless, a manual re-launch of the `.exe` after
 reboot remains a safe fallback if both mechanisms fail to fire.
 
-**The final "Succès" popup rendering is intermittent, not deterministically broken.** First
+**The final success popup's rendering is intermittent, not deterministically broken.** First
 observed as a total, repeatable failure (confirmed by direct visual check, not just a
 diagnostic blind spot) with the install otherwise completing correctly (containers running,
 `/api/admin/health` returning 200) — but a later run with identical code showed the same
-popup rendering fine. Every `popup()` call in this file uses the same code path, so the cause
-is some external timing/focus condition, not a code defect tied to this specific call; not
-yet root-caused. If it doesn't appear, the process sits alive waiting for a click that can't
-happen — closing the console window manually is a safe workaround once the log/container
-state confirms success.
+popup rendering fine. Every `popup()`/`popupYesNo()` call in this file uses the same code
+path, so the cause is some external timing/focus condition, not a code defect tied to this
+specific call; not yet root-caused. If it doesn't appear, the process sits alive waiting for
+a click that can't happen — closing the console window manually is a safe workaround once
+the log/container state confirms success.
+
+**Final popup asks Yes/No to launch immediately, and both a Desktop and Start Menu shortcut
+are created** — `popupYesNo()` (mirrors `popup()`, `MessageBoxButtons.YesNo` +
+`MessageBoxIcon.Question`, matches on the literal `"Yes"` return string). Answering "Oui"
+starts `launcher.exe` directly (fire-and-forget `exec.Command(...).Start()`, not `.Run()` —
+it's a long-lived GUI process the installer must not wait on). The desktop shortcut resolves
+its path via PowerShell's `[Environment]::GetFolderPath('Desktop')`, not a hardcoded
+`%USERPROFILE%\Desktop`, since that breaks under Known Folder Move (OneDrive-redirected
+Desktop). Before this, only a Start Menu shortcut was actually created despite the
+surrounding log/comment text already claiming "desktop shortcut" — a real, silent gap now
+fixed, not a rename.
 
 **Image cleanup** — use targeted removal of old pie-manager versions only, never `podman image prune -af`
 which would delete images from other projects on the machine.

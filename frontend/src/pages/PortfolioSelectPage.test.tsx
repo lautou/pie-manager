@@ -106,6 +106,15 @@ describe('PortfolioSelectPage', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/portfolio/1/dashboard');
   });
 
+  it('navigates to import page on Importer click', async () => {
+    mockUsePortfolios.mockReturnValue({ data: [mockPortfolio], isLoading: false, isError: false });
+    const user = userEvent.setup({ delay: null });
+    render(<PortfolioSelectPage />);
+
+    await user.click(screen.getByText('Importer'));
+    expect(mockNavigate).toHaveBeenCalledWith('/portfolio/1/import');
+  });
+
   it('can open create modal from empty state', async () => {
     mockUsePortfolios.mockReturnValue({ data: [], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });

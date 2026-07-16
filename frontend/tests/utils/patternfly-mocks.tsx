@@ -228,6 +228,7 @@ export const pfIconStubs = {
   DatabaseIcon: () => <span>db</span>,
   DownloadIcon: () => <span>dl</span>,
   ExclamationTriangleIcon: () => <span>!</span>,
+  ImportIcon: () => <span>import</span>,
   PencilAltIcon: () => <span>edit</span>,
   PlusCircleIcon: () => <span>+</span>,
   SyncAltIcon: () => <span>sync</span>,

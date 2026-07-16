@@ -13,7 +13,7 @@ import {
   Text, TextContent, TextInput, TextVariants,
   Title,
 } from '@patternfly/react-core';
-import { PencilAltIcon, PlusCircleIcon, TrashIcon } from '@patternfly/react-icons';
+import { ImportIcon, PencilAltIcon, PlusCircleIcon, TrashIcon } from '@patternfly/react-icons';
 import { usePortfolios, useCreatePortfolio, useRenamePortfolio, useDeletePortfolio } from '../api/queries';
 
 function fmtDate(iso: string | null | undefined): string {
@@ -131,6 +131,10 @@ export default function PortfolioSelectPage() {
                       <Button variant="primary" size="sm"
                         onClick={() => navigate(`/portfolio/${portfolio.id}/dashboard`)}>
                         {t('portfolioSelect.open')}
+                      </Button>
+                      <Button variant="secondary" size="sm" icon={<ImportIcon />}
+                        onClick={() => navigate(`/portfolio/${portfolio.id}/import`)}>
+                        {t('common.import')}
                       </Button>
                       <Button variant="secondary" size="sm" icon={<PencilAltIcon />}
                         onClick={() => { setRenameTarget({ id: portfolio.id, name: portfolio.name }); setError(''); }}>

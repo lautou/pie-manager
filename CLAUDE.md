@@ -836,6 +836,15 @@ It replaces the old `launcher.ps1`/`open-app.vbs`/Edge `--app` chain. It:
 - Shows a native loading screen while polling `/api/admin/version`
 - Navigates to the app in a WebView2 window once the backend is ready
 
+**Window title bar icon** requires an explicit `IconId` — `jchv/go-webview2`'s `webview2.New()`
+falls back to the generic Win32 stock icon (`IDI_APPLICATION`) whenever `WindowOptions.IconId`
+is left at zero; it does not automatically pick up the exe's own embedded icon resource, even
+though one is present via `winres/winres.json`. Fix: key the icon group by numeric ID in
+`winres.json` (`"RT_GROUP_ICON": {"#1": {...}}`, not a string name like `"APP"` — the API only
+accepts a numeric resource ID), then construct with
+`webview2.NewWithOptions(webview2.WebViewOptions{WindowOptions: webview2.WindowOptions{IconId: 1}})`
+instead of `webview2.New(false)`.
+
 **Auto-start:** A Windows Task Scheduler task runs `start-podman.vbs` at login (wscript.exe,
 completely invisible). This starts the Podman Machine. Containers restart automatically via
 `podman-restart.service` inside the Fedora CoreOS VM.

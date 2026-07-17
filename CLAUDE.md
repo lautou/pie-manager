@@ -881,6 +881,20 @@ installed" error. Fixed: `isWSL2Ready()` now runs `wsl --status` directly — it
 real engine and requires both features anyway, so it's a single, reliable signal instead of
 two flags that can drift from actual system state.
 
+**Cosmetic: `wsl.exe`'s own console chatter and the WSL Settings "welcome" popup are both
+suppressed, not just tolerated.** `wsl --install`'s stdout/stderr is now captured
+(`CombinedOutput()`), not streamed to the console — it prints confusing internal diagnostics
+(e.g. "not installed, run wsl --install" as part of its own self-check) that read as a real
+error; the raw text is still logged, replaced on screen with our own curated status lines.
+Separately, the WSL Settings onboarding window (`wslsettings.exe`, launched by `wslservice.exe`
+via `----ms-protocol:wsl-settings://oobe`) used to pop up mid-install — confirmed via
+microsoft/WSL's own source (`LxssUserSession.cpp`'s `_LaunchOOBEIfNeeded`) that it fires the
+first time ANY WSL distro is registered on the machine, including Podman Machine's own
+`podman-machine-default` distro — nothing specific to our WSL2 install step. Its entire gate is
+one registry DWORD, `HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss\OOBEComplete` — the
+exact value `wslservice.exe` itself writes after a real OOBE run. `disableWSLOOBEWelcome()` sets
+it preemptively, early in `main()`, doing ahead of time what the OS does reactively.
+
 `Add-AppxPackage` itself is confirmed live (real elevated non-SYSTEM user, test VM) to work
 correctly for VCLibs/UI.Xaml/winget. The one real failure mode hit live is HRESULT
 `0x80073D06` ("a higher version of this package is already installed") — some Windows 11

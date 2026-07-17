@@ -120,7 +120,17 @@ func main() {
 	appURL := fmt.Sprintf("http://localhost:%d", port)
 	apiURL := fmt.Sprintf("%s/api/admin/version", appURL)
 
-	w := webview2.New(false)
+	// IconId: 1 matches the numeric RT_GROUP_ICON resource ID ("#1") embedded
+	// via winres/winres.json — go-webview2's window class otherwise falls
+	// back to the generic Win32 stock icon (IDI_APPLICATION) when IconId is
+	// left at its zero value, which is what rendered as a blank/generic
+	// title bar icon before this fix.
+	w := webview2.NewWithOptions(webview2.WebViewOptions{
+		Debug: false,
+		WindowOptions: webview2.WindowOptions{
+			IconId: 1,
+		},
+	})
 	defer w.Destroy()
 
 	w.SetTitle("PIE Manager")

@@ -287,6 +287,28 @@ func configureWSL() error {
 	return os.WriteFile(filepath.Join(userProfile, ".wslconfig"), []byte(content), 0644)
 }
 
+// disableWSLOOBEWelcome preemptively marks the WSL Settings "welcome" OOBE
+// screen as already seen, so it never interrupts the install. Confirmed by
+// reading microsoft/WSL's own source (LxssUserSession.cpp's
+// _LaunchOOBEIfNeeded): wslservice.exe launches wslsettings.exe's onboarding
+// window the first time ANY WSL distro gets registered on the machine —
+// which includes Podman Machine's own "podman-machine-default" distro,
+// created during `podman machine init` below, not anything specific to our
+// own WSL2 install step. That function's entire gate is one registry value:
+// HKCU\...\Lxss\OOBEComplete (DWORD) — the exact value wslservice.exe itself
+// writes after a real OOBE run completes. Setting it here just does
+// preemptively what the OS does reactively; best-effort, harmless if it
+// fails or no-ops if OOBE already ran for real.
+func disableWSLOOBEWelcome() {
+	_, err := runPS(`New-Item -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss' -Force | Out-Null
+Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss' -Name 'OOBEComplete' -Value 1 -Type DWord -Force`)
+	if err != nil {
+		logMessage(fmt.Sprintf("WARN: could not preemptively disable WSL OOBE welcome screen: %v", err))
+	} else {
+		logMessage("OK: WSL OOBE welcome screen preemptively marked as seen")
+	}
+}
+
 // topmostOwnerPS is prepended to every MessageBox popup script. A MessageBox
 // shown with no owner has no z-order relationship to the installer's console
 // window and can render behind it — confirmed live, not just theoretical.
@@ -364,6 +386,8 @@ func main() {
 		logMessage("OK: .wslconfig written (4GB RAM, NumCPU/2 processors)")
 	}
 
+	disableWSLOOBEWelcome()
+
 	systemChanged := false
 
 	// ── WSL2 ─────────────────────────────────────────────────────────────────
@@ -380,19 +404,29 @@ func main() {
 		enableWindowsFeature("Microsoft-Windows-Subsystem-Linux") //nolint:errcheck — best-effort, wsl --install retries this too
 		enableWindowsFeature("VirtualMachinePlatform")            //nolint:errcheck
 
+		fmt.Println("Tentative d'installation de WSL2 via le Microsoft Store...")
 		logMessage("INFO: running wsl --install --no-distribution...")
+		// wsl.exe's own stdout/stderr is captured, not streamed: it prints
+		// confusing internal diagnostics (e.g. "not installed, run wsl
+		// --install" as part of its OWN self-check before fixing itself) that
+		// read as a real error to the user. The raw text is still preserved
+		// in the log for debugging; only our own curated status lines below
+		// are shown on screen.
 		wsl := exec.Command("wsl", "--install", "--no-distribution")
-		wsl.Stdout = os.Stdout
-		wsl.Stderr = os.Stderr
-		if err := wsl.Run(); err != nil {
+		out, err := wsl.CombinedOutput()
+		logMessage(fmt.Sprintf("INFO: wsl --install raw output: %s", strings.TrimSpace(string(out))))
+		if err != nil {
+			fmt.Println("Microsoft Store indisponible, repli sur le téléchargement direct depuis GitHub...")
 			logMessage(fmt.Sprintf("WARN: wsl --install failed (%v) — Microsoft Store may be unavailable, falling back to direct install from GitHub", err))
 			if fbErr := installWSLFromGitHub(); fbErr != nil {
 				logMessage(fmt.Sprintf("FATAL: WSL2 install failed (Store method and GitHub fallback both failed): %v", fbErr))
 				popup("Erreur", fmt.Sprintf("L'installation de WSL2 a échoué.\nConsultez le fichier journal :\n%s", logFilePath))
 				os.Exit(1)
 			}
+			fmt.Println("OK : WSL2 installé via GitHub.")
 			logMessage("OK: WSL2 installed via GitHub fallback (Microsoft Store unavailable)")
 		} else {
+			fmt.Println("OK : WSL2 installé via le Microsoft Store.")
 			logMessage("OK: WSL2 install succeeded")
 		}
 		systemChanged = true

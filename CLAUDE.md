@@ -58,6 +58,8 @@ acceptable for a system-interaction binary.
 - `main_windows.go` — Windows full installer (`//go:build windows`)
 - `install.go`, `start.go`, `install_test.go` — Linux only (`//go:build linux`)
 - `launcher/` — separate Go module, builds `launcher.exe` (Windows WebView2 native launcher)
+- `testing/` — reproducible scripts to recreate the win11 libvirt/QEMU test VM from scratch on
+  a fresh Fedora host (not part of the shipped product; see its own `README.md`)
 
 ## Absolute rule: refactor after every change
 

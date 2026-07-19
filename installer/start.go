@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -114,22 +113,6 @@ func runStartWithCompose(composeCmd, target string) {
 
 	notify("PIE Manager", "Ready!", "normal")
 	fmt.Printf("PIE Manager available at %s\n", url)
-}
-
-// updateEnvPort rewrites APP_PORT in the install dir's .env file.
-func updateEnvPort(target string, port int) {
-	path := filepath.Join(target, ".env")
-	data, _ := os.ReadFile(path)
-	re := regexp.MustCompile(`(?m)^APP_PORT=.*$`)
-	updated := re.ReplaceAllString(string(data), fmt.Sprintf("APP_PORT=%d", port))
-	if !strings.Contains(updated, "APP_PORT=") {
-		updated += fmt.Sprintf("\nAPP_PORT=%d\n", port)
-	}
-	os.WriteFile(path, []byte(updated), 0644) //nolint:errcheck
-}
-
-func podmanImageExists(image string) bool {
-	return exec.Command("podman", "image", "exists", image).Run() == nil
 }
 
 // focusExistingWindow tries to bring the PIE Manager window to the foreground.

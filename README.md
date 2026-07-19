@@ -30,6 +30,7 @@ PIE Manager permet de suivre plusieurs portefeuilles d'investissement depuis une
 |---------|--------|
 | Linux | Fedora, Ubuntu ou toute distribution compatible Podman |
 | Windows | Windows 11 64-bit (WSL2 et Podman installés automatiquement) |
+| macOS | Apple Silicon (arm64), macOS 14 Sonoma ou ultérieur (Podman installé automatiquement) |
 
 ---
 
@@ -76,6 +77,30 @@ Après l'installation, utiliser l'icône **PIE Manager** dans le menu Démarrer.
 
 Pour le guide détaillé : [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
+### macOS (Apple Silicon)
+
+```bash
+curl -LO https://github.com/lautou/pie-manager/releases/latest/download/pie-manager-darwin-arm64
+chmod +x pie-manager-darwin-arm64
+xattr -d com.apple.quarantine pie-manager-darwin-arm64
+./pie-manager-darwin-arm64 install
+```
+
+L'étape `xattr` est nécessaire une seule fois : le binaire n'est pas signé (voir "Sécurité et
+signature de code" ci-dessous), et macOS Gatekeeper refuse sinon de l'exécuter en affichant
+« impossible d'ouvrir » ou « fichier endommagé ».
+
+L'installateur gère tout automatiquement : téléchargement et installation de Podman (paquet
+officiel `.pkg`, mot de passe administrateur demandé une fois), configuration de la machine
+Podman (VM légère via l'Hypervisor Framework d'Apple, aucun redémarrage requis), démarrage des
+services. Après l'installation, lancer via **PIE Manager** dans `~/Applications` ou :
+```bash
+pie-manager start
+```
+
+Uniquement Apple Silicon (arm64) — les Mac Intel ne sont pas supportés (Apple abandonne
+lui-même le support Intel dès macOS 27, prévu fin 2026).
+
 ---
 
 ## Mise à jour
@@ -101,6 +126,19 @@ rm -f ~/.local/share/applications/pie-manager.desktop
 rm -f ~/.local/share/icons/hicolor/scalable/apps/pie-manager.svg
 rm -f ~/.local/share/icons/hicolor/64x64/apps/pie-manager.png
 rm -rf ~/.config/pie-manager
+```
+
+macOS :
+```bash
+# Arrêter et supprimer les containers
+podman compose -f ~/Library/Application\ Support/PieManager/compose-prod.yaml down --volumes
+
+# Supprimer les fichiers installés
+rm -rf ~/Library/Application\ Support/PieManager
+rm -f ~/.local/bin/pie-manager
+rm -rf ~/Applications/PIE\ Manager.app
+launchctl unload ~/Library/LaunchAgents/com.pie-manager.podman-start.plist
+rm -f ~/Library/LaunchAgents/com.pie-manager.podman-start.plist
 ```
 
 ---
@@ -170,6 +208,11 @@ la demande faute d'audience suffisante sur ce dépôt. Windows SmartScreen affic
 avertissement au premier lancement : cliquez sur **"Informations complémentaires" → "Exécuter
 quand même"** (voir la section Installation ci-dessus). Une signature par certificat
 auto-généré est envisagée pour une prochaine version.
+
+Le binaire macOS n'est ni signé ni notarié — cela nécessiterait un compte Apple Developer
+Program payant (99$/an), qui n'est pas utilisé pour ce projet. macOS Gatekeeper bloquera donc
+le premier lancement ; la commande `xattr -d com.apple.quarantine` (voir la section
+Installation ci-dessus) est le contournement documenté et sûr, à exécuter une seule fois.
 
 Le code source est public et consultable dans son intégralité — vous pouvez vérifier ce qui
 est exécuté sur votre machine avant de l'installer.

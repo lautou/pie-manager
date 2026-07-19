@@ -767,7 +767,7 @@ describe('api/queries React Query hooks', () => {
 
   describe('createCountryPerfConfig', () => {
     it('posts a new country', async () => {
-      const country = { code: 'de', label: 'Allemagne', index_ticker: '^GDAXI', currency: 'EUR' };
+      const country = { code: 'de', label: 'Allemagne', index_ticker: '^GDAXI', currency: 'EUR', index_label: 'DAX 40' };
       mockPost.mockResolvedValueOnce({ data: country } as any);
       const result = await createCountryPerfConfig(country);
       expect(mockPost).toHaveBeenCalledWith('/api/indicators/country-performance/countries', country);
@@ -777,7 +777,7 @@ describe('api/queries React Query hooks', () => {
 
   describe('updateCountryPerfConfig', () => {
     it('puts country changes', async () => {
-      const body = { label: 'Deutschland', index_ticker: 'EWG', currency: 'EUR' };
+      const body = { label: 'Deutschland', index_ticker: 'EWG', currency: 'EUR', index_label: 'DAX ETF' };
       const updated = { code: 'de', ...body };
       mockPut.mockResolvedValueOnce({ data: updated } as any);
       const result = await updateCountryPerfConfig('de', body);

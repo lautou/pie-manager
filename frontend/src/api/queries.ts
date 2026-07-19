@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import apiClient from './client';
 import type {
-  Broker, AccountSummary, AssetPrice, Dashboard, DailySnapshot, DailyWithPools,
-  DailyHoldingValues, EtfComposition, FiscalCarryForward, MacroRegionConfig, MonthlySnapshot, Pool,
-  PoolAllocation, PortfolioCapitalGains, Holding, Product, RatioIndicator, Transaction, User,
+  Broker, AccountSummary, AssetPrice, CountryPerfConfig, CountryPerformanceEntry, Dashboard,
+  DailySnapshot, DailyWithPools, DailyHoldingValues, EtfComposition, FiscalCarryForward,
+  MacroRegionConfig, MonthlySnapshot, Pool, PoolAllocation, PortfolioCapitalGains, Holding,
+  Product, RatioIndicator, Transaction, User,
 } from '../types';
 
 // ── Portfolios ─────────────────────────────────────────────────────────────
@@ -456,6 +457,41 @@ export async function updateMacroRegion(
 
 export async function deleteMacroRegion(code: string): Promise<void> {
   await apiClient.delete(`/api/indicators/regions/${code}`);
+}
+
+// ── Country performance leaderboard (global, portfolio-independent) ────────
+
+export function useCountryPerformance() {
+  return useQuery<CountryPerformanceEntry[]>({
+    queryKey: ['country-performance'],
+    queryFn: async () =>
+      (await apiClient.get<CountryPerformanceEntry[]>('/api/indicators/country-performance')).data,
+    staleTime: 60 * 60 * 1000, // refreshed once a day server-side
+  });
+}
+
+export function useCountryPerfConfigs() {
+  return useQuery<CountryPerfConfig[]>({
+    queryKey: ['country-perf-configs'],
+    queryFn: async () =>
+      (await apiClient.get<CountryPerfConfig[]>('/api/indicators/country-performance/countries')).data,
+  });
+}
+
+export async function createCountryPerfConfig(body: CountryPerfConfig): Promise<CountryPerfConfig> {
+  return (await apiClient.post<CountryPerfConfig>('/api/indicators/country-performance/countries', body)).data;
+}
+
+export async function updateCountryPerfConfig(
+  code: string, body: Omit<CountryPerfConfig, 'code'>,
+): Promise<CountryPerfConfig> {
+  return (await apiClient.put<CountryPerfConfig>(
+    `/api/indicators/country-performance/countries/${code}`, body,
+  )).data;
+}
+
+export async function deleteCountryPerfConfig(code: string): Promise<void> {
+  await apiClient.delete(`/api/indicators/country-performance/countries/${code}`);
 }
 
 // ── Dashboard ──────────────────────────────────────────────────────────────

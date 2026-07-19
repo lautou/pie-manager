@@ -44,6 +44,7 @@ const mockUseAllAccounts = vi.fn();
 const mockUsePortfolios = vi.fn();
 const mockUseProducts = vi.fn();
 const mockUseMacroRegions = vi.fn();
+const mockUseCountryPerfConfigs = vi.fn();
 
 vi.mock('../api/queries', () => ({
   useSystemSetting: (...args: any[]) => mockUseSystemSetting(...args),
@@ -63,6 +64,10 @@ vi.mock('../api/queries', () => ({
   createMacroRegion: vi.fn().mockResolvedValue({}),
   updateMacroRegion: vi.fn().mockResolvedValue({}),
   deleteMacroRegion: vi.fn().mockResolvedValue(undefined),
+  useCountryPerfConfigs: (...args: any[]) => mockUseCountryPerfConfigs(...args),
+  createCountryPerfConfig: vi.fn().mockResolvedValue({}),
+  updateCountryPerfConfig: vi.fn().mockResolvedValue({}),
+  deleteCountryPerfConfig: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../hooks/useSortable', () => ({
@@ -88,6 +93,14 @@ const MOCK_REGIONS = [
   { code: 'fr', label: 'France', equity_ticker: '^FCHI', bond_ticker: 'MTE.PA', equity_label: 'CAC 40', bond_label: 'Obligations zone euro' },
 ];
 
+// Deliberately different codes from MOCK_REGIONS (us/fr) — both managers render on the
+// same page, so a shared code would make e.g. getByRole('button', { name: /Modifier us/i })
+// match two buttons at once.
+const MOCK_COUNTRIES = [
+  { code: 'jp', label: 'Japon', index_ticker: '^N225', currency: 'JPY', index_label: 'Nikkei 225' },
+  { code: 'gb', label: 'Royaume-Uni', index_ticker: '^FTSE', currency: 'GBP', index_label: 'FTSE 100' },
+];
+
 function setupDefaultMocks() {
   mockUseSystemSetting.mockReturnValue({ data: { value: '0.004' }, isError: false });
   mockUseSetSystemSetting.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false });
@@ -95,6 +108,7 @@ function setupDefaultMocks() {
   mockUsePortfolios.mockReturnValue({ data: [] });
   mockUseProducts.mockReturnValue({ data: MOCK_PRODUCTS, refetch: vi.fn() });
   mockUseMacroRegions.mockReturnValue({ data: MOCK_REGIONS, refetch: vi.fn() });
+  mockUseCountryPerfConfigs.mockReturnValue({ data: MOCK_COUNTRIES, refetch: vi.fn() });
 }
 
 describe('GlobalConfigPage — ProductManager', () => {
@@ -1914,6 +1928,213 @@ describe('GlobalConfigPage — RegionManager (Indicateurs macro)', () => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByRole('button', { name: /Supprimer fr/i }));
+    await user.click(screen.getByText('Supprimer'));
+    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de la suppression/i)).toBeTruthy());
+  }, 10000);
+});
+
+describe('GlobalConfigPage — MarketCountryManager (Performance des marchés)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupDefaultMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('renders the market performance section with the country list and top-N setting', () => {
+    render(<GlobalConfigPage />);
+    expect(screen.getByText(/Performance des marchés/i)).toBeTruthy();
+    expect(screen.getByText('jp')).toBeTruthy();
+    expect(screen.getByText('Japon')).toBeTruthy();
+    expect(screen.getByText('^N225')).toBeTruthy();
+    expect(screen.getByText('JPY')).toBeTruthy();
+    expect(screen.getByLabelText('Nombre de pays affichés (Top N)')).toBeTruthy();
+  });
+
+  it('shows "Aucun pays" when there are no countries', () => {
+    mockUseCountryPerfConfigs.mockReturnValue({ data: [], refetch: vi.fn() });
+    render(<GlobalConfigPage />);
+    expect(screen.getByText('Aucun pays')).toBeTruthy();
+  });
+
+  it('saving without a code shows validation error', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Nouveau pays'));
+    await user.type(screen.getByLabelText('Nom'), 'Allemagne');
+    const modal = screen.getByTestId('modal');
+    await user.click(within(modal).getByText('Enregistrer'));
+    expect(screen.getByText(/Le code est requis/i)).toBeTruthy();
+  }, 10000);
+
+  it('saving without a label shows validation error', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Nouveau pays'));
+    await user.type(screen.getByLabelText('Code'), 'de');
+    const modal = screen.getByTestId('modal');
+    await user.click(within(modal).getByText('Enregistrer'));
+    expect(screen.getByText(/Le nom est requis/i)).toBeTruthy();
+  }, 10000);
+
+  it('saving without an index ticker shows validation error', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Nouveau pays'));
+    await user.type(screen.getByLabelText('Code'), 'de');
+    await user.type(screen.getByLabelText('Nom'), 'Allemagne');
+    const modal = screen.getByTestId('modal');
+    await user.click(within(modal).getByText('Enregistrer'));
+    expect(screen.getByText(/Le ticker indice est requis/i)).toBeTruthy();
+  }, 10000);
+
+  it('saving without a currency shows validation error', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Nouveau pays'));
+    await user.type(screen.getByLabelText('Code'), 'de');
+    await user.type(screen.getByLabelText('Nom'), 'Allemagne');
+    await user.type(screen.getByLabelText('Ticker indice'), '^GDAXI');
+    const modal = screen.getByTestId('modal');
+    await user.click(within(modal).getByText('Enregistrer'));
+    expect(screen.getByText(/La devise est requise/i)).toBeTruthy();
+  }, 10000);
+
+  it('saving without an index label shows validation error', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Nouveau pays'));
+    await user.type(screen.getByLabelText('Code'), 'de');
+    await user.type(screen.getByLabelText('Nom'), 'Allemagne');
+    await user.type(screen.getByLabelText('Ticker indice'), '^GDAXI');
+    await user.type(screen.getByLabelText('Devise'), 'EUR');
+    const modal = screen.getByTestId('modal');
+    await user.click(within(modal).getByText('Enregistrer'));
+    expect(screen.getByText(/Le nom de l'indice est requis/i)).toBeTruthy();
+  }, 10000);
+
+  it('can create a country with valid data', async () => {
+    const { createCountryPerfConfig } = await import('../api/queries');
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Nouveau pays'));
+    await user.type(screen.getByLabelText('Code'), 'de');
+    await user.type(screen.getByLabelText('Nom'), 'Allemagne');
+    await user.type(screen.getByLabelText('Nom de l\'indice'), 'DAX 40');
+    await user.type(screen.getByLabelText('Ticker indice'), '^GDAXI');
+    await user.type(screen.getByLabelText('Devise'), 'eur');
+    const modal = screen.getByTestId('modal');
+    await user.click(within(modal).getByText('Enregistrer'));
+    expect(createCountryPerfConfig).toHaveBeenCalledWith({
+      code: 'de', label: 'Allemagne', index_ticker: '^GDAXI', currency: 'EUR', index_label: 'DAX 40',
+    });
+  }, 10000);
+
+  it('country code input converts to lowercase, currency input converts to uppercase', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Nouveau pays'));
+    const codeInput = screen.getByLabelText('Code');
+    await user.type(codeInput, 'DE');
+    expect((codeInput as HTMLInputElement).value).toBe('de');
+    const currencyInput = screen.getByLabelText('Devise');
+    await user.type(currencyInput, 'eur');
+    expect((currencyInput as HTMLInputElement).value).toBe('EUR');
+  }, 10000);
+
+  it('create country API error shows the returned detail message', async () => {
+    const { createCountryPerfConfig } = await import('../api/queries');
+    vi.mocked(createCountryPerfConfig).mockRejectedValueOnce({ response: { data: { detail: "Country 'de' already exists" } } });
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Nouveau pays'));
+    await user.type(screen.getByLabelText('Code'), 'de');
+    await user.type(screen.getByLabelText('Nom'), 'Allemagne');
+    await user.type(screen.getByLabelText('Nom de l\'indice'), 'DAX 40');
+    await user.type(screen.getByLabelText('Ticker indice'), '^GDAXI');
+    await user.type(screen.getByLabelText('Devise'), 'EUR');
+    const modal = screen.getByTestId('modal');
+    await user.click(within(modal).getByText('Enregistrer'));
+    await rtlWaitFor(() => expect(screen.getByText(/already exists/i)).toBeTruthy());
+  }, 10000);
+
+  it('create country API error without detail uses fallback message', async () => {
+    const { createCountryPerfConfig } = await import('../api/queries');
+    vi.mocked(createCountryPerfConfig).mockRejectedValueOnce(new Error('Network error'));
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByText('Nouveau pays'));
+    await user.type(screen.getByLabelText('Code'), 'de');
+    await user.type(screen.getByLabelText('Nom'), 'Allemagne');
+    await user.type(screen.getByLabelText('Nom de l\'indice'), 'DAX 40');
+    await user.type(screen.getByLabelText('Ticker indice'), '^GDAXI');
+    await user.type(screen.getByLabelText('Devise'), 'EUR');
+    const modal = screen.getByTestId('modal');
+    await user.click(within(modal).getByText('Enregistrer'));
+    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de l'enregistrement/i)).toBeTruthy());
+  }, 10000);
+
+  it('shows edit modal with the code locked when clicking edit for a country', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByRole('button', { name: /Modifier pays jp/i }));
+    expect(screen.getByText(/Modifier le pays — jp/i)).toBeTruthy();
+    const codeInput = screen.getByLabelText('Code');
+    expect((codeInput as HTMLInputElement).disabled).toBe(true);
+    expect((codeInput as HTMLInputElement).value).toBe('jp');
+  }, 10000);
+
+  it('can save an edited country', async () => {
+    const { updateCountryPerfConfig } = await import('../api/queries');
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByRole('button', { name: /Modifier pays jp/i }));
+    const labelInput = screen.getByLabelText('Nom');
+    await user.clear(labelInput);
+    await user.type(labelInput, 'Japan');
+    const modal = screen.getByTestId('modal');
+    await user.click(within(modal).getByText('Enregistrer'));
+    expect(updateCountryPerfConfig).toHaveBeenCalledWith('jp', {
+      label: 'Japan', index_ticker: '^N225', currency: 'JPY', index_label: 'Nikkei 225',
+    });
+  }, 10000);
+
+  it('can delete a country with confirm', async () => {
+    const { deleteCountryPerfConfig } = await import('../api/queries');
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByRole('button', { name: /Supprimer pays gb/i }));
+    await user.click(screen.getByText('Supprimer'));
+    expect(deleteCountryPerfConfig).toHaveBeenCalledWith('gb');
+  }, 10000);
+
+  it('delete cancelled by user does not call deleteCountryPerfConfig', async () => {
+    const { deleteCountryPerfConfig } = await import('../api/queries');
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByRole('button', { name: /Supprimer pays gb/i }));
+    await user.click(screen.getByText('Annuler'));
+    expect(deleteCountryPerfConfig).not.toHaveBeenCalled();
+  }, 10000);
+
+  it('delete succeeds with no last-remaining-row guard (unlike regions)', async () => {
+    const { deleteCountryPerfConfig } = await import('../api/queries');
+    mockUseCountryPerfConfigs.mockReturnValue({ data: [MOCK_COUNTRIES[0]], refetch: vi.fn() });
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByRole('button', { name: /Supprimer pays jp/i }));
+    await user.click(screen.getByText('Supprimer'));
+    expect(deleteCountryPerfConfig).toHaveBeenCalledWith('jp');
+  }, 10000);
+
+  it('delete error without detail shows fallback message', async () => {
+    const { deleteCountryPerfConfig } = await import('../api/queries');
+    vi.mocked(deleteCountryPerfConfig).mockRejectedValueOnce(new Error('Unknown error'));
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+    await user.click(screen.getByRole('button', { name: /Supprimer pays gb/i }));
     await user.click(screen.getByText('Supprimer'));
     await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de la suppression/i)).toBeTruthy());
   }, 10000);

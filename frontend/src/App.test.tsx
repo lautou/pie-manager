@@ -102,6 +102,11 @@ vi.mock('./api/queries', () => ({
   createMacroRegion: vi.fn(),
   updateMacroRegion: vi.fn(),
   deleteMacroRegion: vi.fn(),
+  useCountryPerformance: () => ({ data: [], isLoading: false }),
+  useCountryPerfConfigs: () => ({ data: [] }),
+  createCountryPerfConfig: vi.fn(),
+  updateCountryPerfConfig: vi.fn(),
+  deleteCountryPerfConfig: vi.fn(),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

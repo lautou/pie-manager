@@ -16,13 +16,13 @@ Strategy:
 """
 
 import asyncio
-import json
 from datetime import datetime, timezone
 from typing import Callable, Optional, TypeVar
 
 import httpx
 
 from app.tasks.celery_app import celery_app
+from app.tasks.sync_status import get_redis, write_status
 from app.services.etf_holdings_service import (
     get_etf_tickers,
     get_direct_stock_tickers_in_etf_pools,
@@ -32,6 +32,7 @@ from app.services.etf_holdings_service import (
 T = TypeVar("T")
 
 SYNC_STATUS_KEY = "pie:etf_holdings:status"
+SYNC_STATUS_TTL = 3600 * 24 * 7  # expire after 1 week
 YAHOO_QUOTE_SUMMARY_URL = "https://query2.finance.yahoo.com/v10/finance/quoteSummary/{ticker}"
 YAHOO_CRUMB_URL = "https://query2.finance.yahoo.com/v1/test/getcrumb"
 YAHOO_WARMUP_URL = "https://fc.yahoo.com"
@@ -46,20 +47,6 @@ YAHOO_HEADERS = {
     # works for every request this module makes.
     "Accept": "*/*",
 }
-
-
-# ---------------------------------------------------------------------------
-# Redis helpers (mirrors app/tasks/prices.py)
-# ---------------------------------------------------------------------------
-
-def _get_redis():
-    import redis as redis_lib
-    from app.core.config import settings
-    return redis_lib.Redis.from_url(settings.celery_broker_url, decode_responses=True)
-
-
-def _write_status(r, status: dict):
-    r.set(SYNC_STATUS_KEY, json.dumps(status), ex=3600 * 24 * 7)  # expire after 1 week
 
 
 # ---------------------------------------------------------------------------
@@ -286,15 +273,15 @@ def refresh_etf_holdings():
     Main scheduled task: refresh ETF top-10 holdings/sector weightings weekly.
     Writes sync status to Redis, mirroring app.tasks.prices.refresh_prices_live.
     """
-    r = _get_redis()
-    _write_status(r, {
+    r = get_redis()
+    write_status(r, SYNC_STATUS_KEY, {
         "started_at": datetime.now(timezone.utc).isoformat(),
         "finished_at": None,
         "status": "running",
         "total_tickers": 0,
         "succeeded": 0,
         "failed_tickers": [],
-    })
+    }, ttl_seconds=SYNC_STATUS_TTL)
 
     try:
         result = asyncio.run(_run_etf_holdings_refresh())
@@ -309,5 +296,5 @@ def refresh_etf_holdings():
             "error": str(exc)[:200],
         }
 
-    _write_status(r, result)
+    write_status(r, SYNC_STATUS_KEY, result, ttl_seconds=SYNC_STATUS_TTL)
     return result

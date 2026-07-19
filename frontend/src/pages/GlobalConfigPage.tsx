@@ -15,13 +15,15 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useSystemSetting, useSetSystemSetting, useAllBrokers, usePortfolios,
   createBrokerAPI, updateBrokerAPI, deleteBrokerAPI, updateBrokerPortfoliosAPI,
   useProducts, createProduct, updateProduct, deleteProduct,
-  useMacroRegions, createMacroRegion, updateMacroRegion, deleteMacroRegion } from '../api/queries';
+  useMacroRegions, createMacroRegion, updateMacroRegion, deleteMacroRegion,
+  useCountryPerfConfigs, createCountryPerfConfig, updateCountryPerfConfig, deleteCountryPerfConfig,
+} from '../api/queries';
 import { useSortable } from '../hooks/useSortable';
 import ConfirmModal from '../components/ConfirmModal';
 import TickerLink from '../components/TickerLink';
 import EtfCompositionModal from '../components/EtfCompositionModal';
 import SettingField from '../components/SettingField';
-import type { Broker, CommissionTier, MacroRegionConfig, Product } from '../types';
+import type { Broker, CommissionTier, CountryPerfConfig, MacroRegionConfig, Product } from '../types';
 import { computeCommission } from '../utils/commission';
 
 // ── Broker Manager ─────────────────────────────────────────────────────────
@@ -830,9 +832,186 @@ function RegionManager() {
   );
 }
 
+// ── Market Country Manager (country-performance leaderboard universe) ──────
+
+interface CountryForm {
+  code: string;
+  label: string;
+  index_ticker: string;
+  currency: string;
+  index_label: string;
+}
+const EMPTY_COUNTRY_FORM: CountryForm = { code: '', label: '', index_ticker: '', currency: '', index_label: '' };
+
+function MarketCountryManager() {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const { data: countries = [], refetch } = useCountryPerfConfigs();
+
+  const [modalMode, setModalMode] = useState<'add' | 'edit' | null>(null);
+  const [editingCountry, setEditingCountry] = useState<CountryPerfConfig | null>(null);
+  const [form, setForm] = useState<CountryForm>(EMPTY_COUNTRY_FORM);
+  const [formError, setFormError] = useState('');
+  const [deleteError, setDeleteError] = useState<{ code: string; message: string } | null>(null);
+  const [countryDeleteTarget, setCountryDeleteTarget] = useState<CountryPerfConfig | null>(null);
+  const [isDeletingCountry, setIsDeletingCountry] = useState(false);
+
+  const openAdd = () => { setForm(EMPTY_COUNTRY_FORM); setFormError(''); setEditingCountry(null); setModalMode('add'); };
+  const openEdit = (c: CountryPerfConfig) => {
+    setForm({
+      code: c.code, label: c.label, index_ticker: c.index_ticker, currency: c.currency,
+      index_label: c.index_label,
+    });
+    setFormError(''); setEditingCountry(c); setModalMode('edit');
+  };
+  const closeModal = () => { setModalMode(null); setEditingCountry(null); setFormError(''); };
+
+  const invalidateCountryQueries = () => {
+    qc.invalidateQueries({ queryKey: ['country-perf-configs'] });
+    qc.invalidateQueries({ queryKey: ['country-performance'] });
+  };
+
+  const handleSave = async () => {
+    if (!form.code.trim()) { setFormError(t('marketPerformance.validation.codeRequired')); return; }
+    if (!form.label.trim()) { setFormError(t('marketPerformance.validation.labelRequired')); return; }
+    if (!form.index_ticker.trim()) { setFormError(t('marketPerformance.validation.indexTickerRequired')); return; }
+    if (!form.currency.trim()) { setFormError(t('marketPerformance.validation.currencyRequired')); return; }
+    if (!form.index_label.trim()) { setFormError(t('marketPerformance.validation.indexLabelRequired')); return; }
+    try {
+      if (modalMode === 'add') {
+        await createCountryPerfConfig({
+          code: form.code.trim().toLowerCase(), label: form.label.trim(),
+          index_ticker: form.index_ticker.trim(), currency: form.currency.trim().toUpperCase(),
+          index_label: form.index_label.trim(),
+        });
+      } else {
+        /* v8 ignore next -- @preserve */
+        if (editingCountry) {
+          await updateCountryPerfConfig(editingCountry.code, {
+            label: form.label.trim(), index_ticker: form.index_ticker.trim(),
+            currency: form.currency.trim().toUpperCase(), index_label: form.index_label.trim(),
+          });
+        }
+      }
+      closeModal(); refetch(); invalidateCountryQueries();
+    } catch (e: any) {
+      setFormError(e?.response?.data?.detail ?? 'Erreur lors de l\'enregistrement');
+    }
+  };
+
+  const handleDelete = (c: CountryPerfConfig) => { setDeleteError(null); setCountryDeleteTarget(c); };
+
+  const handleConfirmDeleteCountry = async () => {
+    /* v8 ignore next -- @preserve */
+    if (!countryDeleteTarget) return;
+    setIsDeletingCountry(true);
+    try {
+      await deleteCountryPerfConfig(countryDeleteTarget.code);
+      refetch(); invalidateCountryQueries();
+      setCountryDeleteTarget(null);
+    } catch (e: any) {
+      setDeleteError({ code: countryDeleteTarget.code, message: e?.response?.data?.detail ?? 'Erreur lors de la suppression' });
+    } finally { setIsDeletingCountry(false); }
+  };
+
+  const inputSt: React.CSSProperties = { padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', fontSize: '0.9rem', width: '100%' };
+  const tdSt: React.CSSProperties = { padding: '6px 8px', fontSize: '0.9rem', borderBottom: '1px solid #eee' };
+  const thSt: React.CSSProperties = { padding: '6px 8px', textAlign: 'left', borderBottom: '1px solid #ddd', fontSize: '0.85rem', color: '#6A6E73' };
+  const btnSm = (extra?: React.CSSProperties): React.CSSProperties => ({ padding: '3px 8px', borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem', border: 'none', ...extra });
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+        <span style={{ fontSize: '0.85rem', color: '#6A6E73' }}>{countries.length} pays</span>
+        <Button variant="primary" icon={<PlusCircleIcon />} size="sm" onClick={openAdd}>{t('marketPerformance.newCountry')}</Button>
+      </div>
+      {deleteError && <Alert variant="danger" isInline title={t('error.deleteFailed')} style={{ marginBottom: '0.75rem' }}>{deleteError.message}</Alert>}
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+          <thead>
+            <tr style={{ background: '#f5f5f5' }}>
+              <th style={thSt}>{t('marketPerformance.countryCode')}</th>
+              <th style={thSt}>{t('marketPerformance.countryLabel')}</th>
+              <th style={thSt}>{t('marketPerformance.indexLabel')}</th>
+              <th style={thSt}>{t('marketPerformance.indexTicker')}</th>
+              <th style={thSt}>{t('marketPerformance.currency')}</th>
+              <th style={thSt}>{t('common.actions')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {countries.map(c => (
+              <tr key={c.code}>
+                <td style={{ ...tdSt, fontFamily: 'monospace', fontWeight: 600 }}>{c.code}</td>
+                <td style={tdSt}>{c.label}</td>
+                <td style={tdSt}>{c.index_label}</td>
+                <td style={{ ...tdSt, fontFamily: 'monospace' }}>{c.index_ticker}</td>
+                <td style={{ ...tdSt, fontFamily: 'monospace' }}>{c.currency}</td>
+                <td style={{ ...tdSt, whiteSpace: 'nowrap' }}>
+                  {/* "pays" distinguishes these from RegionManager's "Modifier fr"/"Supprimer fr" —
+                      both managers can have a row with the same code (e.g. "fr"), which made
+                      their aria-labels collide on the same page until this was caught in a real
+                      browser check (unit tests used non-overlapping fixture codes, hiding it). */}
+                  <button aria-label={`${t('common.edit')} pays ${c.code}`} style={btnSm({ marginRight: 4, background: '#f5f5f5', border: '1px solid #ccc' })} onClick={() => openEdit(c)}><PencilAltIcon /></button>
+                  <button aria-label={`${t('common.delete')} pays ${c.code}`} style={btnSm({ background: '#FAEAE8', border: '1px solid #C9190B', color: '#C9190B' })} onClick={() => handleDelete(c)}><TrashIcon /></button>
+                </td>
+              </tr>
+            ))}
+            {countries.length === 0 && <tr><td colSpan={6} style={{ ...tdSt, color: '#6A6E73', textAlign: 'center' }}>{t('marketPerformance.noCountries')}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <Modal variant={ModalVariant.medium}
+        title={modalMode === 'add' ? t('marketPerformance.newCountry') : `${t('marketPerformance.editCountry')} — ${editingCountry?.code}`}
+        isOpen={modalMode !== null} onClose={closeModal}
+        actions={[<Button key="save" variant="primary" onClick={handleSave}>{t('common.save')}</Button>, <Button key="cancel" variant="link" onClick={closeModal}>{t('common.cancel')}</Button>]}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div>
+            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('marketPerformance.countryCode')} {modalMode === 'add' && <span style={{ color: '#C9190B' }}>*</span>}</label>
+            {modalMode === 'add' ? (
+              <input aria-label={t('marketPerformance.countryCode')} value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toLowerCase() }))} placeholder="Ex: de" style={inputSt} />
+            ) : (
+              <input aria-label={t('marketPerformance.countryCode')} value={form.code} disabled style={{ ...inputSt, background: '#f5f5f5', color: '#6A6E73' }} />
+            )}
+          </div>
+          <div>
+            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('marketPerformance.countryLabel')} <span style={{ color: '#C9190B' }}>*</span></label>
+            <input aria-label={t('marketPerformance.countryLabel')} value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} placeholder="Ex: Allemagne" style={inputSt} />
+          </div>
+          <div>
+            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('marketPerformance.indexLabel')} <span style={{ color: '#C9190B' }}>*</span></label>
+            <input aria-label={t('marketPerformance.indexLabel')} value={form.index_label} onChange={e => setForm(f => ({ ...f, index_label: e.target.value }))} placeholder="Ex: DAX 40" style={inputSt} />
+          </div>
+          <div>
+            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('marketPerformance.indexTicker')} <span style={{ color: '#C9190B' }}>*</span></label>
+            <input aria-label={t('marketPerformance.indexTicker')} value={form.index_ticker} onChange={e => setForm(f => ({ ...f, index_ticker: e.target.value }))} placeholder="Ex: ^GDAXI" style={inputSt} />
+          </div>
+          <div>
+            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('marketPerformance.currency')} <span style={{ color: '#C9190B' }}>*</span></label>
+            <input aria-label={t('marketPerformance.currency')} value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value.toUpperCase() }))} placeholder="Ex: EUR" style={inputSt} />
+          </div>
+          {formError && <div style={{ color: '#C9190B', fontSize: '0.85rem' }}>{formError}</div>}
+        </div>
+      </Modal>
+
+      <ConfirmModal
+        isOpen={!!countryDeleteTarget}
+        title={t('common.confirmDeleteTitle')}
+        message={countryDeleteTarget
+          ? t('marketPerformance.deleteCountryConfirm', { name: `${countryDeleteTarget.code} — ${countryDeleteTarget.label}` })
+          : ''}
+        isLoading={isDeletingCountry}
+        onConfirm={handleConfirmDeleteCountry}
+        onCancel={() => setCountryDeleteTarget(null)}
+      />
+    </div>
+  );
+}
+
 export default function GlobalConfigPage() {
   const { t } = useTranslation();
   const { data: ttfSetting } = useSystemSetting('ttf_rate');
+  const { data: topNSetting } = useSystemSetting('country_perf.top_n');
+  const topN = topNSetting?.value ?? '15';
   const setSettingMutation = useSetSystemSetting();
   const [ttfRate, setTtfRate] = useState<string>('0.40');
   const [ttfSaved, setTtfSaved] = useState(false);
@@ -925,6 +1104,20 @@ export default function GlobalConfigPage() {
           <SettingField settingKey="macro.ma_years" label={t('indicators.maYearsLabel')} defaultValue="7" type="number" />
           <div style={{ fontSize: '0.78rem', color: '#6A6E73', marginTop: '0.5rem' }}>
             {t('indicators.settingsHint')}
+          </div>
+        </CardBody>
+      </Card>
+
+      {/* ── Performance des marchés (univers de pays) ── */}
+      <Card style={{ marginBottom: '1.5rem' }}>
+        <CardTitle>{t('marketPerformance.sectionTitle')}</CardTitle>
+        <CardBody>
+          <p style={{ fontSize: '0.85rem', color: '#6A6E73', marginBottom: '1rem' }}>
+            {t('marketPerformance.sectionDescription', { topN })}
+          </p>
+          <MarketCountryManager />
+          <div style={{ marginTop: '1.25rem' }}>
+            <SettingField settingKey="country_perf.top_n" label={t('marketPerformance.topNLabel')} defaultValue="15" type="number" />
           </div>
         </CardBody>
       </Card>

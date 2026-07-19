@@ -343,3 +343,21 @@ export interface SyncStatus {
   succeeded: number;
   failed_tickers: string[];
 }
+
+export interface CountryPerfConfig {
+  code: string;
+  label: string;
+  index_ticker: string;
+  currency: string;
+  index_label: string;
+}
+
+export interface CountryPerformanceEntry {
+  code: string;
+  label: string;
+  currency: string;
+  perf_pct: number;
+  latest_date: string;
+  anchor_date: string;
+  index_label: string;
+}

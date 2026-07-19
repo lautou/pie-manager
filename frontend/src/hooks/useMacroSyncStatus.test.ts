@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { makeWrapper } from '../../tests/utils/react-query-wrapper';
-import { macroRefetchInterval, useMacroSyncStatus } from './useMacroSyncStatus';
+import { macroRefetchInterval, useCountryPerfSyncStatus, useMacroSyncStatus } from './useMacroSyncStatus';
 import type { SyncStatus } from '../types';
 
 vi.mock('../api/client', () => ({
@@ -64,6 +64,32 @@ describe('useMacroSyncStatus hook', () => {
   it('returns undefined data initially (loading state)', () => {
     const wrapper = makeWrapper();
     const { result } = renderHook(() => useMacroSyncStatus(), { wrapper });
+    expect(result.current.data).toBeUndefined();
+  });
+});
+
+describe('useCountryPerfSyncStatus hook', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('fetches from /api/indicators/country-performance/sync-status and returns data', async () => {
+    const { default: apiClient } = await import('../api/client');
+    const mockGet = vi.mocked(apiClient.get);
+    const syncData = makeStatus({ status: 'success', started_at: 't0', finished_at: 't1', total_tickers: 23, succeeded: 23 });
+    mockGet.mockResolvedValueOnce({ data: syncData } as any);
+
+    const wrapper = makeWrapper();
+    const { result } = renderHook(() => useCountryPerfSyncStatus(), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual(syncData);
+    expect(mockGet).toHaveBeenCalledWith('/api/indicators/country-performance/sync-status');
+  });
+
+  it('returns undefined data initially (loading state)', () => {
+    const wrapper = makeWrapper();
+    const { result } = renderHook(() => useCountryPerfSyncStatus(), { wrapper });
     expect(result.current.data).toBeUndefined();
   });
 });

@@ -9,6 +9,7 @@ from app.models.fiscal import FiscalCarryForward
 from app.models.portfolio_account import PortfolioAccount
 from app.models.etf_holding import EtfHolding, EtfSectorWeighting
 from app.models.macro_indicator import MacroSeriesPrice, MacroRegion
+from app.models.country_performance import CountryPerfConfig
 
 __all__ = [
     "Portfolio",
@@ -29,4 +30,5 @@ __all__ = [
     "EtfSectorWeighting",
     "MacroSeriesPrice",
     "MacroRegion",
+    "CountryPerfConfig",
 ]

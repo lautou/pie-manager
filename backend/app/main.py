@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routers import portfolios, products, brokers, transactions, pools, prices, snapshots, dashboard, admin
 from app.api.routers import holdings, rebalancing, analytics, pv, fiscal, indicators, transaction_import
+from app.api.routers import country_performance
 
 
 @asynccontextmanager
@@ -37,6 +38,14 @@ async def lifespan(app: FastAPI):
     try:
         from app.tasks.macro_indicators import refresh_macro_indicators
         refresh_macro_indicators.delay()
+    except Exception:
+        pass  # Don't block startup if Celery is unavailable
+
+    # On startup: refresh the country performance leaderboard too, rather than waiting up
+    # to a day for the next scheduled Celery Beat run (non-blocking task).
+    try:
+        from app.tasks.country_performance import refresh_country_performance
+        refresh_country_performance.delay()
     except Exception:
         pass  # Don't block startup if Celery is unavailable
     yield
@@ -72,6 +81,7 @@ app.include_router(admin.router, prefix="/api/admin")
 app.include_router(pv.router, prefix="/api/pv")
 app.include_router(fiscal.router, prefix="/api/fiscal")
 app.include_router(indicators.router, prefix="/api/indicators")
+app.include_router(country_performance.router, prefix="/api/indicators")
 app.include_router(transaction_import.router, prefix="/api/transactions/import")
 
 

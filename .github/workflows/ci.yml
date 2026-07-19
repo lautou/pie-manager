@@ -51,7 +51,17 @@ jobs:
           cp compose-prod.yaml installer/assets/
           cp packaging/pie-manager.desktop installer/assets/
           cp packaging/pie-manager.svg installer/assets/
+          cp packaging/pie-manager-macos-info.plist installer/assets/
           cd installer && go mod tidy && go vet ./... && go test ./... && CGO_ENABLED=0 go build ./...
+
+      - name: Go installer — cross-compile check (Windows, macOS)
+        run: |
+          cd installer
+          # Cross-compile-only, on ubuntu-latest — no real Windows/macOS runner needed.
+          # Catches build-tag/link errors early (e.g. a platform-unscoped .syso file
+          # silently breaking every non-Windows target) instead of only at release time.
+          GOOS=windows GOARCH=amd64 go vet ./... && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o /dev/null ./...
+          GOOS=darwin GOARCH=arm64 go vet ./... && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o /dev/null ./...
 
       - name: Run frontend unit tests + coverage
         working-directory: frontend

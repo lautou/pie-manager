@@ -41,6 +41,12 @@ func runInstall() {
 			fmt.Println("Or download directly: https://github.com/containers/podman/releases/latest")
 			os.Exit(1)
 		}
+		refreshPathForPodman()
+		if _, err := exec.LookPath("podman"); err != nil {
+			fmt.Printf("ERROR: Podman was installed but is not on PATH (%v).\n", err)
+			fmt.Println("Open a new terminal (so macOS picks up the updated PATH) and run this installer again.")
+			os.Exit(1)
+		}
 		fmt.Println("Podman installed.")
 	} else {
 		fmt.Println("Podman OK")
@@ -230,6 +236,34 @@ func installPodmanFromGitHub() error {
 		return fmt.Errorf("installing Podman: %w", err)
 	}
 	return nil
+}
+
+// refreshPathForPodman adds Podman's official macOS installer directory to
+// the current process's PATH. The .pkg registers its install directory via
+// /etc/paths.d for future *login shells* only — a process that just ran the
+// installer never picks that up, so a bare exec.Command("podman", ...) right
+// after installing fails with "executable file not found in $PATH" (confirmed
+// live: real CI run against the real .pkg). Read the same paths.d file the
+// installer itself wrote rather than hardcoding its install directory.
+func refreshPathForPodman() {
+	entries, err := os.ReadDir("/etc/paths.d")
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !strings.Contains(strings.ToLower(e.Name()), "podman") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join("/etc/paths.d", e.Name()))
+		if err != nil {
+			continue
+		}
+		for _, dir := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+			if dir = strings.TrimSpace(dir); dir != "" {
+				os.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+			}
+		}
+	}
 }
 
 // --- Podman Machine (macOS runs containers inside an Apple Hypervisor.framework VM) ---

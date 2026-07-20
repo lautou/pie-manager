@@ -1081,6 +1081,17 @@ Only handles a **fresh** install (`podman` absent from PATH) — re-running the 
 (`podman-mac-helper` conflicts, requires manually uninstalling the old helper first), so
 upgrades are left to the user/Homebrew, not this installer.
 
+**Right after a fresh `.pkg` install, `podman` is still not on `PATH` for the current
+process.** The `.pkg` registers its install directory via `/etc/paths.d/` for *future login
+shells* only — confirmed live in CI: `podman machine init` failed with "executable file not
+found in $PATH" immediately after "The install was successful." `refreshPathForPodman()`
+reads that same `/etc/paths.d/` entry and prepends it to the current process's `PATH` before
+continuing, rather than hardcoding the `.pkg`'s install directory. Also,
+`githubLatestAssetURL` (`common.go`, used here and by Windows's WSL2/winget fallback) now
+passes `GITHUB_TOKEN`/`GH_TOKEN` as a bearer token when present in the environment — shared
+GitHub Actions runner IPs can already be near the unauthenticated GitHub API's 60/hour limit
+(confirmed live: a real 403), while a real end user's install never has this env var set.
+
 **Podman Machine setup itself does port over from Windows, since Podman Machine's own guest
 OS (Fedora CoreOS) is identical on both platforms.** `ensurePodmanMachine()` in
 `install_darwin.go`/`start_darwin.go` mirrors Windows's init/start logic (`podman machine
@@ -1165,7 +1176,13 @@ gates, until proven reliable across a few real releases:**
   (no `-Verb RunAs`, which would need an interactive prompt) and lets the manifest's own
   elevation request play out however the runner's default user context handles it.
 - **`test-linux-install`**: lower risk (no elevation dance, no nested hypervisor), but new and
-  unproven — kept `continue-on-error` for the same reason, tighten once stable.
+  unproven — kept `continue-on-error` for the same reason, tighten once stable. The job
+  installs `podman-compose` explicitly (`pip install podman-compose`, matching `ci.yml`'s own
+  compose-syntax step) — without it, `detectComposeCmd()` falls back to the `podman compose`
+  subcommand, which on this runner image auto-delegates to Docker's pre-installed compose CLI
+  plugin instead of using Podman's own compose implementation, and that plugin can't reach a
+  Docker daemon (confirmed live). A real end-user machine without Docker installed alongside
+  Podman wouldn't hit this.
 - **`test-macos`'s full-install step**: same reasoning — the cheap `version` smoke test above
   it in the same job is NOT gated (always runs, always blocking), only the full-install
   addition is best-effort.

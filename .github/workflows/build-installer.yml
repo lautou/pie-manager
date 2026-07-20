@@ -325,6 +325,12 @@ jobs:
       - name: Full install test — Podman via official .pkg, Podman Machine, compose up
         if: needs.detect-installer-changes.outputs.changed == 'true'
         continue-on-error: true
+        # GITHUB_TOKEN lifts the installer's GitHub API call (fetching the
+        # latest Podman release) past the 60/hour unauthenticated rate limit
+        # shared runner IPs can already be near — confirmed live as a real
+        # 403 in this exact job. No effect on a real end user's install.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ needs.build.outputs.version }}"
           ./"pie-manager-darwin-arm64-${VERSION}" install
@@ -361,7 +367,17 @@ jobs:
           name: pie-manager-linux-amd64
 
       - name: Install Podman
-        run: sudo apt-get update && sudo apt-get install -y podman
+        run: |
+          sudo apt-get update && sudo apt-get install -y podman
+          # Without podman-compose, detectComposeCmd() falls back to the
+          # "podman compose" subcommand — which itself auto-detects and
+          # delegates to the Docker CLI compose plugin GitHub's ubuntu-latest
+          # image ships alongside Podman, and that plugin can't reach a
+          # Docker daemon (confirmed live: "Cannot connect to the Docker
+          # daemon ... podman.sock"). A real end-user machine without Docker
+          # pre-installed wouldn't hit this; install podman-compose here to
+          # match what this project's own detection logic actually prefers.
+          pip install podman-compose
 
       - name: Run real install
         run: |
@@ -403,6 +419,13 @@ jobs:
 
       - name: Run real install
         shell: pwsh
+        # GITHUB_TOKEN lifts the installer's GitHub API calls (WSL2/winget
+        # release lookups, only hit as a fallback when the Store-based path
+        # fails) past the 60/hour unauthenticated rate limit — see the macOS
+        # job's identical env for why this is CI-only and harmless for a
+        # real end user's install.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $version = "${{ needs.build.outputs.version }}"
           $exe = ".\pie-manager-windows-amd64-$version.exe"

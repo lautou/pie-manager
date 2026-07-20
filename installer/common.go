@@ -137,7 +137,21 @@ type githubRelease struct {
 // version-specific filename that changes on every release.
 func githubLatestAssetURL(repo, suffix string) (string, error) {
 	url := fmt.Sprintf("%s/repos/%s/releases/latest", githubAPIBase, repo)
-	resp, err := http.Get(url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("building request for %s: %w", repo, err)
+	}
+	// GitHub's API rate-limits unauthenticated requests to 60/hour per IP —
+	// shared GitHub Actions runner IPs can already be near that limit
+	// (confirmed live: a real 403 testing this installer in CI). A real end
+	// user's own installer run never has this env var set, so this is a
+	// no-op outside CI; inside CI it lifts the limit to 5000/hour.
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	} else if token := os.Getenv("GH_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("fetching latest release for %s: %w", repo, err)
 	}

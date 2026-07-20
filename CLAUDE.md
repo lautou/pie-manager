@@ -1164,8 +1164,25 @@ compose behavior under test is distro-agnostic. The one genuinely Fedora-specifi
 project has (the `:z` SELinux volume flag in `compose-prod.yaml`) is inert on Ubuntu, not a
 divergent code path — same file, same behavior either way.
 
-**Windows and the two newer jobs are `continue-on-error: true` — informational, not release
-gates, until proven reliable across a few real releases:**
+**`test-macos` never attempts a full `install` run — deliberately, permanently.** GitHub's own
+docs state nested virtualization is unsupported on GitHub-hosted macOS runners (Intel or
+Apple Silicon alike): ["Nested-virtualization is not supported due to the limitation of
+Apple's Virtualization
+Framework"](https://docs.github.com/en/actions/reference/runners/github-hosted-runners), also
+tracked as open, unresolved feature requests
+([actions/runner-images#9460](https://github.com/actions/runner-images/issues/9460),
+[#13505](https://github.com/actions/runner-images/issues/13505)). Podman Machine's `podman
+machine start` needs exactly that (krunkit/Hypervisor.framework) — confirmed live, every
+time: `Error: krunkit exited unexpectedly with exit code 1` /
+`podman machine start: exit status 125`, right after Podman itself installed and `machine
+init` succeeded. This is a **permanent platform limitation, not a flakiness problem to
+iterate on** — do not re-add a full-install step to `test-macos` expecting a future fix to
+make it pass; `continue-on-error` would only hide a test that can never succeed. The `version`
+smoke test is the full extent of macOS CI coverage; a genuine full-install validation needs
+the user's own Apple Silicon Mac.
+
+**Windows and Linux are `continue-on-error: true` — informational, not release gates, until
+proven reliable across a few real releases:**
 - **`test-windows-install`**: nested virtualization for WSL2 (in turn needed for Podman
   Machine) has been confirmed working on GitHub's `windows-latest` runners by the community
   since the Dadsv5 hardware migration (Jan 2024) — but this is **not officially documented or
@@ -1183,22 +1200,22 @@ gates, until proven reliable across a few real releases:**
   plugin instead of using Podman's own compose implementation, and that plugin can't reach a
   Docker daemon (confirmed live). A real end-user machine without Docker installed alongside
   Podman wouldn't hit this.
-- **`test-macos`'s full-install step**: same reasoning — the cheap `version` smoke test above
-  it in the same job is NOT gated (always runs, always blocking), only the full-install
-  addition is best-effort.
 
-Once each of these has run clean across a handful of real releases, remove its
+Once each of these two has run clean across a handful of real releases, remove its
 `continue-on-error: true` to make it a real release gate — don't leave it soft-failing forever
 just because it started that way.
 
 **`workflow_dispatch` lets this whole pipeline run on demand without creating a release.**
-`build` computes `VERSION` once (a real tag version on `push`, a `0.0.0-dispatch-<sha>`
-placeholder otherwise — `GITHUB_REF_NAME` is a branch name on manual runs, which can contain
-`/` and would break filenames) and exposes it as a job output so every downstream job reads
-the same value instead of re-deriving it from `GITHUB_REF_NAME`. The "Create GitHub Release"
+`build` computes `VERSION` once — a real tag version on `push`; on a manual run, the
+**latest already-published release's version** instead of a made-up placeholder, since no
+container image exists on Quay.io for a version nobody ever published (confirmed live:
+`podman pull` failing with "manifest unknown" for a first attempt at a synthetic
+`0.0.0-dispatch-<sha>` version) — and exposes it as a job output so every downstream job reads
+the same value instead of re-deriving it from `GITHUB_REF_NAME` (a branch name on manual runs,
+which can contain `/` and would break filenames built from it). The "Create GitHub Release"
 and "Delete obsolete releases" steps are both gated `if: github.event_name == 'push'` — a
-manual dispatch builds and installer-tests all 3 platforms (including real Apple Silicon
-hardware) but never touches GitHub Releases or Quay.io.
+manual dispatch builds and installer-tests all 3 platforms but never touches GitHub Releases
+or Quay.io.
 
 ## React pattern to avoid — setState with unmodified new array ref
 

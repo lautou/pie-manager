@@ -320,6 +320,16 @@ $owner.StartPosition = 'CenterScreen'
 `
 
 func popup(title, msg string) {
+	// Skip the interactive dialog in CI — GitHub Actions (and virtually every
+	// other CI provider) sets CI=true, and nobody is present to click a modal
+	// MessageBox in a headless test run. Confirmed live: without this guard,
+	// the final success popupYesNo below left the installer process running
+	// forever (Task Scheduler still reported "Running" 10 minutes later) even
+	// though every real install step had already logged success.
+	if os.Getenv("CI") != "" {
+		logMessage(fmt.Sprintf("[popup skipped in CI] %s: %s", title, msg))
+		return
+	}
 	ps := topmostOwnerPS + fmt.Sprintf(`[System.Windows.Forms.MessageBox]::Show($owner,"%s","%s","OK","Information")`, msg, title)
 	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", ps)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: noWindow}
@@ -328,6 +338,10 @@ func popup(title, msg string) {
 
 // popupYesNo shows a Yes/No MessageBox and reports whether the user clicked Yes.
 func popupYesNo(title, msg string) bool {
+	if os.Getenv("CI") != "" {
+		logMessage(fmt.Sprintf("[popup skipped in CI] %s: %s (defaulting to No)", title, msg))
+		return false
+	}
 	ps := topmostOwnerPS + fmt.Sprintf(`[System.Windows.Forms.MessageBox]::Show($owner,"%s","%s","YesNo","Question")`, msg, title)
 	out, err := runPS(ps)
 	if err != nil {

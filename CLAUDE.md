@@ -1194,7 +1194,14 @@ proven reliable across a few real releases:**
   run the installer through a Scheduled Task (`New-ScheduledTaskPrincipal -RunLevel Highest`)
   instead of `Start-Process` — Task Scheduler's own silent-elevation mechanism bypasses the
   interactive consent dialog entirely, without weakening the shipped manifest or a real end
-  user's UAC prompt in any way.
+  user's UAC prompt in any way. **A second, distinct hang surfaced right after this fix**: the
+  install log showed every real step (WSL2/Podman/Docker Compose, `podman compose up -d`,
+  shortcuts) succeed within ~3 minutes, yet the Scheduled Task still reported `Running` a full
+  10 minutes later — `popupYesNo`'s final "Voulez-vous lancer maintenant ?" `MessageBox.Show`
+  blocks forever with nobody to click it. Fixed at the source in `popup()`/`popupYesNo()`
+  (`main_windows.go`): both skip the interactive dialog and log instead when `CI` is set in
+  the environment (GitHub Actions, and virtually every other CI provider, sets `CI=true`) —
+  never set on a real end user's machine, so their experience is unchanged.
 - **`test-linux-install`**: lower risk (no elevation dance, no nested hypervisor), but new and
   unproven — kept `continue-on-error` for the same reason, tighten once stable. The job
   installs `podman-compose` explicitly (`pip install podman-compose`, matching `ci.yml`'s own
@@ -1448,7 +1455,8 @@ directly (e.g. `SyncBadge.test.tsx`, `RefreshBanner.test.tsx`).
 
 ### GitHub Actions annotations
 Actions targeting Node.js 24 natively: `checkout@v6.0.2`, `setup-node@v6.4.0`, `setup-python@v6.2.0`,
-`upload-artifact@v7.0.1`.
+`upload-artifact@v7.0.1`, `download-artifact@v8.0.1` (the Node 24 switch landed in v7 — v6 still
+warns "forced to run on Node.js 24" despite being pinned).
 
 ### Never chain more than 2 commands with `&&` in a workflow `run:` block
 

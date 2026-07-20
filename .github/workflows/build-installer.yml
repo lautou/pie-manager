@@ -2,6 +2,7 @@ name: Build Installer
 on:
   push:
     tags: ['v*.*.*']
+  workflow_dispatch:
 
 jobs:
   detect-installer-changes:
@@ -38,8 +39,28 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v6.0.2
+
+      - name: Determine version
+        # On a tag push, VERSION is the real release version. On a manual
+        # workflow_dispatch run (used to test the full install flow — incl.
+        # real Apple Silicon hardware — without creating a release, see
+        # CLAUDE.md), GITHUB_REF_NAME is just the branch name (which may
+        # contain "/", breaking filenames built from it) — use a throwaway
+        # dev version instead. Exported once via GITHUB_OUTPUT so every
+        # downstream job reads the same value instead of re-deriving it.
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="0.0.0-dispatch-${GITHUB_SHA:0:7}"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-go@v6.4.0
         with:
@@ -74,7 +95,6 @@ jobs:
 
       - name: Build launcher.exe (embedded in Windows installer)
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
           cd installer/launcher
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
             -ldflags="-H windowsgui -s -w -X main.Version=${VERSION}" \
@@ -107,7 +127,6 @@ jobs:
 
       - name: Build static binaries
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
           cd installer
 
           # The three builds are independent (different GOOS/GOARCH, different
@@ -158,7 +177,6 @@ jobs:
         env:
           PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
           cd installer
           osslsigncode sign -pkcs12 "$RUNNER_TEMP/codesign.pfx" -pass "$PFX_PASSWORD" \
             -h sha256 -n "PIE Manager" -i "${{ github.server_url }}/${{ github.repository }}" \
@@ -172,7 +190,6 @@ jobs:
 
       - name: Smoke test — Linux binary executes
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
           chmod +x "installer/pie-manager-linux-amd64-${VERSION}"
           output=$("./installer/pie-manager-linux-amd64-${VERSION}" version)
           echo "Version: $output"
@@ -200,12 +217,15 @@ jobs:
           retention-days: 1
 
       - name: Create GitHub Release and upload binaries
+        # Never runs on a manual workflow_dispatch test run — only a real tag
+        # push should ever create/publish a GitHub release.
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="${GITHUB_REF_NAME}"
-          VER="${GITHUB_REF_NAME#v}"
-          NOTES="## PIE Manager ${VERSION}
+          TAG="${GITHUB_REF_NAME}"
+          VER="${VERSION}"
+          NOTES="## PIE Manager ${TAG}
 
           ### Linux installation (x86_64)
           \`\`\`bash
@@ -231,13 +251,13 @@ jobs:
           ### Update
           Re-download and run again — fully idempotent."
 
-          gh release create "${VERSION}" \
+          gh release create "${TAG}" \
             --repo ${{ github.repository }} \
-            --title "PIE Manager ${VERSION}" \
+            --title "PIE Manager ${TAG}" \
             --notes "${NOTES}" \
             2>/dev/null || true
 
-          gh release upload "${VERSION}" \
+          gh release upload "${TAG}" \
             "installer/pie-manager-linux-amd64-${VER}" \
             "installer/pie-manager-windows-amd64-${VER}.exe" \
             "installer/pie-manager-darwin-arm64-${VER}" \
@@ -248,6 +268,9 @@ jobs:
             --clobber
 
       - name: Delete obsolete releases (keep only the latest)
+        # Never runs on a manual workflow_dispatch test run — deleting real
+        # releases must only ever happen as part of an actual tag-push release.
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -276,7 +299,7 @@ jobs:
 
       - name: Smoke test — macOS binary executes on real Apple Silicon
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ needs.build.outputs.version }}"
           chmod +x "pie-manager-darwin-arm64-${VERSION}"
           output=$(./"pie-manager-darwin-arm64-${VERSION}" version)
           echo "Version: $output"
@@ -291,7 +314,7 @@ jobs:
         if: needs.detect-installer-changes.outputs.changed == 'true'
         continue-on-error: true
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ needs.build.outputs.version }}"
           ./"pie-manager-darwin-arm64-${VERSION}" install
 
       - name: Verify the app is actually serving traffic
@@ -330,7 +353,7 @@ jobs:
 
       - name: Run real install
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ needs.build.outputs.version }}"
           chmod +x "pie-manager-linux-amd64-${VERSION}"
           ./"pie-manager-linux-amd64-${VERSION}" install
 
@@ -369,7 +392,7 @@ jobs:
       - name: Run real install
         shell: pwsh
         run: |
-          $version = "${env:GITHUB_REF_NAME}" -replace '^v', ''
+          $version = "${{ needs.build.outputs.version }}"
           $exe = ".\pie-manager-windows-amd64-$version.exe"
           Start-Process -FilePath $exe -Wait -NoNewWindow
 

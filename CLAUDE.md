@@ -1174,6 +1174,15 @@ Once each of these has run clean across a handful of real releases, remove its
 `continue-on-error: true` to make it a real release gate — don't leave it soft-failing forever
 just because it started that way.
 
+**`workflow_dispatch` lets this whole pipeline run on demand without creating a release.**
+`build` computes `VERSION` once (a real tag version on `push`, a `0.0.0-dispatch-<sha>`
+placeholder otherwise — `GITHUB_REF_NAME` is a branch name on manual runs, which can contain
+`/` and would break filenames) and exposes it as a job output so every downstream job reads
+the same value instead of re-deriving it from `GITHUB_REF_NAME`. The "Create GitHub Release"
+and "Delete obsolete releases" steps are both gated `if: github.event_name == 'push'` — a
+manual dispatch builds and installer-tests all 3 platforms (including real Apple Silicon
+hardware) but never touches GitHub Releases or Quay.io.
+
 ## React pattern to avoid — setState with unmodified new array ref
 
 **Witnessed bug (commit 8ca41c2):** infinite re-render loop causing a 16-minute test hang.

@@ -379,11 +379,20 @@ jobs:
     # Nested virtualization (needed for WSL2, in turn needed for Podman
     # Machine) has been confirmed working on GitHub's Windows runners by the
     # community since the Dadsv5 hardware migration (Jan 2024), but this is
-    # NOT officially documented/guaranteed by GitHub, and this installer's
-    # admin-elevation flow (embedded "requireAdministrator" manifest) has
-    # never been validated in a headless CI context — it may simply refuse to
-    # elevate with no interactive desktop to prompt on. continue-on-error
-    # until proven reliable across a few real releases. See CLAUDE.md.
+    # NOT officially documented/guaranteed by GitHub.
+    #
+    # The installer's embedded manifest requires admin rights (correct and
+    # unchanged for real users) — but launching it via PowerShell's
+    # Start-Process (which uses ShellExecute) triggers the interactive UAC
+    # consent prompt, and nobody is present to click it on a headless
+    # runner: confirmed live, twice, as an indefinite hang (45+ minutes,
+    # zero progress) rather than a clean refusal. Fixed below by running the
+    # installer through a Scheduled Task set to "run with highest
+    # privileges" instead — Task Scheduler's own documented silent-elevation
+    # mechanism, which bypasses the interactive consent dialog entirely
+    # without weakening the shipped manifest or a real end user's UAC
+    # prompt. continue-on-error until proven reliable across a few real
+    # releases. See CLAUDE.md.
     needs: [build, detect-installer-changes]
     if: needs.detect-installer-changes.outputs.changed == 'true'
     runs-on: windows-latest
@@ -405,8 +414,40 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $version = "${{ needs.build.outputs.version }}"
-          $exe = ".\pie-manager-windows-amd64-$version.exe"
-          Start-Process -FilePath $exe -Wait -NoNewWindow
+          $exe = (Resolve-Path ".\pie-manager-windows-amd64-$version.exe").Path
+          $workDir = Split-Path $exe -Parent
+          $taskName = "PieManagerInstallTest"
+          $userId = "$env:COMPUTERNAME\$env:USERNAME"
+
+          $action = New-ScheduledTaskAction -Execute $exe -WorkingDirectory $workDir
+          $principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType Interactive -RunLevel Highest
+          Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Force | Out-Null
+          Start-ScheduledTask -TaskName $taskName
+
+          $deadline = (Get-Date).AddMinutes(10)
+          do {
+            Start-Sleep -Seconds 5
+            $state = (Get-ScheduledTask -TaskName $taskName).State
+          } while ($state -ne 'Ready' -and (Get-Date) -lt $deadline)
+
+          $info = Get-ScheduledTaskInfo -TaskName $taskName
+          Write-Host "Task state: $state, last result: $($info.LastTaskResult)"
+          Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+
+          $logPath = Join-Path $workDir "install-prereq.log"
+          if (Test-Path $logPath) {
+            Write-Host "--- install-prereq.log ---"
+            Get-Content $logPath
+          }
+
+          if ($state -ne 'Ready') {
+            Write-Host "::error::Installer scheduled task did not finish within 10 minutes"
+            exit 1
+          }
+          if ($info.LastTaskResult -ne 0) {
+            Write-Host "::error::Installer exited with code $($info.LastTaskResult)"
+            exit 1
+          }
 
       - name: Verify the app is actually serving traffic
         shell: pwsh

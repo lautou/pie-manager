@@ -1186,12 +1186,15 @@ proven reliable across a few real releases:**
 - **`test-windows-install`**: nested virtualization for WSL2 (in turn needed for Podman
   Machine) has been confirmed working on GitHub's `windows-latest` runners by the community
   since the Dadsv5 hardware migration (Jan 2024) — but this is **not officially documented or
-  guaranteed** by GitHub. More importantly, this installer's embedded `requireAdministrator`
-  manifest (see "Windows executable code signing" above) has never been validated in a
-  headless CI context — there's no interactive desktop for a UAC consent prompt to render on,
-  so the process may simply refuse to elevate rather than hang. The job runs the exe directly
-  (no `-Verb RunAs`, which would need an interactive prompt) and lets the manifest's own
-  elevation request play out however the runner's default user context handles it.
+  guaranteed** by GitHub. **The installer's embedded `execution-level: administrator` manifest
+  (see "Windows executable code signing" above) hung the job indefinitely the first two times
+  this was tested** (confirmed live: 45+ minutes, zero progress, twice) — PowerShell's
+  `Start-Process` launches an exe via ShellExecute, which honors that manifest by popping the
+  interactive UAC consent dialog, and nobody is present to click it on a headless runner. Fix:
+  run the installer through a Scheduled Task (`New-ScheduledTaskPrincipal -RunLevel Highest`)
+  instead of `Start-Process` — Task Scheduler's own silent-elevation mechanism bypasses the
+  interactive consent dialog entirely, without weakening the shipped manifest or a real end
+  user's UAC prompt in any way.
 - **`test-linux-install`**: lower risk (no elevation dance, no nested hypervisor), but new and
   unproven — kept `continue-on-error` for the same reason, tighten once stable. The job
   installs `podman-compose` explicitly (`pip install podman-compose`, matching `ci.yml`'s own

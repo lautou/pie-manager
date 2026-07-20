@@ -301,6 +301,15 @@ jobs:
     # free and uncapped regardless of OS multiplier, but a full install test
     # still takes real wall-clock time, so it's reserved for release time
     # rather than run on every push/PR.
+    #
+    # Deliberately smoke-test only — no full `install` run. GitHub's own docs
+    # state nested virtualization is unsupported on GitHub-hosted macOS
+    # runners, and Podman Machine's `podman machine start` needs exactly that
+    # (krunkit/Hypervisor.framework). Confirmed live: "krunkit exited
+    # unexpectedly with exit code 1" / "podman machine start: exit status
+    # 125" every time. This is a permanent platform limitation, not a
+    # reliability issue to iterate on — see CLAUDE.md's "Full install-flow CI
+    # testing" section before re-attempting a full install here.
     needs: [build, detect-installer-changes]
     runs-on: macos-26
     steps:
@@ -316,38 +325,6 @@ jobs:
           output=$(./"pie-manager-darwin-arm64-${VERSION}" version)
           echo "Version: $output"
           [ "$output" = "${VERSION}" ] || (echo "ERROR: expected ${VERSION}, got $output" && exit 1)
-
-      # Full install test below: only runs when installer-relevant paths changed
-      # since the last release (see detect-installer-changes). Marked
-      # continue-on-error while this new test's reliability gets validated
-      # across a few real releases — see CLAUDE.md's "Full install-flow CI
-      # testing" section.
-      - name: Full install test — Podman via official .pkg, Podman Machine, compose up
-        if: needs.detect-installer-changes.outputs.changed == 'true'
-        continue-on-error: true
-        # GITHUB_TOKEN lifts the installer's GitHub API call (fetching the
-        # latest Podman release) past the 60/hour unauthenticated rate limit
-        # shared runner IPs can already be near — confirmed live as a real
-        # 403 in this exact job. No effect on a real end user's install.
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ needs.build.outputs.version }}"
-          ./"pie-manager-darwin-arm64-${VERSION}" install
-
-      - name: Verify the app is actually serving traffic
-        if: needs.detect-installer-changes.outputs.changed == 'true'
-        continue-on-error: true
-        run: |
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:14943/api/admin/health; then
-              echo "Health check passed"
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "::error::macOS install: health check never succeeded"
-          exit 1
 
   test-linux-install:
     # Full install-flow test on ubuntu-latest: chosen over a native Fedora

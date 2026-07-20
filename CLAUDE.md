@@ -1201,7 +1201,13 @@ proven reliable across a few real releases:**
   blocks forever with nobody to click it. Fixed at the source in `popup()`/`popupYesNo()`
   (`main_windows.go`): both skip the interactive dialog and log instead when `CI` is set in
   the environment (GitHub Actions, and virtually every other CI provider, sets `CI=true`) —
-  never set on a real end user's machine, so their experience is unchanged.
+  never set on a real end user's machine, so their experience is unchanged. **Third hang, same
+  symptom, after that fix**: a Scheduled Task does not inherit the calling PowerShell step's
+  own process environment — Task Scheduler builds a fresh environment block for the target
+  user from machine/user-scoped variables, not the caller's transient `env:` block — so
+  `os.Getenv("CI")` still saw nothing and the popup still blocked. Fixed by persisting it with
+  `[Environment]::SetEnvironmentVariable('CI', 'true', 'Machine')` in the workflow step
+  *before* registering the task, harmless since this runner VM is destroyed right after.
 - **`test-linux-install`**: lower risk (no elevation dance, no nested hypervisor), but new and
   unproven — kept `continue-on-error` for the same reason, tighten once stable. The job
   installs `podman-compose` explicitly (`pip install podman-compose`, matching `ci.yml`'s own

@@ -419,6 +419,17 @@ jobs:
           $taskName = "PieManagerInstallTest"
           $userId = "$env:COMPUTERNAME\$env:USERNAME"
 
+          # A Scheduled Task does NOT inherit this step's own process
+          # environment — Task Scheduler builds a fresh environment block for
+          # the target user from machine/user-scoped variables, not from the
+          # calling PowerShell process's transient env vars. Confirmed live:
+          # main_windows.go's `os.Getenv("CI") != ""` popup-skip guard (see
+          # CLAUDE.md) never saw CI=true when launched this way, so the
+          # installer still hung on the final popup even after that fix.
+          # Persist it machine-wide so the freshly-spawned process picks it
+          # up — this throwaway runner VM is destroyed right after the job.
+          [Environment]::SetEnvironmentVariable('CI', 'true', 'Machine')
+
           $action = New-ScheduledTaskAction -Execute $exe -WorkingDirectory $workDir
           $principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType Interactive -RunLevel Highest
           Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Force | Out-Null

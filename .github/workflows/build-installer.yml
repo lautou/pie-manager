@@ -48,16 +48,28 @@ jobs:
         # On a tag push, VERSION is the real release version. On a manual
         # workflow_dispatch run (used to test the full install flow — incl.
         # real Apple Silicon hardware — without creating a release, see
-        # CLAUDE.md), GITHUB_REF_NAME is just the branch name (which may
-        # contain "/", breaking filenames built from it) — use a throwaway
-        # dev version instead. Exported once via GITHUB_OUTPUT so every
-        # downstream job reads the same value instead of re-deriving it.
+        # CLAUDE.md), there's no tag to derive a version from — and no
+        # made-up dev version has a matching image on Quay.io, since images
+        # are only ever pushed by publish-images.yml at real release time.
+        # Confirmed live: a fake "0.0.0-dispatch-<sha>" version made every
+        # install job fail on "podman pull ... manifest unknown". Reuse the
+        # latest already-published release's version instead, so the
+        # install-flow test pulls real, existing images. Exported once via
+        # GITHUB_OUTPUT so every downstream job reads the same value instead
+        # of re-deriving it.
         id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
             VERSION="${GITHUB_REF_NAME#v}"
           else
-            VERSION="0.0.0-dispatch-${GITHUB_SHA:0:7}"
+            LATEST_TAG=$(gh release view --json tagName -q .tagName --repo "${{ github.repository }}")
+            if [ -z "$LATEST_TAG" ]; then
+              echo "::error::No published release found — workflow_dispatch install testing needs at least one existing release to pull images from."
+              exit 1
+            fi
+            VERSION="${LATEST_TAG#v}"
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"

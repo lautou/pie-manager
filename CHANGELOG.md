@@ -2,6 +2,14 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.3.1] - 2026-08-08
+
+### Fixed
+
+- **changelog:** Restore missing blank line between header and first entry
+- **ci:** Add blank line between release notes' Changelog heading and content
+- **ci:** Wait for Quay.io images before running install-test jobs
+
 ## [1.3.0] - 2026-08-08
 
 ### Added

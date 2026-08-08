@@ -1,11 +1,10 @@
 /**
- * Tests for pure logic extracted from PositionsPage.
+ * Tests for pure logic extracted from HoldingsPage.
  *
- * groupAndSort:  groups positions by pool name, respects pool order, sorts by value
- * computeRebalancingStatus: minimum injection needed, capital gap, sufficiency flag
+ * groupAndSort: groups positions by pool name, respects pool order, sorts by value
  */
 import { describe, it, expect } from 'vitest'
-import { groupAndSort, computeRebalancingStatus } from './holdings.utils'
+import { groupAndSort } from './holdings.utils'
 import type { HoldingGroup } from './holdings.utils'
 
 // ---------------------------------------------------------------------------
@@ -119,89 +118,5 @@ describe('groupAndSort', () => {
     const positions = [pos({ pool_name: 'Asie' })]
     const groups = groupAndSort(positions, [knownPool])
     expect(groups[0].pool).toBe(knownPool)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// computeRebalancingStatus
-// ---------------------------------------------------------------------------
-
-describe('computeRebalancingStatus', () => {
-  it('returns totalNeeded=0 when all pools are at their target', () => {
-    const pools = [
-      { target_pct: 0.25, current_value: 25000, current_pct: 25 },
-      { target_pct: 0.25, current_value: 25000, current_pct: 25 },
-      { target_pct: 0.25, current_value: 25000, current_pct: 25 },
-      { target_pct: 0.25, current_value: 25000, current_pct: 25 },
-    ]
-    const { totalNeeded, isFullyRebalanced } = computeRebalancingStatus(pools, 100000, 1000)
-    expect(totalNeeded).toBeCloseTo(0, 0)
-    expect(isFullyRebalanced).toBe(true)
-  })
-
-  it('detects insufficient capital when underweight pools need more than budget', () => {
-    // Pool A: 25% target at 20% → underweight by 5 000 €
-    const totalCurrent = 100000
-    const pools = [
-      { target_pct: 0.25, current_value: 30000, current_pct: 30 },  // overweight
-      { target_pct: 0.25, current_value: 20000, current_pct: 20 },  // underweight
-    ]
-    const budget = 1000  // far too small
-    const { isFullyRebalanced, capitalGap, totalNeeded } = computeRebalancingStatus(pools, totalCurrent, budget)
-    expect(totalNeeded).toBeGreaterThan(budget)
-    expect(capitalGap).toBeCloseTo(totalNeeded - budget, 1)
-    expect(isFullyRebalanced).toBe(false)
-  })
-
-  it('computes totalNeeded via the shortfall / (1 - sumTargetPct) formula', () => {
-    // Pool A: 25% target, current 20 000 (20%) → underweight
-    // Pool B: 25% target, current 30 000 (30%) → overweight (excluded)
-    // totalCurrent = 100 000, budget = 0
-    // shortfall = 0.25 * 100 000 - 20 000 = 5 000
-    // sumTargetPct_underweight = 0.25
-    // totalNeeded = 5 000 / (1 - 0.25) = 6 666.67
-    const pools = [
-      { target_pct: 0.25, current_value: 20000, current_pct: 20 },
-      { target_pct: 0.25, current_value: 30000, current_pct: 30 },
-    ]
-    const { totalNeeded } = computeRebalancingStatus(pools, 100000, 0)
-    expect(totalNeeded).toBeCloseTo(6666.67, 0)
-  })
-
-  it('isFullyRebalanced uses 0.50€ floating-point tolerance', () => {
-    const pools = [{ target_pct: 0.25, current_value: 20000, current_pct: 20 }]
-    const { totalNeeded } = computeRebalancingStatus(pools, 100000, 0)
-    // Budget exactly equal to totalNeeded → should be fully rebalanced
-    const { isFullyRebalanced } = computeRebalancingStatus(pools, 100000, totalNeeded)
-    expect(isFullyRebalanced).toBe(true)
-    // Budget 1€ below → not rebalanced (gap > 0.5€ tolerance)
-    const { isFullyRebalanced: notEnough } = computeRebalancingStatus(pools, 100000, totalNeeded - 1)
-    expect(notEnough).toBe(false)
-  })
-
-  it('handles empty pool list gracefully', () => {
-    const { totalNeeded, capitalGap, isFullyRebalanced } = computeRebalancingStatus([], 100000, 5000)
-    expect(totalNeeded).toBe(0)
-    expect(capitalGap).toBeCloseTo(-5000, 0)  // surplus
-    expect(isFullyRebalanced).toBe(true)
-  })
-
-  it('handles edge case where all pools are underweight (sumTargetPct ≈ 1)', () => {
-    // If all pools are underweight and target_pct sums to ~1, use sumShortfalls directly
-    const pools = [
-      { target_pct: 0.5, current_value: 0, current_pct: 0 },
-      { target_pct: 0.5, current_value: 0, current_pct: 0 },
-    ]
-    // sumTargetPct = 1.0 ≥ 0.9999 → totalNeeded = sumShortfalls directly
-    // shortfall for each: 0.5 * 100000 - 0 = 50000, total = 100000
-    const { totalNeeded } = computeRebalancingStatus(pools, 100000, 0)
-    expect(totalNeeded).toBeCloseTo(100000, 0)
-  })
-
-  it('capitalGap is negative when budget exceeds totalNeeded (surplus)', () => {
-    const pools = [{ target_pct: 0.25, current_value: 20000, current_pct: 20 }]
-    const { totalNeeded } = computeRebalancingStatus(pools, 100000, 0)
-    const { capitalGap } = computeRebalancingStatus(pools, 100000, totalNeeded + 1000)
-    expect(capitalGap).toBeCloseTo(-1000, 0)
   })
 })

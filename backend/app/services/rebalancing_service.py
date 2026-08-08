@@ -51,6 +51,64 @@ def _compute_fee(amount: float, commission_pct: float, commission_min: float) ->
     return r2(max(commission_min, abs(amount) * commission_pct / 100))
 
 
+def find_untargeted_pools_with_value(pools: list[PoolRebalanceInput]) -> list[PoolRebalanceInput]:
+    """
+    Pools with (near-)zero target_pct that still hold real value (e.g. a
+    "Legacy" pool no longer part of the active strategy). Any such pool
+    holding more than a cent structurally guarantees compute_injection_total_needed
+    returns None: since it can never receive or give up money via injection alone,
+    it permanently occupies a share of total_after that the other pools (whose
+    targets already sum to 100%) can never fully absorb, no matter how much is
+    injected. Used to explain *why* full injection-only convergence is impossible.
+    """
+    return [p for p in pools if p.target_pct < 0.0001 and p.current_value > 0.01]
+
+
+def compute_injection_total_needed(pools: list[PoolRebalanceInput]) -> float | None:
+    """
+    Minimum total capital (liquidity + external injection) needed so every pool
+    reaches at least its target_pct, injecting only into pools currently
+    underweight vs total_current — no selling, matching "injection seule".
+
+    Growing the total pulls up every pool's euro target (target_pct * total_after),
+    which can push an already near-target pool below its own target even though it
+    never received a cent. Solved by fixed-point iteration: start from the pools
+    underweight vs total_current, solve the closed-form total for that set, then
+    check whether any pool outside the set now falls under its target at the
+    resulting total_after; if so, add it and resolve. The underweight set only
+    grows, so this converges in at most len(pools) rounds.
+
+    Returns None when even an unlimited injection can't satisfy every pool (the
+    underweight set's combined target_pct reaches 100%) — selling is required,
+    see the Hybride/Rééquilibrage complet modes instead.
+    """
+    total_current = sum(p.current_value for p in pools)
+    underweight_ids = {p.id for p in pools if p.current_value < total_current * p.target_pct - 0.01}
+
+    total_needed = 0.0
+    for _ in range(len(pools)):
+        target_pct_uw = sum(p.target_pct for p in pools if p.id in underweight_ids)
+        if target_pct_uw >= 0.9999:
+            return None
+
+        shortfall_uw = sum(
+            p.target_pct * total_current - p.current_value
+            for p in pools if p.id in underweight_ids
+        )
+        total_needed = shortfall_uw / (1 - target_pct_uw)
+        total_after = total_current + total_needed
+
+        newly_underweight = {
+            p.id for p in pools
+            if p.id not in underweight_ids and p.current_value < total_after * p.target_pct - 0.01
+        }
+        if not newly_underweight:
+            break
+        underweight_ids |= newly_underweight
+
+    return r2(total_needed)
+
+
 def compute_rebalancing(
     pools: list[PoolRebalanceInput],
     liquidity_available: float,  # LIQUIDITE.EURO balance

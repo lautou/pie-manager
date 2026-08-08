@@ -928,6 +928,18 @@ export default function GlobalConfigPage() {
           </div>
         </CardBody>
       </Card>
+
+      {/* ── Rééquilibrage — seuils de tolérance ── */}
+      <Card style={{ marginBottom: '1.5rem' }}>
+        <CardTitle>{t('rebalancing.toleranceSectionTitle')}</CardTitle>
+        <CardBody>
+          <p style={{ fontSize: '0.85rem', color: '#6A6E73', marginBottom: '1rem' }}>
+            {t('rebalancing.toleranceSectionDescription')}
+          </p>
+          <SettingField settingKey="rebalancing.tolerance_ok_pct" label={t('rebalancing.toleranceOkLabel')} defaultValue="1" type="number" />
+          <SettingField settingKey="rebalancing.tolerance_warning_pct" label={t('rebalancing.toleranceWarningLabel')} defaultValue="2" type="number" />
+        </CardBody>
+      </Card>
     </PageSection>
   );
 }

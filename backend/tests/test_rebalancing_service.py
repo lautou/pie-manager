@@ -14,7 +14,12 @@ Key invariants:
 
 import pytest
 
-from app.services.rebalancing_service import PoolRebalanceInput, compute_rebalancing
+from app.services.rebalancing_service import (
+    PoolRebalanceInput,
+    compute_injection_total_needed,
+    compute_rebalancing,
+    find_untargeted_pools_with_value,
+)
 
 
 def _make_pools(values: list[tuple[str, str, float, float]]) -> list[PoolRebalanceInput]:
@@ -409,3 +414,134 @@ def test_fee_four_pool_with_injection():
     assert energie.injection_amount == pytest.approx(0.0, abs=0.02)
     assert energie.injection_fee == 0.0
     assert energie.injection_net == pytest.approx(0.0, abs=0.02)
+
+
+# ---------------------------------------------------------------------------
+# compute_injection_total_needed: minimum capital to reach all targets via
+# injection alone (no selling), replacing the old frontend closed-form that
+# didn't handle a near-target pool flipping underweight as the total grows.
+# ---------------------------------------------------------------------------
+
+def test_injection_total_needed_zero_when_all_pools_at_target():
+    pools = _make_pools([
+        ("Asie", "Offensive", 0.25, 25_000),
+        ("Or", "Defensive", 0.25, 25_000),
+        ("Yen", "Defensive", 0.25, 25_000),
+        ("Energie", "Offensive", 0.25, 25_000),
+    ])
+    assert compute_injection_total_needed(pools) == pytest.approx(0.0, abs=0.01)
+
+
+def test_injection_total_needed_empty_pools_returns_zero():
+    assert compute_injection_total_needed([]) == pytest.approx(0.0, abs=0.01)
+
+
+def test_injection_total_needed_single_iteration_matches_closed_form():
+    """
+    3 pools underweight by 2 500 each vs total_current=90 000, 1 pool ("Or")
+    comfortably overweight enough to never flip underweight once the total
+    grows to close the other three's gap (single-round convergence).
+    """
+    pools = _make_pools([
+        ("Or", "Defensive", 0.25, 30_000),      # overweight, stays out
+        ("Asie", "Offensive", 0.25, 20_000),    # underweight
+        ("Energie", "Offensive", 0.25, 20_000),  # underweight
+        ("Yen", "Defensive", 0.25, 20_000),     # underweight
+    ])
+    # shortfall = (22500-20000)*3 = 7500; sumTargetPct_uw = 0.75
+    # total_needed = 7500 / (1 - 0.75) = 30000
+    assert compute_injection_total_needed(pools) == pytest.approx(30_000.0, abs=0.5)
+
+
+def test_injection_total_needed_cascades_when_pool_flips_underweight():
+    """
+    A pool comfortably at/above target vs total_current (D=50 000 vs a 25 000
+    target on a 100 000 total) can still fall under ITS OWN target once the
+    total grows enough to close the other three pools' gaps — the closed-form
+    single-pass formula misses this; the iterative version must not.
+    """
+    pools = _make_pools([
+        ("A", "Offensive", 0.25, 5_000),
+        ("B", "Offensive", 0.25, 15_000),
+        ("C", "Defensive", 0.25, 30_000),
+        ("D", "Defensive", 0.25, 50_000),
+    ])
+    # Round 1: underweight={A,B}, total_needed=60000, total_after=160000 → C (target 40000) flips in.
+    # Round 2: underweight={A,B,C}, total_needed=100000, total_after=200000 → D (target 50000) stays
+    # exactly at the boundary (not strictly below) → converges at 100000.
+    assert compute_injection_total_needed(pools) == pytest.approx(100_000.0, abs=0.5)
+
+
+def test_injection_total_needed_none_when_targets_overcommitted():
+    """
+    Defensive guard against malformed/degenerate input (e.g. a partial pool
+    subset whose targets don't sum to 1): two pools both targeting 60% (sum
+    120%, invalid for a real portfolio) and both genuinely underweight vs
+    that inflated target — the >=0.9999 check fires immediately.
+    """
+    pools = _make_pools([
+        ("A", "Offensive", 0.6, 10.0),
+        ("B", "Defensive", 0.6, 10.0),
+    ])
+    assert compute_injection_total_needed(pools) is None
+
+
+def test_injection_total_needed_none_when_untargeted_pool_holds_value():
+    """
+    A real, common, well-formed scenario (targets summing to exactly 1 across
+    the active pools) still returns None: a "Legacy" pool with target_pct=0
+    holding real money. Proof it's not a corner case but a mathematical
+    certainty: with complement={last active pool, Legacy} at any round, the
+    conservation identity forces current_P + legacy_value == target_P *
+    total_after exactly — so current_P is *always* legacy_value below what a
+    legacy-free portfolio would need, i.e. current_P < target_P*total_after
+    by exactly legacy_value, which exceeds the 0.01 tolerance for any legacy
+    holding above one cent. So the last active pool always gets pulled into
+    the underweight set eventually, and None is inevitable, not incidental.
+    This is the exact real-world shape that originally looked like a bug.
+    """
+    pools = _make_pools([
+        ("Energie", "Offensive", 0.25, 35_583.15),
+        ("Or", "Defensive", 0.25, 36_816.35),
+        ("Yen", "Defensive", 0.25, 35_415.95),
+        ("Legacy", "Offensive", 0.0, 242.94),
+        ("Asie", "Offensive", 0.25, 35_420.48),
+    ])
+    assert compute_injection_total_needed(pools) is None
+
+
+def test_injection_total_needed_finite_when_untargeted_pool_holds_negligible_value():
+    """
+    Mirror of the above with the untargeted pool's value below the 0.01
+    tolerance: it must NOT block convergence (negligible dust shouldn't flip
+    a real answer into "impossible").
+    """
+    pools = _make_pools([
+        ("A", "Offensive", 0.5, 40_000.0),
+        ("B", "Defensive", 0.5, 50_000.0),
+        ("Dust", "Offensive", 0.0, 0.005),
+    ])
+    assert compute_injection_total_needed(pools) is not None
+
+
+# ---------------------------------------------------------------------------
+# find_untargeted_pools_with_value
+# ---------------------------------------------------------------------------
+
+def test_find_untargeted_pools_with_value_returns_only_zero_target_nonzero_value():
+    pools = _make_pools([
+        ("Asie", "Offensive", 0.25, 35_420.48),   # real target, excluded
+        ("Legacy", "Offensive", 0.0, 242.94),     # zero target, real value — included
+        ("Empty", "Defensive", 0.0, 0.0),         # zero target, zero value — excluded
+        ("Dust", "Defensive", 0.0, 0.005),        # zero target, negligible value — excluded
+    ])
+    blocking = find_untargeted_pools_with_value(pools)
+    assert [p.name for p in blocking] == ["Legacy"]
+
+
+def test_find_untargeted_pools_with_value_empty_when_all_pools_targeted():
+    pools = _make_pools([
+        ("A", "Offensive", 0.5, 10_000.0),
+        ("B", "Defensive", 0.5, 10_000.0),
+    ])
+    assert find_untargeted_pools_with_value(pools) == []

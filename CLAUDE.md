@@ -12,8 +12,8 @@ Failing to update docs creates drift between code and documentation, which misle
 **Never hardcode a snapshot count** (test case count, function count, "N tests pass in Xs")
 in this file. These numbers drift the moment more code is added and nobody reliably comes
 back to update them. Distinguish:
-- **Fixed policy/threshold values** (100% coverage rule, 94% branch threshold, port numbers,
-  interval configs) — targets/config, not measurements of current state. Fine to hardcode.
+- **Fixed policy/threshold values** (100% coverage rule, port numbers, interval configs) —
+  targets/config, not measurements of current state. Fine to hardcode.
 - **Snapshot counts of current codebase size** (how many tests exist, how long a suite takes) —
   will drift. Point to a command instead (`pytest --collect-only -q`, `npx vitest list`,
   `go test ./... -cover`), or state the qualitative fact only.
@@ -37,8 +37,9 @@ The Go installer (`installer/`) has two categories of functions:
 **Fully testable (must be 100% covered):** `findAvailablePort`, `readAppPort`,
 `readInstalledVersion`, `updateEnvPort`, `detectComposeCmd`, `copyFile`,
 `githubLatestAssetURL`, `downloadFile`, `extractZipEntryBySuffix`.
-These pure utility functions live in `common.go` (shared Linux/Windows) and
-`install.go`/`start.go` (Linux only), tested in `install_test.go`/`common_test.go`.
+These pure utility functions all live in `common.go` (no build constraint — shared by
+Linux/Windows/macOS, see "Shared refactor enabling this" in the macOS section below), tested
+in `install_test.go`/`common_test.go`.
 The last three have no actual Windows dependency (plain HTTP + zip) despite existing
 to support a Windows-only fallback — see "Store-independent WSL2/winget install" below —
 so they're written as real testable functions instead of being dumped into the
@@ -78,7 +79,9 @@ The goal is a codebase where every commit leaves the code *cleaner* than before 
 ## Overview
 
 Multi-account investment portfolio tracking app (Portfolio 1 + Portfolio 2).
-All data entry goes through the UI — no import mechanism exists.
+All data entry goes through the UI — the one deliberate exception is the bulk Excel import
+(see "Bulk transaction import (Excel)" below), which itself funnels through the same
+create-transaction code path as manual UI entry.
 
 ## Tech stack
 
@@ -129,8 +132,8 @@ an EOL runtime's official image can silently stop receiving any OS-level securit
 compose.yaml
 ├── postgres (PostgreSQL 16)
 ├── redis
-├── backend (FastAPI + Celery Beat)
-├── worker (Celery worker)
+├── backend (FastAPI)
+├── worker (Celery worker + Beat, `-B` flag)
 └── frontend (Vite dev server, port 5173)
 ```
 
@@ -138,12 +141,12 @@ compose.yaml
 
 ```
 compose-prod.yaml
-├── postgres (PostgreSQL 16)          restart: unless-stopped
-├── redis                             restart: unless-stopped
-├── backend (FastAPI + Celery Beat)   restart: unless-stopped, no exposed ports
-├── worker (Celery worker)            restart: unless-stopped
-├── frontend (Vite dev server)        restart: unless-stopped, no exposed ports
-└── haproxy (reverse proxy)           restart: unless-stopped, port APP_PORT:8080
+├── postgres (PostgreSQL 16)             restart: unless-stopped
+├── redis                                restart: unless-stopped
+├── backend (FastAPI)                    restart: unless-stopped, no exposed ports
+├── worker (Celery worker + Beat, -B)    restart: unless-stopped
+├── frontend (Vite dev server)           restart: unless-stopped, no exposed ports
+└── haproxy (reverse proxy)              restart: unless-stopped, port APP_PORT:8080
 ```
 
 In production, **HAProxy** is the single public entry point. It routes:
@@ -156,7 +159,7 @@ on both Docker (127.0.0.11) and Podman (gateway IP) environments.
 
 ### Port selection (production)
 
-Default port: **14943** (constant `defaultPort` in `installer/install.go`).
+Default port: **14943** (constant `defaultPort` in `installer/common.go`).
 
 At install time, `findAvailablePort(14943)` scans from 14943 upward for the first free TCP port. The chosen port is written to `~/.local/share/pie-manager/.env` as `APP_PORT=<n>`. At subsequent starts, `runStart()` reads `APP_PORT` from `.env` and checks whether it is still free; if not, it picks a new port and rewrites `.env`.
 
@@ -223,7 +226,9 @@ never bare `localhost`, or a healthy Vite dev server can look unreachable
 - **`portfolio_accounts`** — join table Broker × Portfolio = the "Account"
   - Holds `cash_balance_eur` **per (broker, portfolio)** — key: `(portfolio_id, broker_id)`
   - Single source of truth for cash. Never sum LIQUIDITE.EURO transactions.
-  - `_update_account_cash_balance(db, account_id, portfolio_id, delta)` → writes here
+  - `_update_account_cash_balance(db, account_id, portfolio_id, delta, tx_type, ticker,
+    operation=None)` → writes here (the `tx_type`/`ticker` args gate the forex-position/
+    Attribution skip logic, see "Transaction running-balance display" below)
   - `_get_liquidity_eur()` → `SUM(portfolio_accounts.cash_balance_eur) WHERE portfolio_id=X`
 
 - `portfolios` — portfolios (Portfolio 1 / Portfolio 2, separate tax households)
@@ -317,7 +322,7 @@ must be deducted from the forex position held in that currency (e.g. `JPYEUR=X`)
 In fee transactions the `quantity` field holds the number of fee events (not currency units);
 `total_amount` holds the actual fee amount in the foreign currency.
 
-`dashboard_service._get_positions()` applies this adjustment: for each held forex ticker it
+`dashboard_service.get_holdings()` applies this adjustment: for each held forex ticker it
 sums `total_amount` of all fee transactions whose currency matches the forex currency, then
 subtracts that amount from the held quantity. This keeps the displayed JPY (or USD, etc.)
 position accurate after paying broker commissions in that currency.
@@ -473,8 +478,9 @@ holding the total transaction value, never a per-unit price (`test_accounts_rout
 209-217`, `holdings.py:122`'s `value_eur = price if instrument_type == "Or physique" else
 qty * price`). Retrait allows a non-zero Courtage (a real broker withdrawal fee, already
 supported by the manual UI via `TransactionsPage.tsx`'s `withdrawalFee` — excluding it from
-import would silently drop real relevé data) while every other non-Achat/Vente Sens forces
-Courtage/TTF to 0.
+import would silently drop real relevé data) while every other non-Achat/Vente Sens rejects
+the row with a validation error if Courtage/TTF is entered non-zero (not silently forced to 0
+— an omitted/blank cell is what defaults to 0).
 
 **Forex-ticker Devise special case**: for a ticker matching `^[A-Z]{3}[A-Z]{3}=X$` (e.g.
 `JPYEUR=X`), the expected Devise is the ticker's own 3-letter prefix (`JPY`), never
@@ -1024,7 +1030,8 @@ completely invisible). This starts the Podman Machine. Containers restart automa
 
 **Windows install sequence (fresh machine):**
 1. Run `.exe` as Administrator → installs WSL2, Podman CLI, Docker Compose (may reboot)
-2. After reboot, installer auto-resumes via RunOnce registry key
+2. After reboot, installer auto-resumes via a Windows Scheduled Task (not RunOnce — see
+   "Auto-resume after reboot uses a single Scheduled Task" below)
 3. `podman machine init` + start (~650 MB download)
 4. All 6 containers pulled and started via `podman compose up -d`
 5. `launcher.exe` deployed, Start Menu shortcut created, Task Scheduler registered
@@ -1297,9 +1304,11 @@ expensive relative to a routine backend/frontend-only release where the installe
 provably didn't move. That job diffs `installer/`, `packaging/`, `compose-prod.yaml`, and the
 two workflow files themselves against the *previous* release tag (`git describe --tags
 --abbrev=0 "${GITHUB_REF_NAME}~1"`); no previous tag (first-ever release) defaults to "changed"
-rather than silently skipping. If none of those paths moved, all 3 full-install jobs are
-skipped — the cheap cross-compile checks (`ci.yml`) and the Linux/macOS `version` smoke tests
-still always run regardless.
+rather than silently skipping. If none of those paths moved, the 2 gated full-install jobs
+(`test-linux-install`, `test-windows-install`) are skipped — `test-macos` is **not** gated by
+this (it always runs, but only ever does a `version` smoke test, never a full install, see
+below) — and the cheap cross-compile checks (`ci.yml`) and the Linux/macOS `version` smoke
+tests still always run regardless.
 
 **Linux runs on `ubuntu-latest`, deliberately not a Fedora-flavored environment**, even though
 Fedora is this project's actual reference distro. GitHub has no Fedora-hosted runner; running
@@ -1378,6 +1387,23 @@ which can contain `/` and would break filenames built from it). The "Create GitH
 and "Delete obsolete releases" steps are both gated `if: github.event_name == 'push'` — a
 manual dispatch builds and installer-tests all 3 platforms but never touches GitHub Releases
 or Quay.io.
+
+### Changelog generation
+
+`CHANGELOG.md` is regenerated by `git-cliff` (`cliff.toml`) on every tag push — committed to
+`main` **after** the release is created and its binaries uploaded, and never fails the job on a
+push error, since documentation must never block the release itself. Its newest entry is also
+appended to the GitHub Release body — this is what actually survives the "Delete obsolete
+releases" cleanup above, since that step only prunes GitHub Release objects, not git history.
+Generation is restricted to the `v1.0.21..` commit range: tags `v1.0.1`–`v1.0.20` were deleted
+during early iteration and no longer exist, so `cliff.toml`'s static **footer** (rendered last,
+oldest-entry-last like every other entry, per Keep a Changelog convention) hand-documents the
+initial release through `v1.0.21` as one combined entry instead of guessing at the lost
+boundaries — see issue #15. Every release from `v1.0.22` onward is generated automatically and
+is accurate. Commit messages must stay Conventional-Commits-formatted (`type(scope): message`)
+for this to keep working — `feat`→Added, `refactor`/`perf`→Changed, `fix`→Fixed (Keep a
+Changelog section order); `docs`/`chore`/`ci`/`build`/`test`/`style`/merge commits are
+intentionally omitted from the changelog.
 
 ## React pattern to avoid — setState with unmodified new array ref
 
@@ -1631,9 +1657,12 @@ cache) is fine to leave as-is — the risk is specifically chains of 3+ commands
 where a *non-final* command's failure is the one that actually needs to fail the step.
 
 ### GitHub Actions artifact quota
-Image artifacts (500 MB × N tags) accumulate quickly against the GitHub quota.
-- `publish-images.yml`: `retention-days: 3` (do not increase)
-- `ci.yml` backend coverage: `retention-days: 1`, `continue-on-error: true`
+`publish-images.yml` does **not** use GitHub Actions artifacts at all — it pushes container
+images straight to Quay.io, a separate registry with its own storage, not this quota. The
+actual GitHub artifact consumers, both already `retention-days: 1`:
+- `ci.yml` backend coverage upload, `continue-on-error: true`
+- `build-installer.yml`'s 3 binary uploads (Linux/Windows/macOS), used to hand binaries off to
+  the per-platform install-test jobs and for real-hardware testing
 - If quota exceeded: `gh api repos/lautou/pie-manager/actions/artifacts --paginate | python3 -c "..."` to list/delete
 
 ### Mandatory cleanup when deleting a tag/release
@@ -1762,7 +1791,7 @@ as SELL with WACOP=0 → massive fictitious PV.
 ### Products excluded from PV calculation
 - `LIQUIDITE.*` (LIQUIDITE.EURO, LIQUIDITE.USD…) — pure cash, not a financial asset
 - `instrument_type='Or physique'` (OR.PHYSIQUE, SICAV…) — special valuation logic
-- `type='Fee'` and `type='Income'` — do not affect WACOP
+- `type='Frais'` and `type='Revenu'` — do not affect WACOP
 
 ### WACOP reset
 When `qty_held ≤ 0.001` (float tolerance), position is closed: WACOP resets to 0 on the next buy.
@@ -1771,9 +1800,13 @@ The cumulative `realized_pv_total` is never reset.
 ## Database backup
 
 - Endpoint `GET /api/admin/backup` → calls `pg_dump` via `subprocess` from the backend container
-- Endpoint `POST /api/admin/restore` → `pg_restore --single-transaction` (rollback on error)
+- Endpoint `POST /api/admin/restore` → `pg_restore --clean --if-exists --no-owner --no-privileges`
+  — deliberately **no** `--single-transaction`: it would fail the whole restore on a
+  non-critical `transaction_timeout` error emitted by dumps taken with a pg_dump newer than
+  PostgreSQL 16 (a documented pg_restore quirk, not something to "fix" by adding the flag back)
 - Format `.dump` (custom binary pg_dump, compressed)
-- `pg_dump` v17 in the backend container, PostgreSQL v16 — compatible (client newer than server)
+- `backend/Containerfile` pins `postgresql-client-16` to match the server (PostgreSQL 16) — a
+  mismatched client version produces dumps the server's own pg_restore can't read
 
 ## Security / secrets and personal data
 
@@ -1791,7 +1824,7 @@ The repository is intended to be made public — apply this rule from the first 
 is just the map of where tests live and which CI job runs them.)
 
 - Backend: `backend/tests/` (pytest + pytest-asyncio) — run `pytest --collect-only -q` for the current count
-  - `test_transactions.py`, `test_portfolios.py`, `test_accounts.py` — CRUD
+  - `test_transactions.py`, `test_portfolios.py`, `test_accounts_router.py` — CRUD
   - `test_pv_service.py` — WACOP and capital gains calculation
   - `test_rebalancing_service.py` — rebalancing logic (pure Python, no DB)
   - `test_price_sync.py` — Yahoo Finance price sync (httpx mocks, no DB)

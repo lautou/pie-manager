@@ -43,6 +43,11 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v6.0.2
+        with:
+          # git-cliff (changelog generation below) needs the full commit
+          # history and all tags to compute the range since the previous
+          # release — a shallow checkout gets empty/wrong changelogs.
+          fetch-depth: 0
 
       - name: Determine version
         # On a tag push, VERSION is the real release version. On a manual
@@ -228,6 +233,32 @@ jobs:
           path: installer/pie-manager-windows-amd64-*.exe
           retention-days: 1
 
+      - name: Generate CHANGELOG.md
+        # v1.0.1-v1.0.20 don't exist as tags anymore (deleted during early
+        # iteration, before this changelog existed) — cliff.toml's static
+        # header already covers the initial release through v1.0.21 as one
+        # combined entry, so generation is restricted to start right after
+        # it. Every tag from v1.0.22 onward gets an accurate, individually
+        # generated entry. See CLAUDE.md and issue #15.
+        if: github.event_name == 'push'
+        uses: orhun/git-cliff-action@v4.8.0
+        with:
+          config: cliff.toml
+          args: v1.0.21..
+        env:
+          OUTPUT: CHANGELOG.md
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract this release's changelog entry for the release notes
+        if: github.event_name == 'push'
+        uses: orhun/git-cliff-action@v4.8.0
+        with:
+          config: cliff.toml
+          args: --latest --strip header
+        env:
+          OUTPUT: /tmp/latest-changelog.md
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Create GitHub Release and upload binaries
         # Never runs on a manual workflow_dispatch test run — only a real tag
         # push should ever create/publish a GitHub release.
@@ -261,7 +292,10 @@ jobs:
           required once, or Gatekeeper will refuse to run it. Requires macOS 14 Sonoma or later.
 
           ### Update
-          Re-download and run again — fully idempotent."
+          Re-download and run again — fully idempotent.
+
+          ### Changelog
+          $(cat /tmp/latest-changelog.md 2>/dev/null || echo '_No changelog available._')"
 
           gh release create "${TAG}" \
             --repo ${{ github.repository }} \
@@ -278,6 +312,32 @@ jobs:
             installer/pie-manager-darwin-arm64 \
             --repo ${{ github.repository }} \
             --clobber
+
+      - name: Commit CHANGELOG.md to main
+        # Committed on top of this job's detached-HEAD checkout (the tag
+        # commit) and pushed straight to main. The tag and main's tip are
+        # normally the same commit at release time, so this push is a plain
+        # fast-forward. The tag itself is never amended — like every other
+        # changelog-bot tool, the tagged tree never includes its own
+        # changelog entry, only main does going forward.
+        #
+        # Deliberately placed after the release is created and its binaries
+        # uploaded, and never fails the job on error (e.g. someone pushed to
+        # main between the tag and this workflow running, breaking the
+        # fast-forward): the changelog is documentation, not the release
+        # itself, so a push failure here must never take down the actual
+        # release/binaries above it.
+        if: github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "CHANGELOG.md unchanged, nothing to commit."
+          else
+            git add CHANGELOG.md
+            git commit -m "chore(changelog): update CHANGELOG.md for ${GITHUB_REF_NAME}"
+            git push origin HEAD:main || echo "::warning::Failed to push CHANGELOG.md to main — release itself is unaffected."
+          fi
 
       - name: Delete obsolete releases (keep only the latest)
         # Never runs on a manual workflow_dispatch test run — deleting real

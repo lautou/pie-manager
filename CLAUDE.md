@@ -935,6 +935,19 @@ pie-manager start                 # or GNOME icon
 - Images are version-tagged: `quay.io/ltourreau/pie-manager-backend:1.0.0` (pinned in `.env` via `APP_VERSION`)
 - Build + push automated via `publish-images.yml` on tag `vX.X.X`
 
+### Container image vulnerability scanning (Trivy)
+
+`publish-images.yml` scans both published images with Trivy (`severity: HIGH,CRITICAL`) on every
+release, with `ignore-unfixed: true` — Debian OS-package CVEs with no upstream fix are common and
+not actionable (confirmed live: 103 such HIGH/CRITICAL findings on a single release, see #11/#18), so
+filtering them out keeps the report limited to CVEs that can actually be fixed by bumping a
+pinned version.
+
+**Still report-only for now** (`exit-code: 0` + `continue-on-error: true`) — see #21 to flip this
+to a real release gate (`exit-code: 1`, drop `continue-on-error`) once the filtered scan has run
+clean across a handful of releases, mirroring the `test-windows-install`/`test-linux-install`
+progressive-hardening pattern below.
+
 ### Windows executable code signing
 
 `build-installer.yml` Authenticode-signs `launcher.exe` and `pie-manager-windows-amd64*.exe`

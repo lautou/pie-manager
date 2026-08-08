@@ -43,6 +43,7 @@ jobs:
           image-ref: quay.io/ltourreau/pie-manager-backend:${{ steps.version.outputs.version }}
           format: table
           severity: HIGH,CRITICAL
+          ignore-unfixed: true
           exit-code: 0
 
       - name: Scan frontend image (Trivy)
@@ -52,4 +53,5 @@ jobs:
           image-ref: quay.io/ltourreau/pie-manager-frontend:${{ steps.version.outputs.version }}
           format: table
           severity: HIGH,CRITICAL
+          ignore-unfixed: true
           exit-code: 0

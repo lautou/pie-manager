@@ -6,10 +6,11 @@
 2. [Prérequis détaillés](#2-prérequis-détaillés)
 3. [Installation sur Linux](#3-installation-sur-linux)
 4. [Installation sur Windows 11](#4-installation-sur-windows-11)
-5. [Premier démarrage](#5-premier-démarrage)
-6. [Mise à jour](#6-mise-à-jour)
-7. [Désinstallation complète](#7-désinstallation-complète)
-8. [Dépannage](#8-dépannage)
+5. [Installation sur macOS (Apple Silicon)](#5-installation-sur-macos-apple-silicon)
+6. [Premier démarrage](#6-premier-démarrage)
+7. [Mise à jour](#7-mise-à-jour)
+8. [Désinstallation complète](#8-désinstallation-complète)
+9. [Dépannage](#9-dépannage)
 
 ---
 
@@ -17,12 +18,12 @@
 
 ### Configuration minimale recommandée
 
-| Ressource | Linux | Windows 11 |
-|---|---|---|
-| **CPU** | 2 cœurs | 4 cœurs (WSL2 en consomme 2) |
-| **RAM** | 2 Go | 4 Go (WSL2 + Podman Machine ~2 Go) |
-| **Disque** | 4 Go libres | 8 Go libres (VM WSL2 incluse) |
-| **OS** | Fedora 38+, Ubuntu 22.04+ | Windows 11 64-bit |
+| Ressource | Linux | Windows 11 | macOS |
+|---|---|---|---|
+| **CPU** | 2 cœurs | 4 cœurs (WSL2 en consomme 2) | Apple Silicon (M1 ou ultérieur) |
+| **RAM** | 2 Go | 4 Go (WSL2 + Podman Machine ~2 Go) | 4 Go (Podman Machine ~2 Go) |
+| **Disque** | 4 Go libres | 8 Go libres (VM WSL2 incluse) | 6 Go libres (VM Podman Machine incluse) |
+| **OS** | Fedora 38+, Ubuntu 22.04+ | Windows 11 64-bit | macOS 14 Sonoma ou ultérieur |
 
 ### Empreinte en fonctionnement normal
 
@@ -53,13 +54,25 @@ Sur Windows, les containers tournent dans la **Podman Machine** (VM WSL2). Il fa
 
 Le processus `VmmemWSL` visible dans le Gestionnaire des tâches représente la mémoire totale de la VM WSL2 — c'est normal.
 
+#### macOS (état de repos, app démarrée)
+
+Sur macOS, comme sur Windows, les containers tournent dans une **Podman Machine** — mais la VM sous-jacente utilise l'hyperviseur natif d'Apple (pas WSL2), sans couche de virtualisation intermédiaire à installer :
+
+| Couche | RAM | Disque |
+|---|---|---|
+| Podman Machine (VM Fedora CoreOS) | ~400 Mo | ~4 Go (disque virtuel) |
+| 6 containers PIE Manager | ~500 Mo | ~50 Mo (données) |
+| **Total** | **~1 Go** | **~4,5 Go** |
+
+Contrairement à Windows, il n'y a pas de processus hôte unique consolidant toute la mémoire de la VM (pas d'équivalent `VmmemWSL`) — `podman machine info` donne l'état courant de la machine.
+
 ### Évolution du stockage dans le temps
 
-| Durée d'utilisation | Données PostgreSQL | Disque total (Linux) | Disque total (Windows) |
-|---|---|---|---|
-| 1 mois (2 portefeuilles) | ~5 Mo | ~500 Mo | ~4 Go |
-| 6 mois | ~20 Mo | ~600 Mo | ~4,5 Go |
-| 2 ans | ~80 Mo | ~800 Mo | ~5 Go |
+| Durée d'utilisation | Données PostgreSQL | Disque total (Linux) | Disque total (Windows) | Disque total (macOS) |
+|---|---|---|---|---|
+| 1 mois (2 portefeuilles) | ~5 Mo | ~500 Mo | ~4 Go | ~4,5 Go |
+| 6 mois | ~20 Mo | ~600 Mo | ~4,5 Go | ~5 Go |
+| 2 ans | ~80 Mo | ~800 Mo | ~5 Go | ~5,3 Go |
 
 La base de données reste légère — les prix historiques (yfinance) représentent l'essentiel du stockage. Les `.dump` de sauvegarde font généralement **300–500 Ko**.
 
@@ -182,7 +195,56 @@ L'installateur Windows gère tout automatiquement — aucune installation manuel
 
 ---
 
-## 5. Premier démarrage
+## 5. Installation sur macOS (Apple Silicon)
+
+**Uniquement Apple Silicon (arm64)** — les Mac Intel ne sont pas supportés (Apple abandonne lui-même le support Intel dès macOS 27, prévu fin 2026).
+
+**Prérequis :** macOS 14 Sonoma ou ultérieur (le reste, y compris Podman, est installé automatiquement).
+
+### Télécharger et lancer l'installateur
+
+```bash
+curl -LO https://github.com/lautou/pie-manager/releases/latest/download/pie-manager-darwin-arm64
+chmod +x pie-manager-darwin-arm64
+xattr -d com.apple.quarantine pie-manager-darwin-arm64
+./pie-manager-darwin-arm64 install
+```
+
+La commande `xattr -d com.apple.quarantine` est nécessaire car le binaire n'est ni signé ni notarié (voir « Sécurité et signature de code » dans le README) — sans elle, macOS Gatekeeper refuse l'exécution en affichant « impossible d'ouvrir » ou « fichier endommagé ».
+
+L'installateur effectue les étapes suivantes :
+
+1. Installation de Podman via son paquet officiel (`.pkg` téléchargé depuis GitHub, pas Homebrew)
+2. Initialisation et démarrage de la Podman Machine (VM légère via l'hyperviseur natif d'Apple, aucun redémarrage requis)
+3. Téléchargement des images (backend, frontend, postgres, redis, HAProxy)
+4. Écriture des fichiers de configuration dans `~/Library/Application Support/PieManager/`
+5. Détection d'un port libre (14943 par défaut)
+6. Création du raccourci `PIE Manager.app` dans `~/Applications`
+7. Configuration du démarrage automatique de la Podman Machine à la connexion (agent `launchd`)
+8. Démarrage des services
+
+### Fichiers installés
+
+```
+~/Library/Application Support/PieManager/
+├── compose-prod.yaml       Configuration des containers
+├── haproxy.cfg             Configuration HAProxy
+├── .env                    Port et version (APP_PORT, APP_VERSION)
+├── pie-manager             Binaire (copie locale)
+└── VERSION                 Version installée
+
+~/Library/LaunchAgents/com.pie-manager.podman-start.plist   Démarrage auto de la Podman Machine
+~/Applications/PIE Manager.app                              Raccourci (lance le navigateur)
+~/.local/bin/pie-manager                                    Lien symbolique vers le binaire
+```
+
+### Lancement de l'application
+
+Contrairement à Linux (fenêtre native GTK optionnelle) et Windows (fenêtre WebView2 dédiée), macOS ouvre PIE Manager dans le **navigateur par défaut** — il n'existe pas d'équivalent léger et sans dépendance cgo à WebView2 pour macOS en v1.
+
+---
+
+## 6. Premier démarrage
 
 Après l'installation, deux méthodes pour lancer l'application :
 
@@ -200,7 +262,7 @@ L'application est accessible à `http://localhost:14943` (ou le port détecté l
 
 ---
 
-## 6. Mise à jour
+## 7. Mise à jour
 
 La mise à jour utilise la même commande que l'installation initiale. L'installateur détecte la version existante et affiche un avertissement de sauvegarde.
 
@@ -222,7 +284,7 @@ Voir [SAUVEGARDE.md](SAUVEGARDE.md) pour le guide complet.
 
 ---
 
-## 7. Désinstallation complète
+## 8. Désinstallation complète
 
 ### Arrêter et supprimer les containers et les volumes
 
@@ -260,7 +322,7 @@ gtk-update-icon-cache -f ~/.local/share/icons/hicolor
 
 ---
 
-## 8. Dépannage
+## 9. Dépannage
 
 ### Le port 14943 est déjà utilisé
 

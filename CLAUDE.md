@@ -46,7 +46,10 @@ untestable bucket just because their caller lives in `main_windows.go`.
 
 **Intentionally untestable:** `runInstall`, `runStartWithCompose`, `forceRecreate`,
 `notify`, `podmanImageExists`, `focusExistingWindow`, `openBrowser`,
-all functions in `main_windows.go`. These exec external programs (Podman, browser,
+all functions in `main_windows.go`, and all functions in `install_darwin.go`/
+`start_darwin.go`/`main_darwin.go` (Podman `.pkg` install, Podman Machine setup,
+`launchd` agent, `.app` bundle writing — same class of system-interaction code as
+`main_windows.go`). These exec external programs (Podman, browser,
 OS notifications, Windows API) and require integration-level testing. They are covered
 by the CI smoke test (`go build + ./pie-manager version`). Overall installer coverage is
 necessarily low (check `go test ./... -cover` for the current figure) — expected and
@@ -57,6 +60,7 @@ acceptable for a system-interaction binary.
 - `main.go` — Linux CLI dispatcher (`//go:build linux`)
 - `main_windows.go` — Windows full installer (`//go:build windows`)
 - `install.go`, `start.go`, `install_test.go` — Linux only (`//go:build linux`)
+- `main_darwin.go`, `install_darwin.go`, `start_darwin.go` — macOS full installer (`//go:build darwin`)
 - `launcher/` — separate Go module, builds `launcher.exe` (Windows WebView2 native launcher)
 - `testing/` — reproducible scripts to recreate the win11 libvirt/QEMU test VM from scratch on
   a fresh Fedora host (not part of the shipped product; see its own `README.md`)
@@ -1036,10 +1040,14 @@ support entirely, and GitHub's own `macos-latest` Actions runner already default
 Building an amd64 binary too would cost nothing at compile time (Go cross-compiles both from
 the same source) but there is no way to *test* it — see below — so it's simply not built.
 
-**Target macOS version: 14 Sonoma minimum, 15 Sequoia recommended.** Podman's `applehv`
-machine provider (default since Podman 5.x, the one this installer relies on) requires macOS
-13 Ventura at minimum — but Ventura is already EOL (no security patches since Aug 2025), so
-Sonoma (still patched) is the documented floor instead. No runtime OS-version check exists in
+**Target macOS version: 14 Sonoma minimum, 15 Sequoia recommended.** The installer doesn't
+pass a `--provider` flag to `podman machine init`, so it relies on whatever Podman's own
+current default is for macOS — **`libkrun`, not `applehv`** (verified against
+docs.podman.io: `libkrun` is the starred/default provider for macOS in current Podman
+releases; `applehv` is only the alternative — correcting an earlier wrong claim in this
+file). Either provider requires macOS 13 Ventura at minimum — but Ventura is already EOL (no
+security patches since Aug 2025), so Sonoma (still patched) is the documented floor instead.
+No runtime OS-version check exists in
 the installer itself; like Linux/Windows, it lets Podman fail with its own error on an
 unsupported OS.
 

@@ -147,7 +147,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2   # node24-native
 
-      - uses: actions/setup-python@v6.2.0   # node24-native
+      - uses: actions/setup-python@v7.0.0   # node24-native
         with:
           python-version: '3.14'
 

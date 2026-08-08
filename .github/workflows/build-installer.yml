@@ -295,6 +295,7 @@ jobs:
           Re-download and run again — fully idempotent.
 
           ### Changelog
+
           $(cat /tmp/latest-changelog.md 2>/dev/null || echo '_No changelog available._')"
 
           gh release create "${TAG}" \

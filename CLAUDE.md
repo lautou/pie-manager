@@ -198,6 +198,13 @@ This happens because `frontend`/`haproxy` share `backend`'s network namespace un
 `--network pie-manager_default` (and `--network-alias <service-name>` for containers other
 services reach by name) instead of relying on `podman-compose`'s implicit shared-netns behavior.
 
+**Image cleanup** — use targeted removal of old pie-manager versions only, never
+`podman image prune -af`, which would delete images from other projects on the machine.
+
+**Fedora/RHEL short image names** — always use fully qualified names
+(`docker.io/library/postgres:16-alpine`) to avoid "short-name resolution enforced" errors in
+non-interactive contexts.
+
 ## Key data model
 
 ### Broker / Account distinction (critical)
@@ -271,13 +278,9 @@ squash, exact commit unknown) — 2024 production data already used dedicated ti
 window of transactions created after the regression reused the parent asset's ticker.
 Migration `mm66nn77oo88` retargets the affected historical rows (verified: exactly 9 rows,
 8 parent transactions — 7 single-fee = courtage only, 1 two-fee = courtage then TTF, in
-that creation order). **If you ever touch that retargeting SQL again**: compute all target
-`(id, new_ticker)` pairs from a single snapshot of the *original* unmutated rows (e.g. a
-temp table) before issuing any UPDATE — three sequential UPDATEs against the live table is
-wrong, because the 2nd UPDATE's `ticker NOT LIKE 'FRAIS.%'` filter changes what the 3rd
-UPDATE's `GROUP BY ... HAVING COUNT(*) = 2` sees, silently dropping the 2-fee group down to
-1 match and skipping the TTF leg — see "Testing a data-migrating Alembic revision" below for
-how this was caught and how to verify any future migration like it.
+that creation order). **If you ever touch that retargeting SQL again**, read "Testing a
+data-migrating Alembic revision" below first — a naive 3-sequential-UPDATE version silently
+dropped the 2-fee group's TTF leg there.
 
 ## Transaction conventions
 
@@ -1074,9 +1077,6 @@ builds ship a newer in-box framework package than the version this installer pin
 dependency resolution only requires "at least this version," so it's harmless. `addAppxPackage`
 treats this specific HRESULT as success (`isAppxAlreadyNewerError` in `common.go`).
 
-**HAProxy port 80 forbidden in rootless Podman** — HAProxy must listen on port 8080 internally,
-mapped to `APP_PORT:8080` in compose. Port 80 causes `Permission denied` at startup.
-
 **`podman-restart.service` enable via SSH** — `systemctl --user enable` fails silently when
 `~/.config/systemd/user/default.target.wants/` is owned by root (Podman Machine default).
 Fix: create the symlink directly after fixing ownership, chaining the steps with `&&`.
@@ -1141,12 +1141,6 @@ its path via PowerShell's `[Environment]::GetFolderPath('Desktop')`, not a hardc
 Desktop). Before this, only a Start Menu shortcut was actually created despite the
 surrounding log/comment text already claiming "desktop shortcut" — a real, silent gap now
 fixed, not a rename.
-
-**Image cleanup** — use targeted removal of old pie-manager versions only, never `podman image prune -af`
-which would delete images from other projects on the machine.
-
-**Fedora/RHEL short image names** — always use fully qualified names (`docker.io/library/postgres:16-alpine`)
-to avoid "short-name resolution enforced" errors in non-interactive contexts.
 
 ### Native window integration (wrapper.py / WebKitGTK) — Linux only
 
@@ -1593,14 +1587,9 @@ NODE_OPTIONS='--max-old-space-size=8192' npx vitest run --reporter=dot
 
 ## Frontend test performance — resolved issue
 
-### Root cause (resolved — commit 8ca41c2)
-`StalePriceWarning` in `DashboardPage.tsx` had an **infinite re-render loop**:
-`handleFresh` called `setStaleNames(prev => prev.filter(...))` which **always returns a
-new array** even if nothing changes → React re-rendered → new `handleFresh` reference
-→ `ManuelProductStalenessCheck`'s useEffect re-fired → infinite loop.
-
-Fix: `useCallback` + early return if `name` not in array.
-Result: fast, clean exit (previously hung for 16+ minutes — see above).
+A 16-minute test hang was traced to `StalePriceWarning` (`DashboardPage.tsx`)'s infinite
+re-render loop — see "React pattern to avoid — setState with unmodified new array ref"
+above for the root cause and fix (commit 8ca41c2). Result: fast, clean exit.
 
 ### What does NOT work (do not retry)
 - `vi.useFakeTimers()` in DashboardPage.test.tsx → breaks tests using `userEvent` (which requires real timers)
@@ -1743,11 +1732,6 @@ now match your new element, don't assume "my new tests pass" is sufficient.
 Helpers live in `frontend/tests/utils/` (outside `src/`) to avoid polluting metrics.
 Imports from tests: `'../../tests/utils/patternfly-mocks'` etc.
 
-### Recommended test command
-```bash
-NODE_OPTIONS='--max-old-space-size=8192' npx vitest run --reporter=dot
-```
-
 ### React Query in tests
 Always configure `makeWrapper()` with:
 ```ts
@@ -1764,12 +1748,11 @@ Service: `app/services/pv_service.py`. Router: `app/api/routers/pv.py`.
 
 ### WACOP convention by instrument type
 
-**Asset (ETFs, stocks)**: BUY = `quantity < 0` / SELL = `quantity > 0`
-
-**Cash Forex (JPYEUR=X, USDEUR=X…)**: **INVERTED** convention
-- Acquiring JPY = `quantity > 0` → BUY for WACOP
-- Reducing JPY position = `quantity < 0` → SELL
-- Using the standard convention treats all JPY purchases as sells with WACOP=0 → massive fictitious PV.
+Same sign convention as "Transaction conventions" above (Buy = `quantity < 0`, Sell =
+`quantity > 0` for assets; **inverted** for Cash Forex — acquiring = `quantity > 0` → BUY,
+reducing = `quantity < 0` → SELL). Getting the Forex inversion wrong here specifically
+breaks WACOP: applying the standard asset convention to JPY acquisitions would treat them
+as SELL with WACOP=0 → massive fictitious PV.
 
 ### Products excluded from PV calculation
 - `LIQUIDITE.*` (LIQUIDITE.EURO, LIQUIDITE.USD…) — pure cash, not a financial asset
@@ -1779,9 +1762,6 @@ Service: `app/services/pv_service.py`. Router: `app/api/routers/pv.py`.
 ### WACOP reset
 When `qty_held ≤ 0.001` (float tolerance), position is closed: WACOP resets to 0 on the next buy.
 The cumulative `realized_pv_total` is never reset.
-
-### Backend coverage
-Backend: **100%** exact (statements, branches). Gate CI: `--cov-fail-under=100`.
 
 ## Database backup
 
@@ -1800,11 +1780,11 @@ Never commit:
 
 The repository is intended to be made public — apply this rule from the first commit.
 
-## Mandatory rule — Regression tests and coverage
+## Test locations and CI/CD
 
-**With every code change, update the corresponding tests AND verify coverage.**
+(Coverage *policy* is defined in "Absolute rule: 100% test coverage" above — this section
+is just the map of where tests live and which CI job runs them.)
 
-### Test locations
 - Backend: `backend/tests/` (pytest + pytest-asyncio) — run `pytest --collect-only -q` for the current count
   - `test_transactions.py`, `test_portfolios.py`, `test_accounts.py` — CRUD
   - `test_pv_service.py` — WACOP and capital gains calculation
@@ -1813,11 +1793,5 @@ The repository is intended to be made public — apply this rule from the first 
   - `test_products_router.py`, `test_snapshots_router.py`, etc.
 - Frontend: `frontend/src/**/*.test.{ts,tsx}` (vitest) — run `npx vitest list` for the current count
   - Test helpers: `frontend/tests/utils/` (outside `src/`)
-
-### Coverage enforced in CI
-- **Backend**: 100% statements, branches, functions, lines (`--cov-fail-under=100`)
-- **Frontend**: statements 100%, branches 100%, functions 100%, lines 100% (see Problem 2 above)
-
-### CI/CD
-- `ci.yml` job `validate`: TypeScript + vitest + coverage (no DB)
-- `ci.yml` job `integration-tests`: full pytest with ephemeral PostgreSQL
+- CI/CD: `ci.yml` job `validate` runs TypeScript + vitest + coverage (no DB); `ci.yml` job
+  `integration-tests` runs full pytest with ephemeral PostgreSQL.

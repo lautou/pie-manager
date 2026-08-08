@@ -1,6 +1,7 @@
 # Changelog
 
 All notable changes to PIE Manager are documented in this file.
+
 ## [1.3.0] - 2026-08-08
 
 ### Added

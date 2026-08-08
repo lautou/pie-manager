@@ -116,6 +116,19 @@ green while `podman build` failed outright trying to compile it from source. Alw
 Python-version bump by actually running `podman build -f backend/Containerfile backend/`,
 not just by trusting CI.
 
+**`backend/Containerfile` runs as a non-root user (`appuser`, UID/GID 1000)** — fixed
+issue #17 (previously ran fully as root). Celery Beat's schedule file is redirected to
+`/tmp` (`beat_schedule_filename` in `app/tasks/celery_app.py`) instead of the default
+CWD (`/app`), so `appuser` never needs write access to the application source tree —
+this also sidesteps host/container UID mismatches on the dev bind-mount
+(`./backend:/app:z`), since reading it only relies on standard "other" read permission
+bits, not an exact UID match. `pg_dump`/`pg_restore` (admin backup/restore) and the
+Excel import already only touch `/tmp` or memory, so neither needed any change.
+Verified live (not just build success): a real `podman-compose up` in both dev
+(bind-mount) and prod-style (`alembic upgrade head && uvicorn`, baked image) modes,
+confirming clean startup, no permission errors, and a working backup+restore
+round-trip, all as `appuser`.
+
 **`frontend/Containerfile` runs `node:24-alpine`** (matches CI's `node-version: '24'` in
 `ci.yml`). Bumped from `node:20-alpine` (2026-08) after a Trivy scan flagged an Alpine
 `libssl3`/`libcrypto3` CVE (CVE-2026-45447) that a rebuild alone couldn't fix — Node 20

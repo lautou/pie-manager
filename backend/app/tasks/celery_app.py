@@ -19,6 +19,9 @@ celery_app.conf.update(
     accept_content=["json"],
     timezone="Europe/Paris",
     enable_utc=True,
+    # Written outside /app so the non-root container user (see backend/Containerfile,
+    # issue #17) never needs write access to the application source tree.
+    beat_schedule_filename="/tmp/celerybeat-schedule",
     beat_schedule={
         # Live price refresh every 15 min — parallel httpx calls, regularMarketPrice
         "refresh-prices-live": {

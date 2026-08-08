@@ -1,6 +1,30 @@
 # Changelog
 
 All notable changes to PIE Manager are documented in this file.
+## [1.3.0] - 2026-08-08
+
+### Added
+
+- **installer:** Add macOS (Apple Silicon) installer
+- **indicators:** Add country market performance leaderboard with index-label legend
+- **ci:** Auto-generate CHANGELOG.md via git-cliff on release
+
+### Changed
+
+- **indicators:** Extract shared Yahoo Finance fetch and Redis sync-status helpers
+
+### Fixed
+
+- **installer:** Scope main.syso to Windows builds only
+- **ci:** Stop silently swallowing non-final && chain failures in ci.yml
+- **installer:** Fix macOS Podman PATH and dispatch-test image version
+- **installer:** Fix GitHub API rate-limiting and Linux compose fallback in CI
+- **installer:** Fix Windows CI install hang via Scheduled Task elevation
+- **installer:** Skip blocking popups in CI, bump download-artifact to v8
+- **installer:** Persist CI=true machine-wide so the Scheduled Task sees it
+- **indicators:** Add index_label to queries.test.ts CountryPerfConfig fixtures
+- **frontend:** Bump Containerfile to node:24-alpine for OpenSSL CVE
+
 ## [1.2.11] - 2026-08-08
 
 ### Fixed

@@ -113,6 +113,16 @@ green while `podman build` failed outright trying to compile it from source. Alw
 Python-version bump by actually running `podman build -f backend/Containerfile backend/`,
 not just by trusting CI.
 
+**`frontend/Containerfile` runs `node:24-alpine`** (matches CI's `node-version: '24'` in
+`ci.yml`). Bumped from `node:20-alpine` (2026-08) after a Trivy scan flagged an Alpine
+`libssl3`/`libcrypto3` CVE (CVE-2026-45447) that a rebuild alone couldn't fix — Node 20
+reached EOL 2026-04-30 and Docker Hub stopped rebuilding `node:20-alpine` shortly before,
+so its baked-in Alpine packages were permanently frozen pre-fix. Verified via real
+`podman run` + `apk list --installed` that `node:22-alpine`/`node:24-alpine` (both actively
+rebuilt) already carry the fixed `openssl` packages. If a future CVE report on this image
+assumes "just rebuild it", check the base tag's actual last-push date on Docker Hub first —
+an EOL runtime's official image can silently stop receiving any OS-level security rebuilds.
+
 ### Development (compose.yaml)
 
 ```

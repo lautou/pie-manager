@@ -1,10 +1,10 @@
-# compose-prod.yaml — Production deployment using pre-built images from ghcr.io
+# compose-prod.yaml — Production deployment using pre-built images from Quay.io
 # Used by the pie-manager installer binary.
 
 services:
   postgres:
     restart: unless-stopped
-    image: docker.io/library/postgres:16-alpine
+    image: docker.io/library/postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-pie}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pie_password}
@@ -19,7 +19,7 @@ services:
 
   redis:
     restart: unless-stopped
-    image: docker.io/library/redis:7-alpine
+    image: docker.io/library/redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
     volumes:
       - redis_data:/data
     healthcheck:
@@ -72,7 +72,7 @@ services:
 
   haproxy:
     restart: unless-stopped
-    image: docker.io/library/haproxy:alpine
+    image: docker.io/library/haproxy:alpine@sha256:fb87fc81943143b9acaea7442973e6ba654035fff76ffe7af6829dd1bcb0f7a5
     ports:
       - "${APP_PORT:-14943}:8080"
     volumes:

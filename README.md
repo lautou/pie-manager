@@ -152,25 +152,25 @@ rm -f ~/Library/LaunchAgents/com.pie-manager.podman-start.plist
 | Backend | Python FastAPI + SQLAlchemy 2.0 async + Celery |
 | Base de données | PostgreSQL 16 |
 | Cache / Queue | Redis 7 |
-| Déploiement | Podman Compose + Nginx |
+| Déploiement | Podman Compose + HAProxy |
 | Installateur | Go (binaire statique, aucun prérequis) |
 
 ---
 
 ## Architecture
 
-En production, un seul port est exposé (14943 par défaut, détection automatique si occupé). Nginx sert de point d'entrée unique et route les requêtes vers le frontend et le backend. Les containers backend et frontend n'ont pas de port exposé directement.
+En production, un seul port est exposé (14943 par défaut, détection automatique si occupé). HAProxy sert de point d'entrée unique et route les requêtes vers le frontend et le backend. Les containers backend et frontend n'ont pas de port exposé directement.
 
 ```
 Navigateur / Fenêtre native
         │
         ▼
-   nginx :14943
+   haproxy :14943
    ├── /api/* → backend :8000 (FastAPI)
-   └── /*     → frontend (Nginx statique)
+   └── /*     → frontend (Vite dev server)
 ```
 
-Les images sont versionnées et publiées sur GitHub Container Registry (`ghcr.io/lautou/pie-manager-*`).
+Les images sont versionnées et publiées sur Quay.io (`quay.io/ltourreau/pie-manager-*`).
 
 ---
 
@@ -203,12 +203,13 @@ Guide détaillé : [docs/SAUVEGARDE.md](docs/SAUVEGARDE.md).
 
 ## Sécurité et signature de code
 
-Les binaires Windows ne sont pas signés par une autorité de certification reconnue —
-[SignPath Foundation](https://signpath.org) (signature gratuite pour l'open source) a refusé
-la demande faute d'audience suffisante sur ce dépôt. Windows SmartScreen affichera donc un
-avertissement au premier lancement : cliquez sur **"Informations complémentaires" → "Exécuter
-quand même"** (voir la section Installation ci-dessus). Une signature par certificat
-auto-généré est envisagée pour une prochaine version.
+Les binaires Windows sont signés (Authenticode, horodatage RFC-3161) avec un certificat
+auto-généré (`CN=PIEManager`) — [SignPath Foundation](https://signpath.org) (signature gratuite
+pour l'open source) a refusé la demande faute d'audience suffisante sur ce dépôt. Un certificat
+auto-généré n'a pas la réputation accumulée d'une autorité de certification reconnue : Windows
+SmartScreen affichera donc quand même un avertissement au premier lancement : cliquez sur
+**"Informations complémentaires" → "Exécuter quand même"** (voir la section Installation
+ci-dessus).
 
 Le binaire macOS n'est ni signé ni notarié — cela nécessiterait un compte Apple Developer
 Program payant (99$/an), qui n'est pas utilisé pour ce projet. macOS Gatekeeper bloquera donc

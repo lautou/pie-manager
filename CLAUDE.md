@@ -948,6 +948,18 @@ to a real release gate (`exit-code: 1`, drop `continue-on-error`) once the filte
 clean across a handful of releases, mirroring the `test-windows-install`/`test-linux-install`
 progressive-hardening pattern below.
 
+### Dependabot + pinned base image digests
+
+`.github/dependabot.yml` covers 6 ecosystems: `pip`/`npm`/`docker` (backend and frontend each),
+`docker-compose` (root, covers both `compose.yaml` and `compose-prod.yaml`), and
+`github-actions`. Every base image (`Containerfile` `FROM` lines, `compose.yaml`/
+`compose-prod.yaml` `image:` lines) carries a `@sha256:` digest pin alongside its tag — without a
+digest, Dependabot's `docker`/`docker-compose` ecosystems have nothing discrete to bump, and the
+base image silently drifts underneath a floating tag (see #11/#19: a Trivy-flagged package was
+already gone from a same-tag rebuild days later). If a Dependabot PR changes the tag itself (not
+just refreshes the digest on the same tag), the "match CI's Python version" verification rule
+above still applies — a passing CI job doesn't prove the Containerfile itself still builds.
+
 ### Windows executable code signing
 
 `build-installer.yml` Authenticode-signs `launcher.exe` and `pie-manager-windows-amd64*.exe`

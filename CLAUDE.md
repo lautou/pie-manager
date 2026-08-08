@@ -408,7 +408,7 @@ when non-zero, exactly like the non-date-move branch below it does.
 statement without re-keying every row in the UI. This is a deliberate, narrow exception to
 "all data entry goes through the UI": the import **always** funnels through
 `create_transaction_core` (see below), never a parallel write path, so every existing
-sign/fee/balance rule and its 72+ tests apply unchanged.
+sign/fee/balance rule and its existing test coverage apply unchanged.
 
 **Frontend entry points**: `TransactionImportPage.tsx`, routed at
 `/portfolio/:portfolioId/import`, reachable via the "Importer" sidebar nav item (between
@@ -1503,9 +1503,19 @@ execution time. It differs from the market rate displayed in asset_prices.
 **Decision: do not implement.**
 
 All transactions go exclusively through the UI → `_update_account_cash_balance()` is the
-only update path → desynchronization is impossible in the current workflow.
+only update path → desynchronization **between two competing update paths** is impossible in
+the current workflow.
 
-→ Do not re-propose this improvement.
+→ Do not re-propose an alert for that specific scenario (e.g. a stale-import-vs-UI mismatch).
+
+**This does not mean `cash_balance_eur` itself can't be wrong.** A single-path *logic* bug can
+still corrupt it — confirmed for real: Revolut/Portfolio 1's `cash_balance_eur` read -108,20€
+against a real balance of 0,00€, caused by forex-position transactions contaminating the EUR
+balance inside `_update_account_cash_balance()` itself (see "Transaction running-balance
+display" above for the full fix and the manual one-time correction). If a *different* kind of
+staleness/correctness concern is raised in the future (not the two-path desync this decision
+rejects), evaluate it on its own merits rather than citing this decision as blanket proof
+`cash_balance_eur` is always trustworthy.
 
 ### Fee subcategory on Transaction — design decision: DO NOT IMPLEMENT
 
@@ -1597,9 +1607,9 @@ Components that don't import patternfly-mocks must import `../../src/i18n` (or `
 directly (e.g. `SyncBadge.test.tsx`, `RefreshBanner.test.tsx`).
 
 ### GitHub Actions annotations
-Actions targeting Node.js 24 natively: `checkout@v6.0.2`, `setup-node@v6.4.0`, `setup-python@v6.2.0`,
-`upload-artifact@v7.0.1`, `download-artifact@v8.0.1` (the Node 24 switch landed in v7 — v6 still
-warns "forced to run on Node.js 24" despite being pinned).
+Pinned versions are the Node.js 24-native ones (verified via each action's own `action.yml`,
+`using: node24`): `checkout@v6.0.2`, `setup-node@v6.4.0`, `setup-python@v6.2.0`,
+`upload-artifact@v7.0.1`, `download-artifact@v8.0.1`.
 
 ### Never chain more than 2 commands with `&&` in a workflow `run:` block
 
@@ -1774,11 +1784,10 @@ Backend: **100%** exact (statements, branches). Gate CI: `--cov-fail-under=100`.
 
 Never commit:
 - `.env` (DB passwords, API keys)
-- **Real names of portfolio owners** — use "Portfolio 1", "Portfolio 2" in code, tests and documentation
+- **Real names of portfolio owners** — use "Portfolio 1", "Portfolio 2" in code, tests, and documentation
 - **Real financial data** (.dump/.sql dumps, CSV exports, screenshots with amounts)
 - Any personal document (analyses, specs, project notes)
 
-In code and tests: portfolio names = "Portfolio 1" / "Portfolio 2" only.
 The repository is intended to be made public — apply this rule from the first commit.
 
 ## Mandatory rule — Regression tests and coverage

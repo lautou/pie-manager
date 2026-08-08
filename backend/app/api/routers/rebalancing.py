@@ -9,7 +9,9 @@ from app.models import Pool, PoolProduct, Product
 from app.services.price_service import r2
 from app.services.rebalancing_service import (
     PoolRebalanceInput,
+    compute_injection_total_needed,
     compute_rebalancing,
+    find_untargeted_pools_with_value,
 )
 from app.services.dashboard_service import (
     _get_latest_prices,
@@ -27,6 +29,12 @@ class RebalancingRequest(BaseModel):
     external_injection: float = 0.0
     commission_pct: float = 0.0   # percentage, e.g. 0.1 means 0.1%
     commission_min: float = 0.0   # minimum € per trade, e.g. 1.0
+
+
+class PoolBlockingOut(BaseModel):
+    id: int
+    name: str
+    current_value: float
 
 
 class PoolRebalanceOut(BaseModel):
@@ -54,6 +62,8 @@ class RebalancingOut(BaseModel):
     total_after: float
     liquidity_available: float
     external_injection: float
+    injection_total_needed: float | None
+    injection_blocking_pools: list[PoolBlockingOut]
     pools: list[PoolRebalanceOut]
 
 
@@ -116,6 +126,8 @@ async def compute_rebalancing_endpoint(
 
     total_current = sum(p.current_value for p in pool_inputs)
     total_apport = liquidity_eur + body.external_injection
+    injection_total_needed = compute_injection_total_needed(pool_inputs)
+    blocking_pools = find_untargeted_pools_with_value(pool_inputs)
 
     return RebalancingOut(
         total_current=r2(total_current),
@@ -123,5 +135,10 @@ async def compute_rebalancing_endpoint(
         total_after=r2(total_current + total_apport),
         liquidity_available=r2(liquidity_eur),
         external_injection=r2(body.external_injection),
+        injection_total_needed=injection_total_needed,
+        injection_blocking_pools=[
+            PoolBlockingOut(id=p.id, name=p.name, current_value=r2(p.current_value))
+            for p in blocking_pools
+        ],
         pools=[PoolRebalanceOut(**r.__dict__) for r in results],
     )

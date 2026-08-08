@@ -1087,13 +1087,16 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     render(<GlobalConfigPage />);
     fireEvent.click(screen.getByText('Commission'));
     fireEvent.click(screen.getByText('Change FX'));
-    const numberInputs = screen.getAllByRole('spinbutton');
-    if (numberInputs.length > 0) {
-      const firstInput = numberInputs[numberInputs.length - 3] as HTMLInputElement;
-      const selectSpy = vi.spyOn(firstInput, 'select');
-      fireEvent.focus(firstInput);
-      expect(selectSpy).toHaveBeenCalled();
-    }
+    // Scoped to the FX panel itself, not a position-based slice of every spinbutton on
+    // the page — a page-wide index silently drifts onto an unrelated field (e.g. the
+    // macro "Durée MM" or rebalancing tolerance settings) whenever a new numeric
+    // SettingField is added elsewhere on the page. See the identical fix two tests above.
+    const fxPanel = screen.getByText(/Laisser vide pour désactiver/i).parentElement as HTMLElement;
+    const numberInputs = within(fxPanel).getAllByRole('spinbutton');
+    const firstInput = numberInputs[0] as HTMLInputElement;
+    const selectSpy = vi.spyOn(firstInput, 'select');
+    fireEvent.focus(firstInput);
+    expect(selectSpy).toHaveBeenCalled();
   }, 10000);
 
   it('clicking allowed product in Produits tab calls removeTicker (line 128 fn23-fn25, line 360 fn67)', async () => {
@@ -1916,5 +1919,57 @@ describe('GlobalConfigPage — RegionManager (Indicateurs macro)', () => {
     await user.click(screen.getByRole('button', { name: /Supprimer fr/i }));
     await user.click(screen.getByText('Supprimer'));
     await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de la suppression/i)).toBeTruthy());
+  }, 10000);
+});
+
+describe('GlobalConfigPage — Rééquilibrage (tolerance thresholds)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupDefaultMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('renders the tolerance section with both threshold fields', () => {
+    render(<GlobalConfigPage />);
+    expect(screen.getByText(/Rééquilibrage — seuils de tolérance/i)).toBeTruthy();
+    expect(screen.getByLabelText('Seuil OK (%)')).toBeTruthy();
+    expect(screen.getByLabelText('Seuil alerte (%)')).toBeTruthy();
+  });
+
+  it('saving the OK threshold calls mutateAsync with the correct key', async () => {
+    const mockMutateAsync = vi.fn().mockResolvedValue({});
+    mockUseSetSystemSetting.mockReturnValue({ mutateAsync: mockMutateAsync, isPending: false });
+
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+
+    const okInput = screen.getByLabelText('Seuil OK (%)');
+    await user.clear(okInput);
+    await user.type(okInput, '1.5');
+    // Each SettingField wraps its own <label>/<input>/<button> in one flex div —
+    // find the "Enregistrer" button that's a sibling of this specific input.
+    const saveBtn = screen.getAllByText('Enregistrer').find((b) => b.closest('div')?.contains(okInput))!;
+    await user.click(saveBtn);
+
+    expect(mockMutateAsync).toHaveBeenCalledWith({ key: 'rebalancing.tolerance_ok_pct', value: '1.5' });
+  }, 10000);
+
+  it('saving the warning threshold calls mutateAsync with the correct key', async () => {
+    const mockMutateAsync = vi.fn().mockResolvedValue({});
+    mockUseSetSystemSetting.mockReturnValue({ mutateAsync: mockMutateAsync, isPending: false });
+
+    const user = userEvent.setup({ delay: null });
+    render(<GlobalConfigPage />);
+
+    const warningInput = screen.getByLabelText('Seuil alerte (%)');
+    await user.clear(warningInput);
+    await user.type(warningInput, '3');
+    const saveBtn = screen.getAllByText('Enregistrer').find((b) => b.closest('div')?.contains(warningInput))!;
+    await user.click(saveBtn);
+
+    expect(mockMutateAsync).toHaveBeenCalledWith({ key: 'rebalancing.tolerance_warning_pct', value: '3' });
   }, 10000);
 });

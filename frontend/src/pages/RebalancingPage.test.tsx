@@ -59,6 +59,8 @@ vi.mock('../api/client', () => ({
         total_current: 100000,
         total_apport: 10000,
         total_after: 110000,
+        // Both pools are already at target in this default fixture → nothing needed.
+        injection_total_needed: 0,
         pools: [
           {
             id: 1, name: 'Asie', strategy: 'Offensive', target_pct: 0.25,
@@ -82,24 +84,13 @@ vi.mock('../api/client', () => ({
   },
 }));
 
-// Mock positions.utils
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mockComputeRebalancingStatus = vi.fn((_a?: any, _b?: any, _c?: any) => ({
-  totalNeeded: 0,
-  capitalGap: 0,
-  isFullyRebalanced: true,
-}));
-
-vi.mock('./positions.utils', () => ({
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  computeRebalancingStatus: (a: any, b: any, c: any) => mockComputeRebalancingStatus(a, b, c),
-}));
-
 // Mock API queries
 const mockUseDashboard = vi.fn();
 
 vi.mock('../api/queries', () => ({
   useDashboard: (...args: any[]) => mockUseDashboard(...args),
+  // No rebalancing.tolerance_* rows saved → components fall back to their defaults (1% / 2%).
+  useSystemSetting: () => ({ data: undefined }),
 }));
 
 const mockDashboard = {
@@ -119,10 +110,6 @@ import RebalancingPage from './RebalancingPage';
 describe('RebalancingPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Reset computeRebalancingStatus to default (isFullyRebalanced=true)
-    mockComputeRebalancingStatus.mockImplementation(() => ({
-      totalNeeded: 0, capitalGap: 0, isFullyRebalanced: true,
-    }));
   });
 
   afterEach(() => {
@@ -243,12 +230,19 @@ describe('RebalancingPage', () => {
     await waitFor(() => expect(screen.getByText(/Capital suffisant/)).toBeTruthy(), { timeout: 1500 });
   });
 
-  it('shows insufficiency banner when isFullyRebalanced=false (lines 243-247 false branches)', async () => {
-    // Override computeRebalancingStatus to return isFullyRebalanced=false
-    mockComputeRebalancingStatus.mockImplementation(() => ({
-      totalNeeded: 50000, capitalGap: 30000, isFullyRebalanced: false,
-    }));
-
+  it('shows insufficiency banner when injection_total_needed exceeds budget', async () => {
+    const { default: apiClient } = await import('../api/client');
+    vi.mocked(apiClient.post).mockResolvedValue({
+      data: {
+        total_current: 100000, total_apport: 10000, total_after: 110000,
+        injection_total_needed: 50000,
+        pools: [
+          { id: 1, name: 'Asie', strategy: 'Offensive', target_pct: 0.25,
+            current_value: 20000, current_pct: 20, injection_amount: 10000,
+            hybrid_amount: 10000, rebalance_amount: 5000 },
+        ],
+      },
+    });
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
     render(<RebalancingPage />);
@@ -256,6 +250,111 @@ describe('RebalancingPage', () => {
     await waitFor(() => expect(screen.getByText(/Capital insuffisant/)).toBeTruthy(), { timeout: 1500 });
   });
 
+  it('shows the "impossible without selling" message when injection_total_needed is null', async () => {
+    const { default: apiClient } = await import('../api/client');
+    vi.mocked(apiClient.post).mockResolvedValue({
+      data: {
+        total_current: 100000, total_apport: 10000, total_after: 110000,
+        injection_total_needed: null,
+        pools: [
+          { id: 1, name: 'Asie', strategy: 'Offensive', target_pct: 0.25,
+            current_value: 20000, current_pct: 20, injection_amount: 10000,
+            hybrid_amount: 10000, rebalance_amount: 5000 },
+        ],
+      },
+    });
+    mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
+    const user = userEvent.setup({ delay: null });
+    render(<RebalancingPage />);
+    await user.click(screen.getByText('+1k€'));
+    await waitFor(() => expect(screen.getByText(/Impossible d'atteindre toutes les cibles/)).toBeTruthy(), { timeout: 1500 });
+  });
+
+  it('names the blocking pool(s) when injection_blocking_pools is populated', async () => {
+    const { default: apiClient } = await import('../api/client');
+    vi.mocked(apiClient.post).mockResolvedValue({
+      data: {
+        total_current: 100000, total_apport: 10000, total_after: 110000,
+        injection_total_needed: null,
+        injection_blocking_pools: [{ id: 9, name: 'Legacy', current_value: 242.94 }],
+        pools: [
+          { id: 1, name: 'Asie', strategy: 'Offensive', target_pct: 0.25,
+            current_value: 20000, current_pct: 20, injection_amount: 10000,
+            hybrid_amount: 10000, rebalance_amount: 5000 },
+        ],
+      },
+    });
+    mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
+    const user = userEvent.setup({ delay: null });
+    render(<RebalancingPage />);
+    await user.click(screen.getByText('+1k€'));
+    await waitFor(() => expect(screen.getByText(/Legacy/)).toBeTruthy(), { timeout: 1500 });
+    expect(screen.getByText(/242\.94/)).toBeTruthy();
+  });
+
+  it('shows the total apport (liquidity + injection) in "Incluant liquidités à répartir"', async () => {
+    const { default: apiClient } = await import('../api/client');
+    vi.mocked(apiClient.post).mockResolvedValue({
+      data: {
+        total_current: 100000, total_apport: 1039.61, total_after: 101039.61,
+        liquidity_available: 39.61, external_injection: 1000,
+        injection_total_needed: 0,
+        pools: [
+          { id: 1, name: 'Asie', strategy: 'Offensive', target_pct: 0.25,
+            current_value: 25260, current_pct: 25.26, injection_amount: 0,
+            hybrid_amount: 0, rebalance_amount: 0 },
+        ],
+      },
+    });
+    mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
+    const user = userEvent.setup({ delay: null });
+    render(<RebalancingPage />);
+    await user.click(screen.getByText('+1k€'));
+    await waitFor(() => expect(screen.getByText(/Incluant liquidités à répartir/)).toBeTruthy(), { timeout: 1500 });
+    // Must be the full total_apport (1039.61 = 39.61 liquidity + 1000 injected), not liquidity alone.
+    expect(screen.getByText(/1039\.61/)).toBeTruthy();
+  });
+
+  it('also shows "Incluant liquidités à répartir" with no external injection (same wording, not conditional)', async () => {
+    const { default: apiClient } = await import('../api/client');
+    vi.mocked(apiClient.post).mockResolvedValue({
+      data: {
+        total_current: 100000, total_apport: 39.61, total_after: 100039.61,
+        liquidity_available: 39.61, external_injection: 0,
+        injection_total_needed: 0,
+        pools: [
+          { id: 1, name: 'Asie', strategy: 'Offensive', target_pct: 0.25,
+            current_value: 25010, current_pct: 25.01, injection_amount: 0,
+            hybrid_amount: 0, rebalance_amount: 0 },
+        ],
+      },
+    });
+    mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
+    const user = userEvent.setup({ delay: null });
+    render(<RebalancingPage />);
+    await user.click(screen.getByText('Liquidités seules'));
+    await waitFor(() => expect(screen.getByText(/Incluant liquidités à répartir/)).toBeTruthy(), { timeout: 1500 });
+  });
+
+  it('shows the "switch mode" hint on its own line when injection_total_needed is null', async () => {
+    const { default: apiClient } = await import('../api/client');
+    vi.mocked(apiClient.post).mockResolvedValue({
+      data: {
+        total_current: 100000, total_apport: 10000, total_after: 110000,
+        injection_total_needed: null,
+        pools: [
+          { id: 1, name: 'Asie', strategy: 'Offensive', target_pct: 0.25,
+            current_value: 20000, current_pct: 20, injection_amount: 10000,
+            hybrid_amount: 10000, rebalance_amount: 5000 },
+        ],
+      },
+    });
+    mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
+    const user = userEvent.setup({ delay: null });
+    render(<RebalancingPage />);
+    await user.click(screen.getByText('+1k€'));
+    await waitFor(() => expect(screen.getByText('Passez en mode Hybride ou Rééquilibrage complet.')).toBeTruthy(), { timeout: 1500 });
+  });
 
   it('shows Hybride banner after switching mode and fetching', async () => {
     const { default: apiClient } = await import('../api/client');
@@ -321,7 +420,7 @@ describe('RebalancingPage', () => {
     expect(screen.getByText('Rééquilibrage')).toBeTruthy();
   });
 
-  it('Fix#1: overweight pool (gapBefore>1.5, amount=0) shows ⬆️ Surpondéré', async () => {
+  it('Fix#1: overweight pool beyond danger threshold shows severity label, no tooltip', async () => {
     const { default: apiClient } = await import('../api/client');
     vi.mocked(apiClient.post).mockResolvedValue({
       data: {
@@ -337,10 +436,13 @@ describe('RebalancingPage', () => {
     const user = userEvent.setup({ delay: null });
     render(<RebalancingPage />);
     await user.click(screen.getByText('+1k€'));
-    await waitFor(() => expect(screen.getByText('⬆️ Surpondéré')).toBeTruthy(), { timeout: 1500 });
+    await waitFor(() => expect(screen.getByText(/Déséquilibre significatif/)).toBeTruthy(), { timeout: 1500 });
+    // Severity label alone, no direction — overweight pools aren't wrapped in the
+    // capital-insufficient explanatory tooltip (that's only relevant to underweight ones).
+    expect(screen.queryByTitle(/sous-pondéré/i)).toBeNull();
   });
 
-  it('Fix#2: underweight pool with 0 injection shows ⚠️ Capital dirigé ailleurs', async () => {
+  it('Fix#2: underweight pool with 0 injection shows severity label wrapped in explanatory tooltip', async () => {
     const { default: apiClient } = await import('../api/client');
     vi.mocked(apiClient.post).mockResolvedValue({
       data: {
@@ -356,10 +458,11 @@ describe('RebalancingPage', () => {
     const user = userEvent.setup({ delay: null });
     render(<RebalancingPage />);
     await user.click(screen.getByText('+1k€'));
-    await waitFor(() => expect(screen.getByText('⚠️ Capital dirigé ailleurs')).toBeTruthy(), { timeout: 1500 });
+    await waitFor(() => expect(screen.getByText(/Déséquilibre significatif/)).toBeTruthy(), { timeout: 1500 });
+    expect(screen.getByTitle(/sous-pondéré/i)).toBeTruthy();
   });
 
-  it('pool on target shows ✅ En cible', async () => {
+  it('pool on target shows the on-target severity label', async () => {
     const { default: apiClient } = await import('../api/client');
     vi.mocked(apiClient.post).mockResolvedValue({
       data: {
@@ -375,7 +478,7 @@ describe('RebalancingPage', () => {
     const user = userEvent.setup({ delay: null });
     render(<RebalancingPage />);
     await user.click(screen.getByText('+1k€'));
-    await waitFor(() => expect(screen.getByText('✅ En cible')).toBeTruthy(), { timeout: 1500 });
+    await waitFor(() => expect(screen.getByText(/En cible/)).toBeTruthy(), { timeout: 1500 });
   });
 
   it('onChange on "Injection seule" toggle switches back from Hybride to contribution (line 103)', async () => {
@@ -565,17 +668,16 @@ describe('RebalancingPage', () => {
     expect(screen.getByText('Rééquilibrage')).toBeTruthy();
   });
 
-  // Line 166: active.length > 0 ? active : pools — FALSE path (all pool amounts ≤ 0.01)
-  it('line 166: receivingPools falls back to all pools when active is empty', async () => {
+  it('renders all pools with zero amounts (all already at target)', async () => {
     const { default: apiClient } = await import('../api/client');
     vi.mocked(apiClient.post).mockResolvedValue({
       data: {
         total_current: 100000, total_apport: 0, total_after: 100000,
+        injection_total_needed: 0,
         pools: [
           {
             id: 1, name: 'Asie', strategy: 'Offensive', target_pct: 0.25,
             current_value: 25000, current_pct: 25,
-            // All amounts ≤ 0.01 → active=[]; falls back to all pools
             injection_amount: 0, hybrid_amount: 0, rebalance_amount: 0,
           },
           {
@@ -590,7 +692,6 @@ describe('RebalancingPage', () => {
     const user = userEvent.setup({ delay: null });
     render(<RebalancingPage />);
     await user.click(screen.getByText('+1k€'));
-    // active.length=0 → receivingPools = pools (both pools shown)
     await waitFor(() => expect(screen.getByText('Asie')).toBeTruthy(), { timeout: 1500 });
     expect(screen.getByText('Or')).toBeTruthy();
   });

@@ -7,8 +7,9 @@
 3. [Sauvegarde depuis l'interface](#3-sauvegarde-depuis-linterface)
 4. [Sauvegarde manuelle en ligne de commande](#4-sauvegarde-manuelle-en-ligne-de-commande)
 5. [Sauvegarde de la machine Podman — Windows uniquement](#5-sauvegarde-de-la-machine-podman--windows-uniquement)
-6. [Restauration depuis l'interface](#6-restauration-depuis-linterface)
-7. [Restauration manuelle en ligne de commande](#7-restauration-manuelle-en-ligne-de-commande)
+6. [Sauvegarde de la machine Podman — macOS](#6-sauvegarde-de-la-machine-podman--macos)
+7. [Restauration depuis l'interface](#7-restauration-depuis-linterface)
+8. [Restauration manuelle en ligne de commande](#8-restauration-manuelle-en-ligne-de-commande)
 
 ---
 
@@ -28,18 +29,19 @@ La sauvegarde logique est un fichier `.dump` contenant l'intégralité de la bas
 
 Le fichier `.dump` (quelques Mo) est indépendant de la machine, de WSL2 et de Podman. Il peut être restauré sur n'importe quelle installation de PIE Manager, y compris sur une machine différente. Il est conseillé de le stocker dans un répertoire synchronisé (cloud personnel, clé USB dédiée).
 
-### Sauvegarde de la machine — avant une mise à jour (Windows uniquement)
+### Sauvegarde de la machine — avant une mise à jour (Windows et macOS)
 
-Sur Windows, les données vivent à l'intérieur de la Podman Machine (VM WSL2). Une sauvegarde supplémentaire de cette machine protège contre les problèmes de migration lors d'une mise à jour logicielle.
+Sur Windows et macOS, les données vivent à l'intérieur d'une Podman Machine (une VM — WSL2 sur Windows, hyperviseur natif d'Apple sur macOS). Une sauvegarde supplémentaire de cette machine protège contre les problèmes de migration lors d'une mise à jour logicielle.
 
-Voir la section [Sauvegarde de la machine Podman](#5-sauvegarde-de-la-machine-podman--windows-uniquement).
+Voir les sections [Sauvegarde de la machine Podman — Windows](#5-sauvegarde-de-la-machine-podman--windows-uniquement) et [Sauvegarde de la machine Podman — macOS](#6-sauvegarde-de-la-machine-podman--macos).
 
 ### Tableau récapitulatif
 
 | Fréquence | Action | Durée | Protège contre |
 |---|---|---|---|
 | **Quotidien** | Télécharger sauvegarde depuis l'UI | 2 secondes | Fausse manip données |
-| **Avant chaque upgrade** | `wsl --export` (Windows) | 5–10 min | Migration DB échouée |
+| **Avant chaque upgrade (Windows)** | `wsl --export` | 5–10 min | Migration DB échouée |
+| **Avant chaque upgrade (macOS)** | Sauvegarde logique renforcée (pas d'export machine natif — voir [Sauvegarde de la machine Podman — macOS](#6-sauvegarde-de-la-machine-podman--macos)) | 2 secondes | Migration DB échouée |
 | **Archivage mensuel** | Conserver 1 sauvegarde par mois | — | Historique long terme |
 
 ---
@@ -61,6 +63,15 @@ Ce volume est géré par Podman et persiste indépendamment du cycle de vie des 
 ```
 
 > ⚠️ Sur Windows, supprimer la distribution WSL2 `podman-machine-default` **détruit irrémédiablement** le volume et toutes les données. La sauvegarde logique quotidienne est donc indispensable.
+
+**Sur macOS**, le volume est de la même façon à l'intérieur de la Podman Machine — mais celle-ci utilise l'hyperviseur natif d'Apple, pas WSL2, et n'est donc **pas accessible directement depuis le Finder**. Pour l'atteindre, il faut passer par la VM elle-même :
+```bash
+podman machine ssh
+# puis, dans le shell de la VM :
+ls ~/.local/share/containers/storage/volumes/pie-manager_postgres_data/
+```
+
+> ⚠️ Sur macOS comme sur Windows, supprimer la Podman Machine (`podman machine rm`) **détruit irrémédiablement** le volume et toutes les données. La sauvegarde logique quotidienne est donc indispensable.
 
 Le format de sauvegarde est `.dump` — format binaire compressé de `pg_dump`. Il est plus compact et plus fiable pour la restauration que le format SQL texte.
 
@@ -154,7 +165,43 @@ podman machine start
 
 ---
 
-## 6. Restauration depuis l'interface
+## 6. Sauvegarde de la machine Podman — macOS
+
+**Contrairement à Windows, Podman n'a pas d'équivalent à `wsl --export` sur macOS** — il n'existe pas de commande officielle unique pour exporter/importer l'intégralité d'une Podman Machine sur cette plateforme. En conséquence :
+
+> **La sauvegarde logique quotidienne (`.dump`, voir [Stratégie de sauvegarde recommandée](#1-stratégie-de-sauvegarde-recommandée) et [Sauvegarde depuis l'interface](#3-sauvegarde-depuis-linterface)) est la protection principale et suffisante sur macOS** — pas juste un complément comme sur Windows. En cas de problème avec la Podman Machine elle-même (VM corrompue, mise à jour cassée), la solution la plus simple et la plus fiable est de **réinstaller l'installateur** (`./pie-manager-darwin-arm64 install`, recrée une Podman Machine saine) puis de **restaurer la dernière sauvegarde `.dump`** — plutôt que de tenter de récupérer la VM elle-même.
+
+### Localiser les fichiers de la machine (optionnel, pour sauvegarde avancée)
+
+Podman documente l'emplacement de la configuration de la machine dans `$XDG_CONFIG_HOME/containers/podman/machine/` (par défaut `~/.config/containers/podman/machine/` sur macOS). L'emplacement exact du disque virtuel dépend de la version de Podman et du fournisseur de VM utilisé (`libkrun` ou `applehv`) — pour l'obtenir de façon fiable sans dépendre d'un chemin codé en dur :
+
+```bash
+podman machine inspect
+```
+
+Cette commande affiche notamment le chemin du disque virtuel de la machine active. Pour une sauvegarde avancée (optionnelle, en complément de la sauvegarde `.dump`) :
+
+```bash
+# 1. Arrêter la machine Podman
+podman machine stop
+
+# 2. Copier le disque virtuel (chemin obtenu via `podman machine inspect` ci-dessus)
+cp <chemin-du-disque> ~/Backups/podman-machine-$(date +%Y%m%d).raw
+
+# 3. Redémarrer la machine
+podman machine start
+```
+
+### Ce que la sauvegarde logique protège (macOS)
+
+| Protège contre | Ne protège pas contre |
+|---|---|
+| Fausse manipulation sur les données | Perte du fichier `.dump` lui-même |
+| Migration Alembic échouée (via réinstallation + restauration) | Corruption matérielle du disque Mac |
+
+---
+
+## 7. Restauration depuis l'interface
 
 > **Attention** : la restauration remplace intégralement la base de données actuelle. Faites une sauvegarde avant de restaurer.
 
@@ -168,7 +215,7 @@ La restauration utilise `pg_restore` : en cas d'erreur, l'opération est annulé
 
 ---
 
-## 7. Restauration manuelle en ligne de commande
+## 8. Restauration manuelle en ligne de commande
 
 ### Via l'API
 

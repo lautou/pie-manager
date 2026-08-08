@@ -558,6 +558,8 @@
   },
   "indicators": {
     "title": "Indicateurs macro",
+    "tabGrowthInflation": "Croissance / Inflation",
+    "tabMarketPerformance": "Performance des marchés",
     "regionSelectLabel": "Zone",
     "growthTitle": "Croissance — {{region}}",
     "inflationTitle": "Inflation — {{region}}",
@@ -600,6 +602,28 @@
       "bondTickerRequired": "Le ticker obligations est requis",
       "equityLabelRequired": "Le nom des actions est requis",
       "bondLabelRequired": "Le nom des obligations est requis"
+    }
+  },
+  "marketPerformance": {
+    "chartTitle": "Top 15 — Performance boursière sur 1 an (EUR)",
+    "sectionTitle": "🌍 Performance des marchés — pays",
+    "sectionDescription": "Univers de pays suivis pour le classement de performance boursière sur un an glissant, ajustée en EUR. Le graphique affiche uniquement les {{topN}} meilleurs de cet univers.",
+    "topNLabel": "Nombre de pays affichés (Top N)",
+    "newCountry": "Nouveau pays",
+    "editCountry": "Modifier le pays",
+    "countryCode": "Code",
+    "countryLabel": "Nom",
+    "indexLabel": "Nom de l'indice",
+    "indexTicker": "Ticker indice",
+    "currency": "Devise",
+    "noCountries": "Aucun pays",
+    "deleteCountryConfirm": "Supprimer le pays \"{{name}}\" ?",
+    "validation": {
+      "codeRequired": "Le code est requis",
+      "labelRequired": "Le nom est requis",
+      "indexLabelRequired": "Le nom de l'indice est requis",
+      "indexTickerRequired": "Le ticker indice est requis",
+      "currencyRequired": "La devise est requise"
     }
   }
 }

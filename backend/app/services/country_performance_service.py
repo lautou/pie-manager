@@ -1,0 +1,198 @@
+"""
+Country stock-market performance leaderboard: DB-only helpers (no HTTP) for the curated
+country universe CRUD and the trailing-1-year, EUR-adjusted Top-N ranking shown on the
+"Performance des marchés" tab of the Indicateurs page.
+
+Split from app/tasks/country_performance.py the same way macro_indicators_service.py is
+split from tasks/macro_indicators.py: this module owns DB reads/writes and the ranking
+computation, the task module owns the Yahoo HTTP fetching and Celery scheduling.
+
+Deliberately NOT a variant of macro_indicators_service.compute_ratio_indicator — that
+function computes a continuous rebased ratio between two inner-joined series (for a line
+chart with a moving average); this one only needs two point-in-time snapshots per country
+(now and ~1 year ago) to rank a leaderboard, so the computation shape is unrelated.
+"""
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from datetime import date, timedelta
+from typing import Optional
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.country_performance import CountryPerfConfig
+from app.models.system_setting import SystemSetting
+from app.services.macro_series_price_service import get_series
+
+_COUNTRY_CODE_RE = re.compile(r"^[a-z]{2,3}$")
+_CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
+
+DEFAULT_TOP_N = 15
+TOP_N_SETTING_KEY = "country_perf.top_n"
+
+TRAILING_WINDOW_DAYS = 365
+# How stale a series' nearest snapshot may be and still count — covers weekends/holidays
+# around the target date, and excludes a country whose fetch has been failing for a while.
+ASOF_TOLERANCE_DAYS = 10
+
+
+# ---------------------------------------------------------------------------
+# Country CRUD — user-managed leaderboard universe
+# ---------------------------------------------------------------------------
+
+async def list_country_configs(db: AsyncSession) -> list[CountryPerfConfig]:
+    result = await db.execute(select(CountryPerfConfig).order_by(CountryPerfConfig.code))
+    return list(result.scalars().all())
+
+
+async def create_country_config(
+    db: AsyncSession, code: str, label: str, index_ticker: str, currency: str, index_label: str,
+) -> CountryPerfConfig:
+    """Raises ValueError (client-facing message) on an invalid code/currency or a duplicate."""
+    if not _COUNTRY_CODE_RE.match(code):
+        raise ValueError(f"Invalid country code: {code!r} (lowercase letters, 2-3 chars)")
+    if not _CURRENCY_RE.match(currency):
+        raise ValueError(f"Invalid currency: {currency!r} (uppercase ISO 4217, 3 letters)")
+    if await db.get(CountryPerfConfig, code) is not None:
+        raise ValueError(f"Country '{code}' already exists")
+    country = CountryPerfConfig(
+        code=code, label=label, index_ticker=index_ticker, currency=currency, index_label=index_label,
+    )
+    db.add(country)
+    await db.commit()
+    await db.refresh(country)
+    return country
+
+
+async def update_country_config(
+    db: AsyncSession, code: str, label: str, index_ticker: str, currency: str, index_label: str,
+) -> Optional[CountryPerfConfig]:
+    """`code` is immutable — it's the macro_series_prices series-key suffix. Returns None if
+    the country doesn't exist. Raises ValueError on an invalid currency."""
+    country = await db.get(CountryPerfConfig, code)
+    if country is None:
+        return None
+    if not _CURRENCY_RE.match(currency):
+        raise ValueError(f"Invalid currency: {currency!r} (uppercase ISO 4217, 3 letters)")
+    country.label = label
+    country.index_ticker = index_ticker
+    country.currency = currency
+    country.index_label = index_label
+    await db.commit()
+    await db.refresh(country)
+    return country
+
+
+async def delete_country_config(db: AsyncSession, code: str) -> Optional[bool]:
+    """Returns None if the country doesn't exist, True on success. Unlike MacroRegion's
+    CRUD, there is no "last remaining row" guard — an emptied-out universe simply yields an
+    empty leaderboard, a valid (if degenerate) state, not a broken page."""
+    country = await db.get(CountryPerfConfig, code)
+    if country is None:
+        return None
+    await db.delete(country)
+    await db.commit()
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Top-N setting
+# ---------------------------------------------------------------------------
+
+async def get_top_n(db: AsyncSession) -> int:
+    """Reads country_perf.top_n from SystemSetting, falling back to DEFAULT_TOP_N when
+    unset, unparsable, or non-positive."""
+    setting = await db.get(SystemSetting, TOP_N_SETTING_KEY)
+    if setting is None:
+        return DEFAULT_TOP_N
+    try:
+        value = int(setting.value)
+    except (TypeError, ValueError):
+        return DEFAULT_TOP_N
+    return value if value > 0 else DEFAULT_TOP_N
+
+
+# ---------------------------------------------------------------------------
+# Ranking
+# ---------------------------------------------------------------------------
+
+def _asof(series: dict[date, float], target: date, tolerance_days: int) -> Optional[tuple[date, float]]:
+    """Latest (date, value) at or before `target`, only if within `tolerance_days` of it."""
+    candidates = [(d, v) for d, v in series.items() if d <= target and (target - d).days <= tolerance_days]
+    return max(candidates, key=lambda dv: dv[0]) if candidates else None
+
+
+@dataclass
+class CountryPerformanceResult:
+    code: str
+    label: str
+    currency: str
+    perf_pct: float
+    latest_date: date
+    anchor_date: date
+    index_label: str
+
+
+async def compute_country_performance(
+    db: AsyncSession, top_n: Optional[int] = None,
+) -> list[CountryPerformanceResult]:
+    """
+    Ranks every configured country by trailing-1-year, EUR-adjusted performance and returns
+    only the top `top_n` (best performers), sorted ascending (worst of the top group first,
+    best last) for the bar chart's left-to-right display.
+
+    perf_pct = (index_latest * fx_latest) / (index_anchor * fx_anchor) - 1) * 100 —
+    multiplicative, never additive: a market's local-currency move and its FX move against
+    EUR compound, they don't simply add. A country whose currency is EUR skips the FX
+    factor entirely (factor = 1.0). FX series are shared across countries with the same
+    currency (fx_{currency}), fetched from get_series at most once per currency.
+
+    A country with insufficient/stale index or FX history (no snapshot within
+    ASOF_TOLERANCE_DAYS of "today" or of "~1 year ago") is excluded from the ranking rather
+    than distorting it with a guessed value. If fewer than top_n countries have valid data,
+    fewer are returned — no padding.
+    """
+    configs = await list_country_configs(db)
+    if not configs:
+        return []
+    if top_n is None:
+        top_n = await get_top_n(db)
+
+    today = date.today()
+    anchor_target = today - timedelta(days=TRAILING_WINDOW_DAYS)
+    fx_cache: dict[str, dict[date, float]] = {}
+    results: list[CountryPerformanceResult] = []
+
+    for cfg in configs:
+        index_series = await get_series(db, f"country_{cfg.code}_equity")
+        latest = _asof(index_series, today, ASOF_TOLERANCE_DAYS)
+        anchor = _asof(index_series, anchor_target, ASOF_TOLERANCE_DAYS)
+        if latest is None or anchor is None or anchor[1] == 0:
+            continue
+        factor_index = latest[1] / anchor[1]
+
+        if cfg.currency == "EUR":
+            factor_fx = 1.0
+        else:
+            if cfg.currency not in fx_cache:
+                fx_cache[cfg.currency] = await get_series(db, f"fx_{cfg.currency.lower()}")
+            fx_series = fx_cache[cfg.currency]
+            fx_latest = _asof(fx_series, today, ASOF_TOLERANCE_DAYS)
+            fx_anchor = _asof(fx_series, anchor_target, ASOF_TOLERANCE_DAYS)
+            if fx_latest is None or fx_anchor is None or fx_anchor[1] == 0:
+                continue
+            factor_fx = fx_latest[1] / fx_anchor[1]
+
+        perf_pct = (factor_index * factor_fx - 1) * 100
+        results.append(CountryPerformanceResult(
+            code=cfg.code, label=cfg.label, currency=cfg.currency,
+            perf_pct=perf_pct, latest_date=latest[0], anchor_date=anchor[0],
+            index_label=cfg.index_label,
+        ))
+
+    results.sort(key=lambda r: r.perf_pct, reverse=True)  # rank all, best first
+    top = results[:top_n]
+    top.sort(key=lambda r: r.perf_pct)  # re-sort ascending for chart display
+    return top

@@ -7,7 +7,10 @@ celery_app = Celery(
     "pie",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.tasks.prices", "app.tasks.snapshots", "app.tasks.etf_holdings", "app.tasks.macro_indicators"],
+    include=[
+        "app.tasks.prices", "app.tasks.snapshots", "app.tasks.etf_holdings",
+        "app.tasks.macro_indicators", "app.tasks.country_performance",
+    ],
 )
 
 celery_app.conf.update(
@@ -41,6 +44,12 @@ celery_app.conf.update(
         "refresh-macro-indicators": {
             "task": "app.tasks.macro_indicators.refresh_macro_indicators",
             "schedule": crontab(hour=7, minute=0),
+        },
+        # Refresh country market-performance leaderboard once a day (offset from the macro
+        # indicators run above so both don't hit Yahoo at the same instant)
+        "refresh-country-performance": {
+            "task": "app.tasks.country_performance.refresh_country_performance",
+            "schedule": crontab(hour=7, minute=15),
         },
     },
 )

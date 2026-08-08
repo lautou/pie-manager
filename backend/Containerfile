@@ -19,6 +19,14 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt
 
-COPY . .
+# Non-root user (#17): uvicorn/celery have no reason to run as root at
+# runtime. Celery Beat's schedule file is redirected to /tmp (see
+# beat_schedule_filename in app/tasks/celery_app.py) so appuser never needs
+# write access to /app itself — this also sidesteps host/container UID
+# mismatches on the dev bind-mount (./backend:/app:z), since reading the
+# mount only relies on standard "other" read permissions.
+RUN useradd --create-home --uid 1000 appuser
+COPY --chown=appuser:appuser . .
+USER appuser
 
 ENV PYTHONPATH=/app

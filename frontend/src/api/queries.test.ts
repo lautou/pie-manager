@@ -33,6 +33,8 @@ import {
   useEtfComposition, usePoolAllocation,
   useGrowthIndicator, useInflationIndicator,
   useMacroRegions, createMacroRegion, updateMacroRegion, deleteMacroRegion,
+  useCountryPerformance, useCountryPerfConfigs,
+  createCountryPerfConfig, updateCountryPerfConfig, deleteCountryPerfConfig,
 } from './queries';
 
 vi.mock('./client', () => ({
@@ -730,6 +732,65 @@ describe('api/queries React Query hooks', () => {
       mockDelete.mockResolvedValueOnce({} as any);
       await deleteMacroRegion('de');
       expect(mockDelete).toHaveBeenCalledWith('/api/indicators/regions/de');
+    });
+  });
+
+  describe('useCountryPerformance', () => {
+    it('fetches the country performance ranking', async () => {
+      const entries = [
+        { code: 'us', label: 'États-Unis', currency: 'USD', perf_pct: 20.19, latest_date: '2026-07-19', anchor_date: '2025-07-19' },
+      ];
+      mockGet.mockResolvedValueOnce({ data: entries } as any);
+
+      const wrapper = makeWrapper();
+      const { result } = renderHook(() => useCountryPerformance(), { wrapper });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockGet).toHaveBeenCalledWith('/api/indicators/country-performance');
+      expect(result.current.data).toEqual(entries);
+    });
+  });
+
+  describe('useCountryPerfConfigs', () => {
+    it('fetches the country configuration list', async () => {
+      const countries = [{ code: 'us', label: 'États-Unis', index_ticker: '^GSPC', currency: 'USD' }];
+      mockGet.mockResolvedValueOnce({ data: countries } as any);
+
+      const wrapper = makeWrapper();
+      const { result } = renderHook(() => useCountryPerfConfigs(), { wrapper });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockGet).toHaveBeenCalledWith('/api/indicators/country-performance/countries');
+      expect(result.current.data).toEqual(countries);
+    });
+  });
+
+  describe('createCountryPerfConfig', () => {
+    it('posts a new country', async () => {
+      const country = { code: 'de', label: 'Allemagne', index_ticker: '^GDAXI', currency: 'EUR', index_label: 'DAX 40' };
+      mockPost.mockResolvedValueOnce({ data: country } as any);
+      const result = await createCountryPerfConfig(country);
+      expect(mockPost).toHaveBeenCalledWith('/api/indicators/country-performance/countries', country);
+      expect(result).toEqual(country);
+    });
+  });
+
+  describe('updateCountryPerfConfig', () => {
+    it('puts country changes', async () => {
+      const body = { label: 'Deutschland', index_ticker: 'EWG', currency: 'EUR', index_label: 'DAX ETF' };
+      const updated = { code: 'de', ...body };
+      mockPut.mockResolvedValueOnce({ data: updated } as any);
+      const result = await updateCountryPerfConfig('de', body);
+      expect(mockPut).toHaveBeenCalledWith('/api/indicators/country-performance/countries/de', body);
+      expect(result).toEqual(updated);
+    });
+  });
+
+  describe('deleteCountryPerfConfig', () => {
+    it('deletes a country by code', async () => {
+      mockDelete.mockResolvedValueOnce({} as any);
+      await deleteCountryPerfConfig('de');
+      expect(mockDelete).toHaveBeenCalledWith('/api/indicators/country-performance/countries/de');
     });
   });
 

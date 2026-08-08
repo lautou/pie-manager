@@ -1,68 +1,70 @@
 """
-Macro indicators daily refresh — runs once a day via Celery Beat.
+Country stock-market performance daily refresh — runs once a day via Celery Beat.
 
 Strategy:
-  - Same unauthenticated query1.finance.yahoo.com/v8/finance/chart/{ticker} endpoint as
-    app/tasks/prices.py (no crumb/session needed, unlike app/tasks/etf_holdings.py) — fetch
-    logic lives in the shared app/tasks/yahoo_fetch.py.
-  - Full daily history is fetched every run (not just "today"), using explicit period1/period2
-    Unix timestamps with interval=1d. This is deliberate: requesting range=max&interval=1d
-    gets silently downsampled by Yahoo to ~monthly granularity for long spans (confirmed:
-    only ~168 points over 42 years of ^GSPC), while an explicit period1/period2 window
-    returns true, uncapped daily data. Refetching the full history every run is cheap
-    (~6500 rows/series) and self-heals any gap or Yahoo revision — no separate
-    backfill-vs-daily-delta logic needed.
-  - Result written to Redis key "pie:macro:status" for consistency with prices.py/etf_holdings.py.
+  - Same shared Yahoo chart fetch as macro_indicators.py (app/tasks/yahoo_fetch.py).
+  - Only needs a trailing ~1-year window (not full history since 2000, unlike
+    macro_indicators.py's 7-year moving average) since the ranking only ever compares "now"
+    vs "~1 year ago" — see country_performance_service.py's ASOF_TOLERANCE_DAYS.
+  - Fetches each country's index series plus one shared FX-to-EUR series per distinct
+    non-EUR currency (deduped — two countries sharing a currency fetch it once), using the
+    same f"{CCY}EUR=X" convention already established for portfolio forex positions
+    (see CLAUDE.md's "Transaction conventions" — Cash instrument_type).
+  - Result written to Redis key "pie:country_perf:status" for consistency with the other tasks.
 """
 
 import asyncio
-from datetime import date, datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
 from app.tasks.celery_app import celery_app
 from app.tasks.sync_status import get_redis, write_status
 from app.tasks.yahoo_fetch import fetch_yahoo_history
-from app.services.macro_indicators_service import (
-    DEFAULT_TICKERS,
-    get_macro_settings,
-    list_regions,
-)
+from app.services.country_performance_service import list_country_configs
 from app.services.macro_series_price_service import replace_series_prices
 
-SYNC_STATUS_KEY = "pie:macro:status"
+SYNC_STATUS_KEY = "pie:country_perf:status"
 SYNC_STATUS_TTL = 3600 * 24 * 7  # expire after 1 week
 
-# Comfortably before all 4 series' real Yahoo inception (^SPXEW 2006, ^TNX 1985,
-# CL=F/GC=F 2000) — no need for per-ticker introspection of firstTradeDate.
-HISTORY_FLOOR = date(2000, 1, 1)
+HISTORY_WINDOW_DAYS = 450  # trailing 1 year + buffer for weekends/holidays/retry lag
 
 
 # ---------------------------------------------------------------------------
 # Core async refresh
 # ---------------------------------------------------------------------------
 
-async def _run_macro_indicators_refresh() -> dict:
+async def _run_country_performance_refresh() -> dict:
     from app.core.config import settings
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
     started_at = datetime.now(timezone.utc).isoformat()
-    period1 = int(datetime(HISTORY_FLOOR.year, HISTORY_FLOOR.month, HISTORY_FLOOR.day, tzinfo=timezone.utc).timestamp())
-    period2 = int(datetime.now(timezone.utc).timestamp())
+    now = datetime.now(timezone.utc)
+    period1 = int((now - timedelta(days=HISTORY_WINDOW_DAYS)).timestamp())
+    period2 = int(now.timestamp())
 
     eng = create_async_engine(settings.database_url, echo=False, pool_size=2)
     Session = async_sessionmaker(eng, class_=AsyncSession, expire_on_commit=False)
     try:
         async with Session() as db:
-            macro_settings = await get_macro_settings(db)
-            regions = await list_regions(db)
+            configs = await list_country_configs(db)
     finally:
         await eng.dispose()
 
-    tickers_by_series = {series: macro_settings[series] for series in DEFAULT_TICKERS}
-    for region in regions:
-        tickers_by_series[f"{region.code}_equity"] = region.equity_ticker
-        tickers_by_series[f"{region.code}_bond"] = region.bond_ticker
+    tickers_by_series = {f"country_{c.code}_equity": c.index_ticker for c in configs}
+    fx_currencies = {c.currency for c in configs if c.currency != "EUR"}
+    for currency in fx_currencies:
+        tickers_by_series[f"fx_{currency.lower()}"] = f"{currency}EUR=X"
+
+    if not tickers_by_series:
+        return {
+            "started_at": started_at,
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "status": "success",
+            "total_tickers": 0,
+            "succeeded": 0,
+            "failed_tickers": [],
+        }
 
     async with httpx.AsyncClient() as client:
         results = await asyncio.gather(
@@ -106,10 +108,11 @@ async def _run_macro_indicators_refresh() -> dict:
 # Celery task
 # ---------------------------------------------------------------------------
 
-@celery_app.task(name="app.tasks.macro_indicators.refresh_macro_indicators")
-def refresh_macro_indicators():
+@celery_app.task(name="app.tasks.country_performance.refresh_country_performance")
+def refresh_country_performance():
     """
-    Main scheduled task: refresh every region's equity/bond series plus oil/gold once a day.
+    Main scheduled task: refresh every configured country's index series plus each
+    distinct non-EUR currency's FX-to-EUR series once a day.
     Writes sync status to Redis, mirroring app.tasks.prices.refresh_prices_live.
     """
     r = get_redis()
@@ -123,7 +126,7 @@ def refresh_macro_indicators():
     }, ttl_seconds=SYNC_STATUS_TTL)
 
     try:
-        result = asyncio.run(_run_macro_indicators_refresh())
+        result = asyncio.run(_run_country_performance_refresh())
     except Exception as exc:
         result = {
             "started_at": datetime.now(timezone.utc).isoformat(),

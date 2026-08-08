@@ -4,28 +4,28 @@ Non-regression tests for the live price sync service (app/tasks/prices.py).
 Tested without real network calls — Yahoo Finance responses are mocked.
 Key invariants:
   1. Successful fetch stores price in DB and records ticker in succeeded list.
-  2. 429 response retries, ultimately marks ticker as failed.
-  3. Deduplication: same ticker in multiple portfolio/pool contexts fetched once.
-  4. LIQUIDITE.EURO is always skipped (no fetch needed).
-  5. Sync status dict has correct shape on success, partial, and failure.
-  6. _get_redis / _write_status interact with Redis correctly.
-  7. _run_price_refresh orchestrates fetch + DB write and returns status dict.
-  8. refresh_prices_live writes running then final status to Redis.
-  9. Exception in _run_price_refresh → failed status written, no crash.
+  2. Deduplication: same ticker in multiple portfolio/pool contexts fetched once.
+  3. LIQUIDITE.EURO is always skipped (no fetch needed).
+  4. Sync status dict has correct shape on success, partial, and failure.
+  5. _run_price_refresh orchestrates fetch + DB write and returns status dict.
+  6. refresh_prices_live writes running then final status to Redis.
+  7. Exception in _run_price_refresh → failed status written, no crash.
+
+_fetch_ticker's retry/backoff mechanics are tested once, generically, in
+test_yahoo_fetch.py (the shared fetch_yahoo_chart it delegates to) — this file only tests
+_fetch_ticker's own thin parsing logic (regularMarketPrice extraction/rounding).
+get_redis/write_status are tested in test_sync_status.py.
 """
 
 import json
 import pytest
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.tasks.prices import (
     _fetch_ticker,
-    _get_redis,
     _run_price_refresh,
-    _write_status,
     fetch_all_prices,
     refresh_prices_live,
-    SYNC_STATUS_KEY,
 )
 
 
@@ -114,113 +114,6 @@ async def test_fetch_ticker_missing_price():
     _, price, error = await _fetch_ticker(client, "STALE.PA")
     assert price is None
     assert error == "regularMarketPrice missing"
-
-
-@pytest.mark.asyncio
-async def test_fetch_ticker_429_exhausts_retries():
-    """All 3 attempts return 429 → ticker marked failed."""
-    client = AsyncMock()
-    client.get = AsyncMock(return_value=_FakeResponse(429))
-    with patch("app.tasks.prices.asyncio.sleep", new_callable=AsyncMock):
-        _, price, error = await _fetch_ticker(client, "RATE.XX")
-    assert price is None
-    assert "429" in (error or "")
-
-
-@pytest.mark.asyncio
-async def test_fetch_ticker_429_then_success():
-    """First attempt 429, second succeeds → returns price."""
-    client = AsyncMock()
-    client.get = AsyncMock(side_effect=[
-        _FakeResponse(429),
-        _FakeResponse(200, _make_yahoo_ok(99.0)),
-    ])
-    with patch("app.tasks.prices.asyncio.sleep", new_callable=AsyncMock):
-        _, price, error = await _fetch_ticker(client, "RETRY.PA")
-    assert price == pytest.approx(99.0)
-    assert error is None
-
-
-@pytest.mark.asyncio
-async def test_fetch_ticker_exception_on_last_retry():
-    """Network exception on every attempt → returns (ticker, None, error_str)."""
-    client = AsyncMock()
-    client.get = AsyncMock(side_effect=ConnectionError("network down"))
-    with patch("app.tasks.prices.asyncio.sleep", new_callable=AsyncMock):
-        ticker, price, error = await _fetch_ticker(client, "CRASH.PA")
-    assert price is None
-    assert error is not None
-    assert len(error) > 0
-
-
-@pytest.mark.asyncio
-async def test_fetch_ticker_exception_then_success():
-    """Exception on first attempt, success on second → returns price."""
-    client = AsyncMock()
-    client.get = AsyncMock(side_effect=[
-        ConnectionError("timeout"),
-        _FakeResponse(200, _make_yahoo_ok(77.0)),
-    ])
-    with patch("app.tasks.prices.asyncio.sleep", new_callable=AsyncMock):
-        _, price, error = await _fetch_ticker(client, "RECOV.PA")
-    assert price == pytest.approx(77.0)
-    assert error is None
-
-
-@pytest.mark.asyncio
-async def test_fetch_ticker_max_retries_zero_falls_through():
-    """
-    With MAX_RETRIES=0 the for-loop body never executes, hitting the
-    safety 'return ticker, None, "max retries exceeded"' on line 75.
-    """
-    client = AsyncMock()
-    with patch("app.tasks.prices.MAX_RETRIES", 0):
-        _, price, error = await _fetch_ticker(client, "ZERO.XX")
-    assert price is None
-    assert error == "max retries exceeded"
-
-
-# ---------------------------------------------------------------------------
-# _get_redis
-# ---------------------------------------------------------------------------
-
-def test_get_redis_creates_client_from_broker_url():
-    """_get_redis() passes the broker URL to redis.Redis.from_url with decode_responses."""
-    mock_client = MagicMock()
-    with patch("redis.Redis.from_url", return_value=mock_client) as mock_from_url, \
-         patch("app.core.config.settings") as mock_settings:
-        mock_settings.celery_broker_url = "redis://localhost:6379/0"
-        result = _get_redis()
-    mock_from_url.assert_called_once_with("redis://localhost:6379/0", decode_responses=True)
-    assert result is mock_client
-
-
-# ---------------------------------------------------------------------------
-# _write_status
-# ---------------------------------------------------------------------------
-
-def test_write_status_serialises_dict_to_redis():
-    """_write_status() JSON-encodes the dict and writes it with a 1-hour TTL."""
-    mock_r = MagicMock()
-    status = {"status": "running", "succeeded": 0, "failed_tickers": []}
-    _write_status(mock_r, status)
-    mock_r.set.assert_called_once()
-    args, kwargs = mock_r.set.call_args
-    assert args[0] == SYNC_STATUS_KEY
-    assert json.loads(args[1]) == status
-    assert kwargs.get("ex") == 3600
-
-
-def test_write_status_different_payloads():
-    """_write_status() correctly serialises success and failed payloads."""
-    for payload in [
-        {"status": "success", "succeeded": 5, "failed_tickers": []},
-        {"status": "failed", "succeeded": 0, "failed_tickers": ["X.DE", "Y.PA"]},
-    ]:
-        mock_r = MagicMock()
-        _write_status(mock_r, payload)
-        _, kwargs = mock_r.set.call_args
-        assert json.loads(mock_r.set.call_args[0][1])["status"] == payload["status"]
 
 
 # ---------------------------------------------------------------------------
@@ -433,7 +326,7 @@ def test_refresh_prices_live_writes_running_then_final_status():
             coro.close()
         return success_result
 
-    with patch("app.tasks.prices._get_redis", return_value=mock_r), \
+    with patch("app.tasks.prices.get_redis", return_value=mock_r), \
          patch("app.tasks.prices.asyncio.run", side_effect=_close_and_return):
         result = refresh_prices_live()
 
@@ -456,7 +349,7 @@ def test_refresh_prices_live_handles_exception_and_writes_failed():
             coro.close()
         raise RuntimeError("DB down")
 
-    with patch("app.tasks.prices._get_redis", return_value=mock_r), \
+    with patch("app.tasks.prices.get_redis", return_value=mock_r), \
          patch("app.tasks.prices.asyncio.run", side_effect=_raise_and_close):
         result = refresh_prices_live()
 
@@ -482,7 +375,7 @@ def test_fetch_all_prices_delegates_to_refresh_prices_live():
             coro.close()
         return dummy_result
 
-    with patch("app.tasks.prices._get_redis", return_value=mock_r), \
+    with patch("app.tasks.prices.get_redis", return_value=mock_r), \
          patch("app.tasks.prices.asyncio.run", side_effect=_close_and_return):
         result = fetch_all_prices()
     assert result["status"] == "success"

@@ -812,6 +812,62 @@ item in it was found and fixed while responding to live user bug reports against
 chart, in the order: wrong zoom range → native text-selection during drag → duplicate axis
 year labels → missing reset button → verbose Victory-default hover tooltip.
 
+## Country market performance leaderboard (portfolio-independent)
+
+Second tab on the Indicateurs page ("Performance des marchés", `MarketPerformanceSection.tsx`),
+deliberately kept separate from the growth/inflation tab (`GrowthInflationSection.tsx`) via
+PatternFly `Tabs` — a static ranked bar chart (categorical x-axis, no time series) has nothing
+in common with the region-scoped ratio line charts, so mixing them on one view was rejected.
+
+**Ranking**: `country_performance_service.compute_country_performance()` ranks every configured
+`CountryPerfConfig` row by trailing-1-year, **EUR-adjusted** performance —
+`(index_latest × fx_latest) / (index_anchor × fx_anchor) − 1`, multiplicative (never additive,
+since a local-currency move and an FX move compound). EUR-currency countries skip the FX
+factor entirely. Only the top N (`SystemSetting country_perf.top_n`, default 15) are returned,
+sorted ascending for the chart (worst-of-the-top-N left, best right). A country whose index or
+FX series has no snapshot within `ASOF_TOLERANCE_DAYS` (10) of "today" or "~1 year ago" is
+excluded from ranking rather than distorting it with stale data.
+
+**Storage reuses `MacroSeriesPrice`** (no new price table) via a distinct series-key
+namespace: `country_{code}_equity` per country, `fx_{currency}` per **distinct non-EUR
+currency** (shared/deduped across countries with the same currency). `CountryPerfConfig`
+(code/label/index_ticker/currency/index_label) is a separate, user-editable table — no "last
+remaining row" delete guard, unlike `MacroRegion` (an empty universe just yields an empty
+chart).
+
+**`index_label`** (e.g. "KOSPI Composite", "CAC 40", "Shanghai Composite") is a
+human-readable name for `index_ticker`, mirroring `MacroRegion.equity_label`/`bond_label` —
+added via migration `ss22tt33uu44` after comparing our leaderboard against an external
+reference chart revealed that different sources track different underlying indices for the
+same country (e.g. Shenzhen vs Shanghai for "Chine"). Shown in the chart's hover tooltip
+(`"{country} — {index_label}: {pct}%"`) and as its own column in `MarketCountryManager`, so
+which index feeds a bar is never ambiguous.
+
+**Shared Yahoo fetch/Redis-status helpers**: `app/tasks/yahoo_fetch.py`
+(`fetch_yahoo_chart`/`fetch_yahoo_history`) and `app/tasks/sync_status.py`
+(`get_redis`/`write_status`) were extracted here from what used to be near-identical private
+copies in `prices.py`/`macro_indicators.py`/`etf_holdings.py` — this task was the third
+occurrence of the same duplication, the trigger for finally factoring it out.
+
+**Seed list ticker gotchas** (found via empirical Yahoo verification before trusting the
+migration seed, same discipline as `^SBF120` above): Poland's `WIG20.WA` returns exactly 1
+data point regardless of window (dead) — replaced with `ETFBW20TR.WA`, an ETF tracking the
+same index. Taiwan (TWD) and Turkey (TRY) are excluded from the seed entirely: their direct
+`{CCY}EUR=X` crosses (`TWDEUR=X`, `TRYEUR=X`) are also always 1 point — only the *reverse*
+cross (`EURTWD=X`/`EURTRY=X`) has real history, which would need a per-currency reciprocal
+special case to support, not worth it for 2 currencies.
+
+**Known pitfall — aria-label collisions between independent CRUD managers on the same
+page**: `MarketCountryManager`'s edit/delete buttons originally used the same
+`"{action} {code}"` aria-label pattern as `RegionManager`'s. Since both managers can have a
+row with the same code (e.g. `fr`, seeded in both `macro_regions` and
+`country_perf_configs`), their buttons collided (`"Modifier fr"` × 2) on the same
+Configuration générale page — a real accessibility bug and a Playwright strict-mode
+violation, only caught by a live browser check (unit tests used non-overlapping fixture
+codes, which hid it). Fixed by adding a disambiguating noun (`"Modifier pays fr"`). When
+adding a second CRUD table whose codes can overlap with an existing one on the same page,
+disambiguate the action labels up front.
+
 ## Health check endpoint
 
 - `GET /api/admin/health` — returns `{"status": "healthy"}` (200) or 503 if DB unreachable

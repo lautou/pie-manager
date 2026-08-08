@@ -9,36 +9,17 @@ Strategy:
 """
 
 import asyncio
-import json
 from datetime import datetime, date, timezone
 
 import httpx
 
 from app.tasks.celery_app import celery_app
+from app.tasks.sync_status import get_redis, write_status
+from app.tasks.yahoo_fetch import fetch_yahoo_chart
 from app.services.price_service import get_active_tickers
 
 SYNC_STATUS_KEY = "pie:sync:status"
-YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
-YAHOO_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; portfolio-tracker/1.0)",
-    "Accept": "application/json",
-}
-MAX_RETRIES = 3
-RETRY_BACKOFF = [5, 15, 30]  # seconds between retries on 429
-
-
-# ---------------------------------------------------------------------------
-# Redis helpers
-# ---------------------------------------------------------------------------
-
-def _get_redis():
-    import redis as redis_lib
-    from app.core.config import settings
-    return redis_lib.Redis.from_url(settings.celery_broker_url, decode_responses=True)
-
-
-def _write_status(r, status: dict):
-    r.set(SYNC_STATUS_KEY, json.dumps(status), ex=3600)  # expire after 1 h
+SYNC_STATUS_TTL = 3600  # expire after 1 h
 
 
 # ---------------------------------------------------------------------------
@@ -46,33 +27,15 @@ def _write_status(r, status: dict):
 # ---------------------------------------------------------------------------
 
 async def _fetch_ticker(client: httpx.AsyncClient, ticker: str) -> tuple[str, float | None, str | None]:
-    """
-    Returns (ticker, price_or_None, error_or_None).
-    Retries up to MAX_RETRIES times on 429.
-    """
-    url = YAHOO_CHART_URL.format(ticker=ticker)
-    for attempt in range(MAX_RETRIES):
-        try:
-            resp = await client.get(url, headers=YAHOO_HEADERS, timeout=10.0)
-            if resp.status_code == 429:
-                if attempt < MAX_RETRIES - 1:
-                    await asyncio.sleep(RETRY_BACKOFF[attempt])
-                    continue
-                return ticker, None, "429 rate-limited after retries"
-            if resp.status_code != 200:
-                return ticker, None, f"HTTP {resp.status_code}"
-            data = resp.json()
-            meta = data["chart"]["result"][0]["meta"]
-            price = meta.get("regularMarketPrice")
-            if price is None:
-                return ticker, None, "regularMarketPrice missing"
-            return ticker, round(float(price), 4), None
-        except Exception as exc:
-            if attempt < MAX_RETRIES - 1:
-                await asyncio.sleep(RETRY_BACKOFF[attempt])
-                continue
-            return ticker, None, str(exc)[:120]
-    return ticker, None, "max retries exceeded"
+    """Returns (ticker, price_or_None, error_or_None) — thin parsing wrapper around the
+    shared fetch_yahoo_chart (retry/backoff is tested directly there, see test_yahoo_fetch.py)."""
+    ticker, result, error = await fetch_yahoo_chart(client, ticker, timeout=10.0)
+    if result is None:
+        return ticker, None, error
+    price = result.get("meta", {}).get("regularMarketPrice")
+    if price is None:
+        return ticker, None, "regularMarketPrice missing"
+    return ticker, round(float(price), 4), None
 
 
 async def _run_price_refresh() -> dict:
@@ -191,15 +154,15 @@ def refresh_prices_live():
     Main scheduled task: fetch live prices every 15 min.
     Writes sync status to Redis for frontend display.
     """
-    r = _get_redis()
-    _write_status(r, {
+    r = get_redis()
+    write_status(r, SYNC_STATUS_KEY, {
         "started_at": datetime.now(timezone.utc).isoformat(),
         "finished_at": None,
         "status": "running",
         "total_tickers": 0,
         "succeeded": 0,
         "failed_tickers": [],
-    })
+    }, ttl_seconds=SYNC_STATUS_TTL)
 
     try:
         result = asyncio.run(_run_price_refresh())
@@ -214,7 +177,7 @@ def refresh_prices_live():
             "error": str(exc)[:200],
         }
 
-    _write_status(r, result)
+    write_status(r, SYNC_STATUS_KEY, result, ttl_seconds=SYNC_STATUS_TTL)
     return result
 
 

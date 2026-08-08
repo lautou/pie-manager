@@ -547,6 +547,8 @@
   },
   "indicators": {
     "title": "Macro Indicators",
+    "tabGrowthInflation": "Growth / Inflation",
+    "tabMarketPerformance": "Market Performance",
     "regionSelectLabel": "Region",
     "growthTitle": "Growth — {{region}}",
     "inflationTitle": "Inflation — {{region}}",
@@ -589,6 +591,28 @@
       "bondTickerRequired": "Bond ticker is required",
       "equityLabelRequired": "Equity name is required",
       "bondLabelRequired": "Bond name is required"
+    }
+  },
+  "marketPerformance": {
+    "chartTitle": "Top 15 — 1-Year Stock Market Performance (EUR)",
+    "sectionTitle": "🌍 Market performance — countries",
+    "sectionDescription": "Universe of countries tracked for the trailing-1-year, EUR-adjusted market performance ranking. The chart only shows the top {{topN}} of this universe.",
+    "topNLabel": "Number of countries shown (Top N)",
+    "newCountry": "New country",
+    "editCountry": "Edit country",
+    "countryCode": "Code",
+    "countryLabel": "Name",
+    "indexLabel": "Index name",
+    "indexTicker": "Index ticker",
+    "currency": "Currency",
+    "noCountries": "No countries",
+    "deleteCountryConfirm": "Delete country \"{{name}}\"?",
+    "validation": {
+      "codeRequired": "Code is required",
+      "labelRequired": "Name is required",
+      "indexLabelRequired": "Index name is required",
+      "indexTickerRequired": "Index ticker is required",
+      "currencyRequired": "Currency is required"
     }
   }
 }

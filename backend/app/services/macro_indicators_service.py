@@ -14,11 +14,11 @@ from datetime import date, timedelta
 from typing import Optional
 
 from sqlalchemy import func, select
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.macro_indicator import MacroRegion, MacroSeriesPrice
+from app.models.macro_indicator import MacroRegion
 from app.models.system_setting import SystemSetting
+from app.services.macro_series_price_service import get_series
 
 # Regions (US/France/Monde/...) are user-managed rows in `macro_regions` — see the CRUD
 # functions below. Only the shared oil/gold pair stays as simple default tickers here.
@@ -118,33 +118,6 @@ async def delete_region(db: AsyncSession, code: str) -> Optional[bool]:
     return True
 
 
-async def replace_series_prices(db: AsyncSession, series: str, points: list[tuple[date, float]]) -> None:
-    """
-    Upserts a full history snapshot for one series. Yahoo's chart endpoint always returns
-    the full requested range (never a diff), so replace-on-fetch is correct and simplest —
-    it also self-heals against gaps or Yahoo revising past values. Does not commit.
-    """
-    if not points:
-        return
-    stmt = insert(MacroSeriesPrice).values(
-        [{"series": series, "date": d, "value": v} for d, v in points]
-    )
-    stmt = stmt.on_conflict_do_update(
-        constraint="uq_macro_series_price",
-        set_={"value": stmt.excluded.value},
-    )
-    await db.execute(stmt)
-
-
-async def _get_series(db: AsyncSession, series: str) -> dict[date, float]:
-    result = await db.execute(
-        select(MacroSeriesPrice.date, MacroSeriesPrice.value)
-        .where(MacroSeriesPrice.series == series)
-        .order_by(MacroSeriesPrice.date)
-    )
-    return {row.date: row.value for row in result.all()}
-
-
 def _rolling_average(dates: list[date], values: list[float], window_years: float) -> list[float]:
     """Time-based (not point-count-based) rolling average — a fixed N-point window would be
     imprecise for "N years" once holidays/weekends/missing days create gaps. O(n) two-pointer
@@ -180,8 +153,8 @@ async def compute_ratio_indicator(
     to whichever series has the shorter history (e.g. a bond ETF's 2012+ start vs. an equity
     index's much longer history).
     """
-    numerator = await _get_series(db, numerator_series)
-    denominator = await _get_series(db, denominator_series)
+    numerator = await get_series(db, numerator_series)
+    denominator = await get_series(db, denominator_series)
     common_dates = sorted(set(numerator) & set(denominator))
     if not common_dates:
         return dict(_EMPTY_RATIO_INDICATOR)

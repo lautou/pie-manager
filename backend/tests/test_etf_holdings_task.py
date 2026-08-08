@@ -9,6 +9,8 @@ pattern in test_price_sync.py. Key invariants:
   4. assetProfile.sectorKey parsing for direct stocks; missing sectorKey is a failure.
   5. _run_etf_holdings_refresh orchestrates ETF + direct-stock fetches and writes both.
   6. refresh_etf_holdings (Celery task) writes running then final status to Redis.
+
+get_redis/write_status are tested once, generically, in test_sync_status.py.
 """
 
 import json
@@ -16,7 +18,6 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.tasks.etf_holdings import (
-    _get_redis,
     _get_yahoo_session_crumb,
     _parse_top_holdings,
     _parse_asset_profile_sector,
@@ -99,21 +100,6 @@ def _make_httpx_mock():
     mock_httpx.AsyncClient.return_value.__aenter__ = AsyncMock(return_value=mock_client_obj)
     mock_httpx.AsyncClient.return_value.__aexit__ = AsyncMock(return_value=False)
     return mock_httpx, mock_client_obj
-
-
-# ---------------------------------------------------------------------------
-# _get_redis
-# ---------------------------------------------------------------------------
-
-def test_get_redis_creates_client_from_broker_url():
-    """_get_redis() passes the broker URL to redis.Redis.from_url with decode_responses."""
-    mock_client = MagicMock()
-    with patch("redis.Redis.from_url", return_value=mock_client) as mock_from_url, \
-         patch("app.core.config.settings") as mock_settings:
-        mock_settings.celery_broker_url = "redis://localhost:6379/0"
-        result = _get_redis()
-    mock_from_url.assert_called_once_with("redis://localhost:6379/0", decode_responses=True)
-    assert result is mock_client
 
 
 # ---------------------------------------------------------------------------
@@ -438,7 +424,7 @@ def test_refresh_etf_holdings_writes_running_then_final_status():
             coro.close()
         return success_result
 
-    with patch("app.tasks.etf_holdings._get_redis", return_value=mock_r), \
+    with patch("app.tasks.etf_holdings.get_redis", return_value=mock_r), \
          patch("app.tasks.etf_holdings.asyncio.run", side_effect=_close_and_return):
         result = refresh_etf_holdings()
 
@@ -458,7 +444,7 @@ def test_refresh_etf_holdings_handles_exception_and_writes_failed():
             coro.close()
         raise RuntimeError("DB down")
 
-    with patch("app.tasks.etf_holdings._get_redis", return_value=mock_r), \
+    with patch("app.tasks.etf_holdings.get_redis", return_value=mock_r), \
          patch("app.tasks.etf_holdings.asyncio.run", side_effect=_raise_and_close):
         result = refresh_etf_holdings()
 

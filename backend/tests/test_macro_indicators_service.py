@@ -4,9 +4,7 @@ Non-regression tests for the macro indicators service (app/services/macro_indica
 from datetime import date
 
 import pytest
-from sqlalchemy import select
 
-from app.models.macro_indicator import MacroSeriesPrice
 from app.models.system_setting import SystemSetting
 from app.services.macro_indicators_service import (
     DEFAULT_MA_YEARS,
@@ -18,9 +16,9 @@ from app.services.macro_indicators_service import (
     delete_region,
     get_macro_settings,
     list_regions,
-    replace_series_prices,
     update_region,
 )
+from app.services.macro_series_price_service import replace_series_prices
 
 
 # ---------------------------------------------------------------------------
@@ -127,34 +125,6 @@ async def test_delete_region_rejects_last_remaining_region(db_session):
         await delete_region(db_session, "us")
     # Still there — the failed delete must not have removed it.
     assert [r.code for r in await list_regions(db_session)] == ["us"]
-
-
-# ---------------------------------------------------------------------------
-# replace_series_prices
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_replace_series_prices_empty_points_is_noop(db_session):
-    await replace_series_prices(db_session, "us_equity", [])
-    result = await db_session.execute(select(MacroSeriesPrice))
-    assert result.scalars().all() == []
-
-
-@pytest.mark.asyncio
-async def test_replace_series_prices_upserts_on_conflict(db_session):
-    await replace_series_prices(db_session, "us_equity", [(date(2020, 1, 1), 100.0), (date(2020, 1, 2), 200.0)])
-    await db_session.flush()
-
-    # Re-fetch with an updated value for one date and a new date for the other series call —
-    # must update the existing row in place, not duplicate it.
-    await replace_series_prices(db_session, "us_equity", [(date(2020, 1, 1), 111.0)])
-    await db_session.flush()
-
-    result = await db_session.execute(
-        select(MacroSeriesPrice).where(MacroSeriesPrice.series == "us_equity").order_by(MacroSeriesPrice.date)
-    )
-    rows = result.scalars().all()
-    assert [(r.date, r.value) for r in rows] == [(date(2020, 1, 1), 111.0), (date(2020, 1, 2), 200.0)]
 
 
 # ---------------------------------------------------------------------------

@@ -1376,6 +1376,15 @@ Once each of these two has run clean across a handful of real releases, remove i
 `continue-on-error: true` to make it a real release gate — don't leave it soft-failing forever
 just because it started that way.
 
+**Both jobs poll Quay.io before pulling — `publish-images.yml` fires off the same tag push with
+no ordering guarantee.** Confirmed live on the real v1.3.0 release: `test-linux-install` failed
+in 15s on "manifest unknown" and `test-windows-install` failed at the compose step, both well
+before `publish-images.yml` finished pushing 4 minutes later (issue #16). Each install-test job
+now has a "Wait for images to be published to Quay.io" step (polls the public
+`quay.io/api/v1/repository/.../tag/` endpoint, 10-minute timeout) before invoking the installer —
+chosen over reordering the two workflows via `workflow_run` (ref/context quirks) or merging them
+into one (bigger restructure for a timing bug).
+
 **`workflow_dispatch` lets this whole pipeline run on demand without creating a release.**
 `build` computes `VERSION` once — a real tag version on `push`; on a manual run, the
 **latest already-published release's version** instead of a made-up placeholder, since no

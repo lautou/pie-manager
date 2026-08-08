@@ -417,6 +417,28 @@ jobs:
           # match what this project's own detection logic actually prefers.
           pip install podman-compose
 
+      - name: Wait for images to be published to Quay.io
+        # build-installer.yml and publish-images.yml both trigger off the same
+        # tag push with no ordering between them (see issue #16) — the real
+        # install below reaches its "pull the app images" step well before
+        # publish-images.yml finishes pushing them. Poll the public Quay.io
+        # API for both tags first instead of racing it.
+        run: |
+          VERSION="${{ needs.build.outputs.version }}"
+          deadline=$((SECONDS + 600))
+          for img in pie-manager-backend pie-manager-frontend; do
+            echo "Waiting for quay.io/ltourreau/${img}:${VERSION} ..."
+            until curl -sf "https://quay.io/api/v1/repository/ltourreau/${img}/tag/?specificTag=${VERSION}&onlyActiveTags=true" \
+              | jq -e '.tags | length > 0' >/dev/null 2>&1; do
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                echo "::error::Timed out waiting for quay.io/ltourreau/${img}:${VERSION} to be published"
+                exit 1
+              fi
+              sleep 10
+            done
+            echo "Found quay.io/ltourreau/${img}:${VERSION}"
+          done
+
       - name: Run real install
         run: |
           VERSION="${{ needs.build.outputs.version }}"
@@ -463,6 +485,32 @@ jobs:
         uses: actions/download-artifact@v8.0.1   # node24-native
         with:
           name: pie-manager-windows-amd64
+
+      - name: Wait for images to be published to Quay.io
+        shell: pwsh
+        # Same race as the Linux job above (see issue #16) — poll before
+        # kicking off the scheduled task, since the actual "podman compose up
+        # -d" pull happens deep inside the installer binary where we can't
+        # inject a wait directly.
+        run: |
+          $version = "${{ needs.build.outputs.version }}"
+          $deadline = (Get-Date).AddMinutes(10)
+          foreach ($img in @('pie-manager-backend', 'pie-manager-frontend')) {
+            Write-Host "Waiting for quay.io/ltourreau/${img}:${version} ..."
+            $found = $false
+            while ((Get-Date) -lt $deadline) {
+              try {
+                $resp = Invoke-RestMethod -Uri "https://quay.io/api/v1/repository/ltourreau/${img}/tag/?specificTag=${version}&onlyActiveTags=true"
+                if ($resp.tags.Count -gt 0) { $found = $true; break }
+              } catch {}
+              Start-Sleep -Seconds 10
+            }
+            if (-not $found) {
+              Write-Host "::error::Timed out waiting for quay.io/ltourreau/${img}:${version} to be published"
+              exit 1
+            }
+            Write-Host "Found quay.io/ltourreau/${img}:${version}"
+          }
 
       - name: Run real install
         shell: pwsh

@@ -48,10 +48,12 @@ frontend/coverage/
 installer/assets/compose-prod.yaml
 installer/assets/pie-manager.desktop
 installer/assets/pie-manager.svg
+installer/assets/pie-manager-macos-info.plist
 installer-prereq/assets/compose-prod.yaml
 # Binaires générés
 installer/pie-manager-linux-amd64
 installer/pie-manager-windows-amd64.exe
+installer/pie-manager-darwin-arm64
 installer/installer
 installer/signed/
 installer/assets/launcher.exe

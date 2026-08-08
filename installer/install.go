@@ -178,38 +178,6 @@ func runInstall() {
 	fmt.Println("  Launch via the GNOME icon or: pie-manager start")
 }
 
-func readInstalledVersion(target string) string {
-	data, err := os.ReadFile(filepath.Join(target, "VERSION"))
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(data))
-}
-
-func detectComposeCmd() string {
-	if _, err := exec.LookPath("podman-compose"); err == nil {
-		return "podman-compose"
-	}
-	return "podman compose"
-}
-
-func forceRecreate(composeCmd, composePath string) {
-	dir := filepath.Dir(composePath)
-	parts := strings.Fields(composeCmd)
-
-	down := exec.Command(parts[0], append(parts[1:], "-f", composePath, "down", "--remove-orphans")...)
-	down.Dir = dir
-	down.Stdout = io.Discard
-	down.Stderr = io.Discard
-	down.Run() //nolint:errcheck
-
-	up := exec.Command(parts[0], append(parts[1:], "-f", composePath, "up", "-d")...)
-	up.Dir = dir
-	up.Stdout = io.Discard
-	up.Stderr = os.Stderr
-	up.Run() //nolint:errcheck
-}
-
 // deployWrapper writes wrapper.py if WebKitGTK is available. Returns true on success.
 func deployWrapper(target string) bool {
 	check := exec.Command("python3", "-c",
@@ -254,17 +222,3 @@ func installDesktopAndIcon(home, target string, _ bool) {
 	exec.Command("gtk-update-icon-cache", "-f", filepath.Join(home, ".local/share/icons/hicolor")).Run()
 }
 
-func copyFile(src, dst string, perm os.FileMode) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	_, err = io.Copy(out, in)
-	return err
-}

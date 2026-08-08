@@ -46,7 +46,10 @@ untestable bucket just because their caller lives in `main_windows.go`.
 
 **Intentionally untestable:** `runInstall`, `runStartWithCompose`, `forceRecreate`,
 `notify`, `podmanImageExists`, `focusExistingWindow`, `openBrowser`,
-all functions in `main_windows.go`. These exec external programs (Podman, browser,
+all functions in `main_windows.go`, and all functions in `install_darwin.go`/
+`start_darwin.go`/`main_darwin.go` (Podman `.pkg` install, Podman Machine setup,
+`launchd` agent, `.app` bundle writing — same class of system-interaction code as
+`main_windows.go`). These exec external programs (Podman, browser,
 OS notifications, Windows API) and require integration-level testing. They are covered
 by the CI smoke test (`go build + ./pie-manager version`). Overall installer coverage is
 necessarily low (check `go test ./... -cover` for the current figure) — expected and
@@ -57,6 +60,7 @@ acceptable for a system-interaction binary.
 - `main.go` — Linux CLI dispatcher (`//go:build linux`)
 - `main_windows.go` — Windows full installer (`//go:build windows`)
 - `install.go`, `start.go`, `install_test.go` — Linux only (`//go:build linux`)
+- `main_darwin.go`, `install_darwin.go`, `start_darwin.go` — macOS full installer (`//go:build darwin`)
 - `launcher/` — separate Go module, builds `launcher.exe` (Windows WebView2 native launcher)
 - `testing/` — reproducible scripts to recreate the win11 libvirt/QEMU test VM from scratch on
   a fresh Fedora host (not part of the shipped product; see its own `README.md`)
@@ -871,13 +875,23 @@ the Authenticode signature. The Firewall prompt shows "Éditeur: Inconnu" regard
 signing, because it reads the `CompanyName`/`ProductName` fields from the binary's embedded
 VERSIONINFO resource, separate from the manifest/icon. Fixed: `installer/winres/winres.json`
 (go-winres, same tool/format as `installer/launcher/winres/winres.json`) regenerates
-`installer/main.syso` with those fields populated — regenerate via
-`go run github.com/tc-hib/go-winres@latest make --in winres/winres.json --out main --arch amd64`,
-then rename the resulting `main_windows_amd64.syso` to `main.syso` (`--no-suffix` strips the
-`.syso` extension entirely rather than just the arch suffix, which Go's build silently won't
-pick up — confirmed live, don't use that flag here). Avoid non-ASCII characters (em dash, `—`)
-in any winres.json text field — one silently killed RT_VERSION generation entirely (RT_MANIFEST
-still worked) with no error from the tool, confirmed by regenerating without it.
+`installer/main_windows_amd64.syso` with those fields populated — regenerate via
+`go run github.com/tc-hib/go-winres@latest make --in winres/winres.json --out main --arch amd64`
+(the tool's default output naming, `main_windows_amd64.syso`, is exactly the file Go's build
+expects — keep it, don't rename it to a bare `main.syso`). Avoid non-ASCII characters (em dash,
+`—`) in any winres.json text field — one silently killed RT_VERSION generation entirely
+(RT_MANIFEST still worked) with no error from the tool, confirmed by regenerating without it.
+
+**Correction (2026-07):** the file was previously renamed to a bare `main.syso` in the mistaken
+belief that Go wouldn't pick up the properly `_windows_amd64`-suffixed name — that belief was
+never actually re-verified and turned out to be wrong. A bare, unsuffixed `.syso` has no
+OS/ARCH scoping at all, so Go links it into **every** build target unconditionally, not just
+Windows; this only surfaced as a real problem once a `darwin/arm64` build target was added
+(`GOOS=darwin GOARCH=arm64 go build` failed with `unknown ARM64 relocation type 3`, since the
+file is a Windows PE-COFF object). Verified empirically (byte-diffed the two resulting Windows
+binaries, identical except Go's own build-ID cache string) that renaming back to
+`main_windows_amd64.syso` produces the exact same signed Windows binary while fixing every
+other platform. Never go back to a bare `main.syso`.
 
 ### Installed files (Linux)
 ```
@@ -893,6 +907,14 @@ still worked) with no error from the tool, confirmed by regenerating without it.
 %APPDATA%\pie-manager\   compose-prod.yaml, haproxy.cfg, .env, VERSION
 %APPDATA%\pie-manager\   launcher.exe, start-podman.vbs
 Start Menu\Programs\     PIE Manager.lnk  (→ launcher.exe)
+```
+
+### Installed files (macOS)
+```
+~/Library/Application Support/PieManager/   compose-prod.yaml, haproxy.cfg, .env, pie-manager (binary), VERSION
+~/Library/LaunchAgents/                     com.pie-manager.podman-start.plist
+~/Applications/                             PIE Manager.app  (Contents/MacOS/pie-manager-launcher)
+~/.local/bin/                               pie-manager (symlink)
 ```
 
 ### Windows installation architecture
@@ -1082,6 +1104,215 @@ then falls back to checking whether `wrapper.py` is in the process list via `pgr
 
 The desktop entry (`Exec=<install-dir>/pie-manager start`) always invokes `pie-manager start`,
 which handles the case where containers have stopped after a reboot.
+
+## macOS installation architecture
+
+**Apple Silicon (arm64) only — no Intel/amd64 build.** Apple Silicon is now the dominant Mac
+architecture and the only one with a future: macOS 27 "Golden Gate" (Sept 2026) drops Intel
+support entirely, and GitHub's own `macos-latest` Actions runner already defaults to arm64.
+Building an amd64 binary too would cost nothing at compile time (Go cross-compiles both from
+the same source) but there is no way to *test* it — see below — so it's simply not built.
+
+**Target macOS version: 14 Sonoma minimum, 15 Sequoia recommended.** The installer doesn't
+pass a `--provider` flag to `podman machine init`, so it relies on whatever Podman's own
+current default is for macOS — **`libkrun`, not `applehv`** (verified against
+docs.podman.io: `libkrun` is the starred/default provider for macOS in current Podman
+releases; `applehv` is only the alternative — correcting an earlier wrong claim in this
+file). Either provider requires macOS 13 Ventura at minimum — but Ventura is already EOL (no
+security patches since Aug 2025), so Sonoma (still patched) is the documented floor instead.
+No runtime OS-version check exists in
+the installer itself; like Linux/Windows, it lets Podman fail with its own error on an
+unsupported OS.
+
+**No local test VM — testing happens exclusively on GitHub Actions' real Apple Silicon
+runners (`macos-26`).** Unlike Windows (tested via a local libvirt/QEMU VM, see
+`installer/testing/`), Apple Silicon macOS **cannot be virtualized on x86_64 hardware by any
+known method** — KVM only accelerates matching host/guest architectures, and arm64 macOS is
+hardware-locked to Apple Silicon SoC features (Secure Enclave, custom boot chain) with no
+non-Apple equivalent. The OSX-KVM/Hackintosh community tooling only ever supports x86_64
+macOS on x86_64 hosts, which is irrelevant now that amd64 is out of scope. `test-macos` in
+`build-installer.yml` runs the release smoke test on genuine Apple Silicon hardware instead —
+arguably better coverage than a VM would give anyway.
+
+**No code signing or notarization — the binary is unsigned, exactly like the Windows
+SmartScreen situation.** Real macOS code signing + notarization requires a paid Apple
+Developer Program account ($99/year), which this project doesn't have. macOS Gatekeeper
+blocks first launch of an unsigned/unnotarized binary ("cannot be opened" / "is damaged") —
+the documented fix is `xattr -d com.apple.quarantine <binary>` (the GUI right-click bypass
+does not apply to a plain CLI binary, and became unreliable on macOS Tahoe anyway). No
+`osslsigncode`-equivalent tool exists for Apple's signing format, so unlike Windows there's
+nothing to automate here — see README's "Sécurité et signature de code" for the user-facing
+framing.
+
+**Podman itself is auto-installed via its own official `.pkg`, not Homebrew.** Homebrew was
+considered and rejected as the bootstrap mechanism: installing Homebrew itself requires Xcode
+Command Line Tools, whose install pops up an interactive GUI dialog with no reliable silent
+mode — unlike Windows's winget/DISM, which are fully scriptable. Instead,
+`installPodmanFromGitHub()` in `install_darwin.go` reuses the exact same "official package
+straight from GitHub, not a third-party package manager" pattern already used for WSL2/winget
+on Windows (`githubLatestAssetURL`/`downloadFile` from `common.go`): downloads
+`podman-installer-macos-arm64.pkg` from `containers/podman`'s latest release, then
+`sudo installer -pkg ... -target /` (macOS's native package-install CLI, no GUI). Podman's own
+docs recommend this `.pkg` over Homebrew anyway ("community-maintained, we cannot guarantee
+stability"). `sudo`'s password prompt reads from the installer's own `Stdin`/`Stdout`/`Stderr`
+(connected through, not discarded) since it's expected to run interactively from a Terminal —
+exactly like Linux's `dnf install` message assumes a Terminal, just one step more automated.
+Only handles a **fresh** install (`podman` absent from PATH) — re-running the `.pkg` to
+*upgrade* an already-installed Podman is a documented fragile path upstream
+(`podman-mac-helper` conflicts, requires manually uninstalling the old helper first), so
+upgrades are left to the user/Homebrew, not this installer.
+
+**Right after a fresh `.pkg` install, `podman` is still not on `PATH` for the current
+process.** The `.pkg` registers its install directory via `/etc/paths.d/` for *future login
+shells* only — confirmed live in CI: `podman machine init` failed with "executable file not
+found in $PATH" immediately after "The install was successful." `refreshPathForPodman()`
+reads that same `/etc/paths.d/` entry and prepends it to the current process's `PATH` before
+continuing, rather than hardcoding the `.pkg`'s install directory. Also,
+`githubLatestAssetURL` (`common.go`, used here and by Windows's WSL2/winget fallback) now
+passes `GITHUB_TOKEN`/`GH_TOKEN` as a bearer token when present in the environment — shared
+GitHub Actions runner IPs can already be near the unauthenticated GitHub API's 60/hour limit
+(confirmed live: a real 403), while a real end user's install never has this env var set.
+
+**Podman Machine setup itself does port over from Windows, since Podman Machine's own guest
+OS (Fedora CoreOS) is identical on both platforms.** `ensurePodmanMachine()` in
+`install_darwin.go`/`start_darwin.go` mirrors Windows's init/start logic (`podman machine
+list --format json`, parse `Running`), and `configurePodmanRestartService()` reuses the exact
+same `podman machine ssh` compound-command pattern as Windows (see Windows gotchas above for
+why the whole `&&`-chained command must be the sole trailing argument, never split as
+separate `"bash","-c",cmd` arguments — the same footgun applies identically here).
+
+**Auto-start at login uses a `launchd` LaunchAgent, not Task Scheduler.**
+`~/Library/LaunchAgents/com.pie-manager.podman-start.plist` (`RunAtLoad`) runs `podman machine
+start` at login — the direct functional equivalent of Windows's Scheduled Task +
+`start-podman.vbs`, loaded/unloaded via `launchctl load`/`unload`.
+
+**No native WebView launcher for v1 — `open <url>` (default browser), matching Linux's own
+fallback path.** Windows's `launcher.exe` uses `go-webview2`, a cgo-free binding to the
+pre-installed WebView2 runtime. No equivalent cgo-free WebKit binding exists for Go on macOS;
+the community `webview/webview` binding needs cgo, which would break `CGO_ENABLED=0`
+cross-compilation from Linux CI (cgo cross-compiling to Darwin needs a macOS SDK/clang
+cross-toolchain, not just `GOOS`/`GOARCH` env vars). Revisit only if a native window shell is
+specifically wanted later — `open <url>` is a legitimate, low-maintenance v1 experience.
+
+**The `/Applications` shortcut is a minimal hand-built `.app` bundle, not a compiled GUI.**
+`installAppBundle()` writes `~/Applications/PIE Manager.app/Contents/{Info.plist,MacOS/
+pie-manager-launcher}` — a static `Info.plist` (embedded from `packaging/
+pie-manager-macos-info.plist`, `__VERSION__` substituted at install time, same pattern as
+Linux's `.desktop` `Exec=` substitution) plus a one-line shell script that just runs
+`pie-manager start`. No compiled Swift/ObjC, no icon (no `.icns` — Finder shows the generic
+app icon; skipped to avoid needing macOS-only icon-conversion tooling `iconutil` in a
+Linux-only CI pipeline), no code signing needed for it to be double-clickable. `LSUIElement:
+true` in the plist intentionally suppresses the Dock bounce/menu bar flash, since the bundle's
+process is fire-and-forget (starts services, opens the browser, exits) rather than a
+persistent app with a window.
+
+**Install location:** `~/Library/Application Support/PieManager` — macOS's own idiomatic
+per-user app-data convention, playing the same role as Linux's `~/.local/share/pie-manager`.
+
+**Shared refactor enabling this:** `readInstalledVersion`, `detectComposeCmd`,
+`podmanImageExists`, `updateEnvPort`, `forceRecreate`, and `copyFile` were moved from
+`install.go`/`start.go` (previously `//go:build linux`-scoped) into `common.go` (no build
+tag) — these six functions are pure `os`/`os/exec`/`path/filepath` calls with no Linux-specific
+behavior, so `install_darwin.go`/`start_darwin.go` reuse them directly instead of duplicating
+them, the same way `main_windows.go` does *not* reuse them (Windows's flow genuinely differs
+enough — WSL2, winget, reboot handling — that duplication there is warranted; macOS's flow is
+close enough to Linux's that sharing is the better call).
+
+## Full install-flow CI testing (all 3 platforms)
+
+`build-installer.yml` runs a **real `install` invocation** (Podman setup, Podman Machine/
+native start, image pull, compose up, health-check poll) on all 3 platforms at release time —
+not just a cross-compile check or a `version` smoke test. This only exists because the repo is
+**public**: standard GitHub-hosted runner minutes (Linux, Windows, *and* macOS alike) are free
+and uncapped on public repos regardless of the 2x/10x-vs-Linux multiplier that applies to
+private-repo paid quotas — the only real cost is wall-clock time, not money.
+
+**Gated by `detect-installer-changes`, not run on every release.** A full install test is
+expensive relative to a routine backend/frontend-only release where the installer's own code
+provably didn't move. That job diffs `installer/`, `packaging/`, `compose-prod.yaml`, and the
+two workflow files themselves against the *previous* release tag (`git describe --tags
+--abbrev=0 "${GITHUB_REF_NAME}~1"`); no previous tag (first-ever release) defaults to "changed"
+rather than silently skipping. If none of those paths moved, all 3 full-install jobs are
+skipped — the cheap cross-compile checks (`ci.yml`) and the Linux/macOS `version` smoke tests
+still always run regardless.
+
+**Linux runs on `ubuntu-latest`, deliberately not a Fedora-flavored environment**, even though
+Fedora is this project's actual reference distro. GitHub has no Fedora-hosted runner; running
+Fedora-in-a-container would need privileged nested-Podman setup (Podman managing its own
+containers from inside a container) for little real benefit — `install.go`/`start.go` have no
+Fedora-specific logic beyond the `dnf install` error message text, and the actual Podman/
+compose behavior under test is distro-agnostic. The one genuinely Fedora-specific thing this
+project has (the `:z` SELinux volume flag in `compose-prod.yaml`) is inert on Ubuntu, not a
+divergent code path — same file, same behavior either way.
+
+**`test-macos` never attempts a full `install` run — deliberately, permanently.** GitHub's own
+docs state nested virtualization is unsupported on GitHub-hosted macOS runners (Intel or
+Apple Silicon alike): ["Nested-virtualization is not supported due to the limitation of
+Apple's Virtualization
+Framework"](https://docs.github.com/en/actions/reference/runners/github-hosted-runners), also
+tracked as open, unresolved feature requests
+([actions/runner-images#9460](https://github.com/actions/runner-images/issues/9460),
+[#13505](https://github.com/actions/runner-images/issues/13505)). Podman Machine's `podman
+machine start` needs exactly that (krunkit/Hypervisor.framework) — confirmed live, every
+time: `Error: krunkit exited unexpectedly with exit code 1` /
+`podman machine start: exit status 125`, right after Podman itself installed and `machine
+init` succeeded. This is a **permanent platform limitation, not a flakiness problem to
+iterate on** — do not re-add a full-install step to `test-macos` expecting a future fix to
+make it pass; `continue-on-error` would only hide a test that can never succeed. The `version`
+smoke test is the full extent of macOS CI coverage; a genuine full-install validation needs
+the user's own Apple Silicon Mac.
+
+**Windows and Linux are `continue-on-error: true` — informational, not release gates, until
+proven reliable across a few real releases:**
+- **`test-windows-install`**: nested virtualization for WSL2 (in turn needed for Podman
+  Machine) has been confirmed working on GitHub's `windows-latest` runners by the community
+  since the Dadsv5 hardware migration (Jan 2024) — but this is **not officially documented or
+  guaranteed** by GitHub. **The installer's embedded `execution-level: administrator` manifest
+  (see "Windows executable code signing" above) hung the job indefinitely the first two times
+  this was tested** (confirmed live: 45+ minutes, zero progress, twice) — PowerShell's
+  `Start-Process` launches an exe via ShellExecute, which honors that manifest by popping the
+  interactive UAC consent dialog, and nobody is present to click it on a headless runner. Fix:
+  run the installer through a Scheduled Task (`New-ScheduledTaskPrincipal -RunLevel Highest`)
+  instead of `Start-Process` — Task Scheduler's own silent-elevation mechanism bypasses the
+  interactive consent dialog entirely, without weakening the shipped manifest or a real end
+  user's UAC prompt in any way. **A second, distinct hang surfaced right after this fix**: the
+  install log showed every real step (WSL2/Podman/Docker Compose, `podman compose up -d`,
+  shortcuts) succeed within ~3 minutes, yet the Scheduled Task still reported `Running` a full
+  10 minutes later — `popupYesNo`'s final "Voulez-vous lancer maintenant ?" `MessageBox.Show`
+  blocks forever with nobody to click it. Fixed at the source in `popup()`/`popupYesNo()`
+  (`main_windows.go`): both skip the interactive dialog and log instead when `CI` is set in
+  the environment (GitHub Actions, and virtually every other CI provider, sets `CI=true`) —
+  never set on a real end user's machine, so their experience is unchanged. **Third hang, same
+  symptom, after that fix**: a Scheduled Task does not inherit the calling PowerShell step's
+  own process environment — Task Scheduler builds a fresh environment block for the target
+  user from machine/user-scoped variables, not the caller's transient `env:` block — so
+  `os.Getenv("CI")` still saw nothing and the popup still blocked. Fixed by persisting it with
+  `[Environment]::SetEnvironmentVariable('CI', 'true', 'Machine')` in the workflow step
+  *before* registering the task, harmless since this runner VM is destroyed right after.
+- **`test-linux-install`**: lower risk (no elevation dance, no nested hypervisor), but new and
+  unproven — kept `continue-on-error` for the same reason, tighten once stable. The job
+  installs `podman-compose` explicitly (`pip install podman-compose`, matching `ci.yml`'s own
+  compose-syntax step) — without it, `detectComposeCmd()` falls back to the `podman compose`
+  subcommand, which on this runner image auto-delegates to Docker's pre-installed compose CLI
+  plugin instead of using Podman's own compose implementation, and that plugin can't reach a
+  Docker daemon (confirmed live). A real end-user machine without Docker installed alongside
+  Podman wouldn't hit this.
+
+Once each of these two has run clean across a handful of real releases, remove its
+`continue-on-error: true` to make it a real release gate — don't leave it soft-failing forever
+just because it started that way.
+
+**`workflow_dispatch` lets this whole pipeline run on demand without creating a release.**
+`build` computes `VERSION` once — a real tag version on `push`; on a manual run, the
+**latest already-published release's version** instead of a made-up placeholder, since no
+container image exists on Quay.io for a version nobody ever published (confirmed live:
+`podman pull` failing with "manifest unknown" for a first attempt at a synthetic
+`0.0.0-dispatch-<sha>` version) — and exposes it as a job output so every downstream job reads
+the same value instead of re-deriving it from `GITHUB_REF_NAME` (a branch name on manual runs,
+which can contain `/` and would break filenames built from it). The "Create GitHub Release"
+and "Delete obsolete releases" steps are both gated `if: github.event_name == 'push'` — a
+manual dispatch builds and installer-tests all 3 platforms but never touches GitHub Releases
+or Quay.io.
 
 ## React pattern to avoid — setState with unmodified new array ref
 
@@ -1311,7 +1542,23 @@ directly (e.g. `SyncBadge.test.tsx`, `RefreshBanner.test.tsx`).
 
 ### GitHub Actions annotations
 Actions targeting Node.js 24 natively: `checkout@v6.0.2`, `setup-node@v6.4.0`, `setup-python@v6.2.0`,
-`upload-artifact@v7.0.1`.
+`upload-artifact@v7.0.1`, `download-artifact@v8.0.1` (the Node 24 switch landed in v7 — v6 still
+warns "forced to run on Node.js 24" despite being pinned).
+
+### Never chain more than 2 commands with `&&` in a workflow `run:` block
+
+Under GitHub Actions' default `set -e`, a failing command that is **not the last** member of
+an AND-OR list (`cmd1 && cmd2 && cmd3`) is silently exempt from triggering errexit (POSIX
+rule) — the step reports success even though `cmd1`/`cmd2` genuinely failed. Confirmed live:
+`cd installer && go mod tidy && go vet ./... && go test ./... && CGO_ENABLED=0 go build ./...`
+in `ci.yml` let a real `go test` **failure** (`FAIL`, non-zero exit) print to the log while the
+step still reported success — this exact line had been in CI since early in the project,
+meaning a real installer test failure could have gone unnoticed the whole time. Fix: put each
+command on its own line (a bare simple command IS correctly caught by `set -e`) instead of
+chaining with `&&`. A 2-command chain where only the trailing command's failure matters
+(`sudo apt-get update && sudo apt-get install -y X`, tolerating a stale-but-working package
+cache) is fine to leave as-is — the risk is specifically chains of 3+ commands, or any chain
+where a *non-final* command's failure is the one that actually needs to fail the step.
 
 ### GitHub Actions artifact quota
 Image artifacts (500 MB × N tags) accumulate quickly against the GitHub quota.

@@ -8,7 +8,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -47,6 +49,75 @@ func readAppPort(target string) int {
 	return defaultPort
 }
 
+// updateEnvPort rewrites APP_PORT in the install dir's .env file.
+func updateEnvPort(target string, port int) {
+	path := filepath.Join(target, ".env")
+	data, _ := os.ReadFile(path)
+	re := regexp.MustCompile(`(?m)^APP_PORT=.*$`)
+	updated := re.ReplaceAllString(string(data), fmt.Sprintf("APP_PORT=%d", port))
+	if !strings.Contains(updated, "APP_PORT=") {
+		updated += fmt.Sprintf("\nAPP_PORT=%d\n", port)
+	}
+	os.WriteFile(path, []byte(updated), 0644) //nolint:errcheck
+}
+
+// readInstalledVersion reads the VERSION file from a previous install, if any.
+func readInstalledVersion(target string) string {
+	data, err := os.ReadFile(filepath.Join(target, "VERSION"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// detectComposeCmd prefers a standalone podman-compose binary, falling back
+// to the podman compose subcommand.
+func detectComposeCmd() string {
+	if _, err := exec.LookPath("podman-compose"); err == nil {
+		return "podman-compose"
+	}
+	return "podman compose"
+}
+
+// podmanImageExists reports whether image is already present locally.
+func podmanImageExists(image string) bool {
+	return exec.Command("podman", "image", "exists", image).Run() == nil
+}
+
+// forceRecreate brings the compose stack down then up, discarding output.
+func forceRecreate(composeCmd, composePath string) {
+	dir := filepath.Dir(composePath)
+	parts := strings.Fields(composeCmd)
+
+	down := exec.Command(parts[0], append(parts[1:], "-f", composePath, "down", "--remove-orphans")...)
+	down.Dir = dir
+	down.Stdout = io.Discard
+	down.Stderr = io.Discard
+	down.Run() //nolint:errcheck
+
+	up := exec.Command(parts[0], append(parts[1:], "-f", composePath, "up", "-d")...)
+	up.Dir = dir
+	up.Stdout = io.Discard
+	up.Stderr = os.Stderr
+	up.Run() //nolint:errcheck
+}
+
+// copyFile copies src to dst, creating/truncating dst with the given permissions.
+func copyFile(src, dst string, perm os.FileMode) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, in)
+	return err
+}
+
 // githubAPIBase is the GitHub API base URL — overridable in tests to point
 // at an httptest.Server instead of the real GitHub API.
 var githubAPIBase = "https://api.github.com"
@@ -66,7 +137,21 @@ type githubRelease struct {
 // version-specific filename that changes on every release.
 func githubLatestAssetURL(repo, suffix string) (string, error) {
 	url := fmt.Sprintf("%s/repos/%s/releases/latest", githubAPIBase, repo)
-	resp, err := http.Get(url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("building request for %s: %w", repo, err)
+	}
+	// GitHub's API rate-limits unauthenticated requests to 60/hour per IP —
+	// shared GitHub Actions runner IPs can already be near that limit
+	// (confirmed live: a real 403 testing this installer in CI). A real end
+	// user's own installer run never has this env var set, so this is a
+	// no-op outside CI; inside CI it lifts the limit to 5000/hour.
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	} else if token := os.Getenv("GH_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("fetching latest release for %s: %w", repo, err)
 	}

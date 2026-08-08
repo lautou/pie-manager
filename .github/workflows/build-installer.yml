@@ -2,14 +2,77 @@ name: Build Installer
 on:
   push:
     tags: ['v*.*.*']
+  workflow_dispatch:
 
 jobs:
+  detect-installer-changes:
+    # Full install-flow testing (below) is expensive relative to a routine
+    # backend/frontend release — it only needs to re-run when the installer's
+    # own risk surface actually moved. Compares against the previous release
+    # tag; no previous tag (first-ever release) is treated as "changed" (safe
+    # default — run the full tests rather than silently skip them).
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Check if installer-relevant paths changed since the previous release
+        id: diff
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}~1" 2>/dev/null || echo "")
+          PATHS="installer/ packaging/ compose-prod.yaml .github/workflows/build-installer.yml .github/workflows/ci.yml"
+          if [ -z "$PREV_TAG" ]; then
+            echo "No previous release tag found — treating as changed."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$PREV_TAG"..HEAD -- $PATHS; then
+            echo "No installer-relevant changes since $PREV_TAG — full install tests will be skipped."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Installer-relevant changes found since $PREV_TAG."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v6.0.2
+
+      - name: Determine version
+        # On a tag push, VERSION is the real release version. On a manual
+        # workflow_dispatch run (used to test the full install flow — incl.
+        # real Apple Silicon hardware — without creating a release, see
+        # CLAUDE.md), there's no tag to derive a version from — and no
+        # made-up dev version has a matching image on Quay.io, since images
+        # are only ever pushed by publish-images.yml at real release time.
+        # Confirmed live: a fake "0.0.0-dispatch-<sha>" version made every
+        # install job fail on "podman pull ... manifest unknown". Reuse the
+        # latest already-published release's version instead, so the
+        # install-flow test pulls real, existing images. Exported once via
+        # GITHUB_OUTPUT so every downstream job reads the same value instead
+        # of re-deriving it.
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            LATEST_TAG=$(gh release view --json tagName -q .tagName --repo "${{ github.repository }}")
+            if [ -z "$LATEST_TAG" ]; then
+              echo "::error::No published release found — workflow_dispatch install testing needs at least one existing release to pull images from."
+              exit 1
+            fi
+            VERSION="${LATEST_TAG#v}"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-go@v6.4.0
         with:
@@ -35,6 +98,7 @@ jobs:
           cp compose-prod.yaml installer/launcher/assets/
           cp packaging/pie-manager.desktop installer/assets/
           cp packaging/pie-manager.svg installer/assets/
+          cp packaging/pie-manager-macos-info.plist installer/assets/
           # haproxy.cfg, pie-manager.ico are version-controlled in installer/assets/
           # haproxy.cfg, pie-manager.ico are version-controlled in installer/launcher/assets/
 
@@ -43,7 +107,6 @@ jobs:
 
       - name: Build launcher.exe (embedded in Windows installer)
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
           cd installer/launcher
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
             -ldflags="-H windowsgui -s -w -X main.Version=${VERSION}" \
@@ -68,33 +131,64 @@ jobs:
       - name: go vet (Windows)
         run: cd installer && GOOS=windows GOARCH=amd64 go vet ./...
 
+      - name: go vet (macOS)
+        run: cd installer && GOOS=darwin GOARCH=arm64 go vet ./...
+
       - name: go test (Linux — pure utility functions)
         run: cd installer && go test ./...
 
       - name: Build static binaries
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
           cd installer
 
-          # Linux installer
+          # The three builds are independent (different GOOS/GOARCH, different
+          # output files) — Go's build/module cache is safe for concurrent
+          # access, so run them in parallel rather than one after another.
+          #
+          # Each build's own output (including any compiler error) is captured
+          # to its own log file instead of interleaving on stdout — with 3
+          # concurrent processes, interleaved output is genuinely hard to read.
+          # Every `wait` is checked explicitly (not left to `set -e` on the
+          # first one) so that if two builds break at once, this run reports
+          # BOTH failures instead of hiding the second behind the first.
+
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
             -ldflags="-s -w -X main.Version=${VERSION}" \
-            -o "pie-manager-linux-amd64-${VERSION}" .
+            -o "pie-manager-linux-amd64-${VERSION}" . >/tmp/build-linux.log 2>&1 &
+          pid_linux=$!
 
-          # Windows installer (prereq + containers)
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
             -ldflags="-s -w -X main.Version=${VERSION}" \
-            -o "pie-manager-windows-amd64-${VERSION}.exe" .
+            -o "pie-manager-windows-amd64-${VERSION}.exe" . >/tmp/build-windows.log 2>&1 &
+          pid_windows=$!
+
+          # macOS installer (Apple Silicon only — see CLAUDE.md's "macOS installation
+          # architecture" section for why amd64/Intel isn't built)
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build \
+            -ldflags="-s -w -X main.Version=${VERSION}" \
+            -o "pie-manager-darwin-arm64-${VERSION}" . >/tmp/build-darwin.log 2>&1 &
+          pid_darwin=$!
+
+          fail=0
+          for entry in "$pid_linux:Linux:linux" "$pid_windows:Windows:windows" "$pid_darwin:macOS:darwin"; do
+            pid="${entry%%:*}"; rest="${entry#*:}"; label="${rest%%:*}"; logname="${rest#*:}"
+            if ! wait "$pid"; then
+              echo "::error::${label} installer build failed"
+              cat "/tmp/build-${logname}.log"
+              fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ]
 
           # Generic aliases
           cp "pie-manager-linux-amd64-${VERSION}" pie-manager-linux-amd64
           cp "pie-manager-windows-amd64-${VERSION}.exe" pie-manager-windows-amd64.exe
+          cp "pie-manager-darwin-arm64-${VERSION}" pie-manager-darwin-arm64
 
       - name: Sign Windows installer executable
         env:
           PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
           cd installer
           osslsigncode sign -pkcs12 "$RUNNER_TEMP/codesign.pfx" -pass "$PFX_PASSWORD" \
             -h sha256 -n "PIE Manager" -i "${{ github.server_url }}/${{ github.repository }}" \
@@ -108,19 +202,42 @@ jobs:
 
       - name: Smoke test — Linux binary executes
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
           chmod +x "installer/pie-manager-linux-amd64-${VERSION}"
           output=$("./installer/pie-manager-linux-amd64-${VERSION}" version)
           echo "Version: $output"
           [ "$output" = "${VERSION}" ] || (echo "ERROR: expected ${VERSION}, got $output" && exit 1)
 
+      - name: Upload binaries for real-hardware install testing
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: pie-manager-darwin-arm64
+          path: installer/pie-manager-darwin-arm64-*
+          retention-days: 1
+
+      - name: Upload Linux binary for real-install testing
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: pie-manager-linux-amd64
+          path: installer/pie-manager-linux-amd64-*
+          retention-days: 1
+
+      - name: Upload Windows binary for real-install testing
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: pie-manager-windows-amd64
+          path: installer/pie-manager-windows-amd64-*.exe
+          retention-days: 1
+
       - name: Create GitHub Release and upload binaries
+        # Never runs on a manual workflow_dispatch test run — only a real tag
+        # push should ever create/publish a GitHub release.
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="${GITHUB_REF_NAME}"
-          VER="${GITHUB_REF_NAME#v}"
-          NOTES="## PIE Manager ${VERSION}
+          TAG="${GITHUB_REF_NAME}"
+          VER="${VERSION}"
+          NOTES="## PIE Manager ${TAG}
 
           ### Linux installation (x86_64)
           \`\`\`bash
@@ -133,24 +250,39 @@ jobs:
           Download \`pie-manager-windows-amd64-${VER}.exe\` and run it as Administrator.
           Sets up WSL2, Podman, Docker Compose, and starts all containers automatically.
 
+          ### macOS installation (Apple Silicon)
+          \`\`\`bash
+          curl -LO https://github.com/${{ github.repository }}/releases/latest/download/pie-manager-darwin-arm64
+          chmod +x pie-manager-darwin-arm64
+          xattr -d com.apple.quarantine pie-manager-darwin-arm64
+          ./pie-manager-darwin-arm64
+          \`\`\`
+          The binary is unsigned (no Apple Developer certificate) — the \`xattr\` step above is
+          required once, or Gatekeeper will refuse to run it. Requires macOS 14 Sonoma or later.
+
           ### Update
           Re-download and run again — fully idempotent."
 
-          gh release create "${VERSION}" \
+          gh release create "${TAG}" \
             --repo ${{ github.repository }} \
-            --title "PIE Manager ${VERSION}" \
+            --title "PIE Manager ${TAG}" \
             --notes "${NOTES}" \
             2>/dev/null || true
 
-          gh release upload "${VERSION}" \
+          gh release upload "${TAG}" \
             "installer/pie-manager-linux-amd64-${VER}" \
             "installer/pie-manager-windows-amd64-${VER}.exe" \
+            "installer/pie-manager-darwin-arm64-${VER}" \
             installer/pie-manager-linux-amd64 \
             installer/pie-manager-windows-amd64.exe \
+            installer/pie-manager-darwin-arm64 \
             --repo ${{ github.repository }} \
             --clobber
 
       - name: Delete obsolete releases (keep only the latest)
+        # Never runs on a manual workflow_dispatch test run — deleting real
+        # releases must only ever happen as part of an actual tag-push release.
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -159,3 +291,187 @@ jobs:
             --jq '.[].tagName' | grep -v "^${CURRENT}$" | while read tag; do
             gh release delete "$tag" --repo ${{ github.repository }} --yes 2>/dev/null || true
           done
+
+  test-macos:
+    # Real Apple Silicon hardware — the only way to actually run this binary,
+    # since arm64 macOS cannot be virtualized on the x86_64 host used elsewhere
+    # in this project's testing (see CLAUDE.md's "macOS installation architecture").
+    # Only runs at release time (tag push), never on every commit — this repo
+    # is public, so standard runner minutes (Linux/Windows/macOS alike) are
+    # free and uncapped regardless of OS multiplier, but a full install test
+    # still takes real wall-clock time, so it's reserved for release time
+    # rather than run on every push/PR.
+    #
+    # Deliberately smoke-test only — no full `install` run. GitHub's own docs
+    # state nested virtualization is unsupported on GitHub-hosted macOS
+    # runners, and Podman Machine's `podman machine start` needs exactly that
+    # (krunkit/Hypervisor.framework). Confirmed live: "krunkit exited
+    # unexpectedly with exit code 1" / "podman machine start: exit status
+    # 125" every time. This is a permanent platform limitation, not a
+    # reliability issue to iterate on — see CLAUDE.md's "Full install-flow CI
+    # testing" section before re-attempting a full install here.
+    needs: [build, detect-installer-changes]
+    runs-on: macos-26
+    steps:
+      - name: Download macOS binary
+        uses: actions/download-artifact@v8.0.1   # node24-native
+        with:
+          name: pie-manager-darwin-arm64
+
+      - name: Smoke test — macOS binary executes on real Apple Silicon
+        run: |
+          VERSION="${{ needs.build.outputs.version }}"
+          chmod +x "pie-manager-darwin-arm64-${VERSION}"
+          output=$(./"pie-manager-darwin-arm64-${VERSION}" version)
+          echo "Version: $output"
+          [ "$output" = "${VERSION}" ] || (echo "ERROR: expected ${VERSION}, got $output" && exit 1)
+
+  test-linux-install:
+    # Full install-flow test on ubuntu-latest: chosen over a native Fedora
+    # environment (GitHub has no Fedora-hosted runner, and Fedora-in-a-
+    # container would need privileged nested-Podman setup for little real
+    # benefit) — install.go/start.go have no Fedora-specific logic beyond the
+    # "dnf install" error message text; the actual Podman/compose behavior
+    # this test exercises is distro-agnostic. See CLAUDE.md.
+    needs: [build, detect-installer-changes]
+    if: needs.detect-installer-changes.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Download Linux binary
+        uses: actions/download-artifact@v8.0.1   # node24-native
+        with:
+          name: pie-manager-linux-amd64
+
+      - name: Install Podman
+        run: |
+          sudo apt-get update && sudo apt-get install -y podman
+          # Without podman-compose, detectComposeCmd() falls back to the
+          # "podman compose" subcommand — which itself auto-detects and
+          # delegates to the Docker CLI compose plugin GitHub's ubuntu-latest
+          # image ships alongside Podman, and that plugin can't reach a
+          # Docker daemon (confirmed live: "Cannot connect to the Docker
+          # daemon ... podman.sock"). A real end-user machine without Docker
+          # pre-installed wouldn't hit this; install podman-compose here to
+          # match what this project's own detection logic actually prefers.
+          pip install podman-compose
+
+      - name: Run real install
+        run: |
+          VERSION="${{ needs.build.outputs.version }}"
+          chmod +x "pie-manager-linux-amd64-${VERSION}"
+          ./"pie-manager-linux-amd64-${VERSION}" install
+
+      - name: Verify the app is actually serving traffic
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:14943/api/admin/health; then
+              echo "Health check passed"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Linux install: health check never succeeded"
+          exit 1
+
+  test-windows-install:
+    # Full install-flow test on a real windows-latest GitHub-hosted runner.
+    # Nested virtualization (needed for WSL2, in turn needed for Podman
+    # Machine) has been confirmed working on GitHub's Windows runners by the
+    # community since the Dadsv5 hardware migration (Jan 2024), but this is
+    # NOT officially documented/guaranteed by GitHub.
+    #
+    # The installer's embedded manifest requires admin rights (correct and
+    # unchanged for real users) — but launching it via PowerShell's
+    # Start-Process (which uses ShellExecute) triggers the interactive UAC
+    # consent prompt, and nobody is present to click it on a headless
+    # runner: confirmed live, twice, as an indefinite hang (45+ minutes,
+    # zero progress) rather than a clean refusal. Fixed below by running the
+    # installer through a Scheduled Task set to "run with highest
+    # privileges" instead — Task Scheduler's own documented silent-elevation
+    # mechanism, which bypasses the interactive consent dialog entirely
+    # without weakening the shipped manifest or a real end user's UAC
+    # prompt. continue-on-error until proven reliable across a few real
+    # releases. See CLAUDE.md.
+    needs: [build, detect-installer-changes]
+    if: needs.detect-installer-changes.outputs.changed == 'true'
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - name: Download Windows binary
+        uses: actions/download-artifact@v8.0.1   # node24-native
+        with:
+          name: pie-manager-windows-amd64
+
+      - name: Run real install
+        shell: pwsh
+        # GITHUB_TOKEN lifts the installer's GitHub API calls (WSL2/winget
+        # release lookups, only hit as a fallback when the Store-based path
+        # fails) past the 60/hour unauthenticated rate limit — see the macOS
+        # job's identical env for why this is CI-only and harmless for a
+        # real end user's install.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "${{ needs.build.outputs.version }}"
+          $exe = (Resolve-Path ".\pie-manager-windows-amd64-$version.exe").Path
+          $workDir = Split-Path $exe -Parent
+          $taskName = "PieManagerInstallTest"
+          $userId = "$env:COMPUTERNAME\$env:USERNAME"
+
+          # A Scheduled Task does NOT inherit this step's own process
+          # environment — Task Scheduler builds a fresh environment block for
+          # the target user from machine/user-scoped variables, not from the
+          # calling PowerShell process's transient env vars. Confirmed live:
+          # main_windows.go's `os.Getenv("CI") != ""` popup-skip guard (see
+          # CLAUDE.md) never saw CI=true when launched this way, so the
+          # installer still hung on the final popup even after that fix.
+          # Persist it machine-wide so the freshly-spawned process picks it
+          # up — this throwaway runner VM is destroyed right after the job.
+          [Environment]::SetEnvironmentVariable('CI', 'true', 'Machine')
+
+          $action = New-ScheduledTaskAction -Execute $exe -WorkingDirectory $workDir
+          $principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType Interactive -RunLevel Highest
+          Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Force | Out-Null
+          Start-ScheduledTask -TaskName $taskName
+
+          $deadline = (Get-Date).AddMinutes(10)
+          do {
+            Start-Sleep -Seconds 5
+            $state = (Get-ScheduledTask -TaskName $taskName).State
+          } while ($state -ne 'Ready' -and (Get-Date) -lt $deadline)
+
+          $info = Get-ScheduledTaskInfo -TaskName $taskName
+          Write-Host "Task state: $state, last result: $($info.LastTaskResult)"
+          Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+
+          $logPath = Join-Path $workDir "install-prereq.log"
+          if (Test-Path $logPath) {
+            Write-Host "--- install-prereq.log ---"
+            Get-Content $logPath
+          }
+
+          if ($state -ne 'Ready') {
+            Write-Host "::error::Installer scheduled task did not finish within 10 minutes"
+            exit 1
+          }
+          if ($info.LastTaskResult -ne 0) {
+            Write-Host "::error::Installer exited with code $($info.LastTaskResult)"
+            exit 1
+          }
+
+      - name: Verify the app is actually serving traffic
+        shell: pwsh
+        run: |
+          for ($i = 0; $i -lt 60; $i++) {
+            try {
+              $response = Invoke-WebRequest -Uri "http://localhost:14943/api/admin/health" -UseBasicParsing -TimeoutSec 5
+              if ($response.StatusCode -eq 200) {
+                Write-Host "Health check passed"
+                exit 0
+              }
+            } catch {}
+            Start-Sleep -Seconds 5
+          }
+          Write-Host "::error::Windows install: health check never succeeded"
+          exit 1

@@ -205,6 +205,11 @@ services reach by name) instead of relying on `podman-compose`'s implicit shared
 (`docker.io/library/postgres:16-alpine`) to avoid "short-name resolution enforced" errors in
 non-interactive contexts.
 
+**Ad hoc container smoke tests (`podman run -p ...` outside compose) — see the global
+`~/.claude/rules/podman-pasta-dual-stack-networking.md` rule**: use `curl -4`/`127.0.0.1`,
+never bare `localhost`, or a healthy Vite dev server can look unreachable
+(`Connection reset by peer`).
+
 ## Key data model
 
 ### Broker / Account distinction (critical)

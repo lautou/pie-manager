@@ -38,7 +38,7 @@ Les mesures ci-dessous sont relevées avec **1 à 2 portefeuilles actifs**, prix
 | backend (FastAPI) | ~150 Mo | ~0 % | ~5 % |
 | worker (Celery) | ~80 Mo | ~0 % | ~10 % |
 | frontend (Vite) | ~200 Mo | ~0 % | ~0 % |
-| nginx | ~5 Mo | ~0 % | ~0 % |
+| haproxy | ~5 Mo | ~0 % | ~0 % |
 | **Total** | **~500 Mo** | **~0 %** | **~15 % (15 s/15 min)** |
 
 #### Windows 11 (état de repos, app démarrée)
@@ -139,19 +139,18 @@ chmod +x ~/Downloads/pie-manager-linux-amd64
 L'installateur effectue les étapes suivantes :
 
 1. Vérification de Podman
-3. Connexion à `ghcr.io`
-4. Téléchargement des images (backend, frontend, postgres, redis, nginx)
-5. Écriture des fichiers de configuration dans `~/.local/share/pie-manager/`
-6. Détection d'un port libre (14943 par défaut)
-7. Création de l'icône GNOME et du raccourci
-8. Démarrage des services
+2. Téléchargement des images (backend, frontend, postgres, redis, HAProxy) depuis Quay.io
+3. Écriture des fichiers de configuration dans `~/.local/share/pie-manager/`
+4. Détection d'un port libre (14943 par défaut)
+5. Création de l'icône GNOME et du raccourci
+6. Démarrage des services
 
 ### Fichiers installés
 
 ```
 ~/.local/share/pie-manager/
 ├── compose-prod.yaml       Configuration des containers
-├── nginx.conf              Configuration Nginx
+├── haproxy.cfg             Configuration HAProxy
 ├── .env                    Port et version (APP_PORT, APP_VERSION)
 ├── pie-manager             Binaire (copie locale)
 ├── VERSION                 Version installée
@@ -297,9 +296,9 @@ L'option `--volumes` supprime également les volumes de données (base de donné
 ### Supprimer les images Podman
 
 ```bash
-podman rmi ghcr.io/lautou/pie-manager-backend:latest
-podman rmi ghcr.io/lautou/pie-manager-frontend:latest
-podman rmi postgres:16-alpine redis:7-alpine nginx:alpine
+podman rmi quay.io/ltourreau/pie-manager-backend:latest
+podman rmi quay.io/ltourreau/pie-manager-frontend:latest
+podman rmi postgres:16-alpine redis:7-alpine haproxy:alpine
 ```
 
 ### Supprimer les fichiers installés
@@ -336,14 +335,6 @@ grep APP_PORT ~/.local/share/pie-manager/.env
 ### L'application ne démarre pas après un redémarrage
 
 Les containers ne démarrent pas automatiquement au démarrage du système. Cliquer sur l'icône GNOME (ou lancer `pie-manager start`) redémarre les containers.
-
-### Erreur lors du téléchargement des images (401 Unauthorized)
-
-
-```bash
-```
-
-Puis relancer l'installation.
 
 ### Récupérer les journaux du backend
 

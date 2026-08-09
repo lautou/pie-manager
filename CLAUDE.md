@@ -1844,6 +1844,19 @@ Or"). When adding a new always-rendered element to a page that already has simil
 siblings, grep the test file for `getAllBy*`/`.slice(-N)`/`[N]`/`/regex/i` patterns that could
 now match your new element, don't assume "my new tests pass" is sufficient.
 
+**Problem 6 — Vite 8 (Oxc transform) breaks the `-- @preserve` ignore-comment mechanism from
+Problem 1 — do not bump `vite`/`@vitejs/plugin-react` past major 7 yet:**
+Confirmed live (PR #46, dependabot bump to `vite@8.2.1`/`@vitejs/plugin-react@6.0.5`): build and
+all 1384 tests still pass, but coverage drops to 99.96%/99.78%/99.89% — exactly the 4 spots
+using `/* v8 ignore next -- @preserve */`. Vite 8 replaces esbuild with Oxc for TS/JSX
+transformation, and Oxc strips comments (including `@preserve` ones) before the coverage tool
+ever sees them. This is an open upstream bug
+([vitest#9918](https://github.com/vitest-dev/vitest/issues/9918),
+[#9881](https://github.com/vitest-dev/vitest/issues/9881),
+[#10628](https://github.com/vitest-dev/vitest/issues/10628)), not something fixable here.
+`vite@^7.3.6`/`@vitejs/plugin-react@^5.2.0` (still esbuild-based) was verified to build clean and
+hold 100% coverage — safe to take. Revisit the Vite 8 jump only once the upstream issue closes.
+
 **Current CI thresholds:**
 - statements: **100%** (unreachable code marked with `/* v8 ignore next -- @preserve */`)
 - branches: **100%** (see Problem 2 above — the 94% figure was based on a misdiagnosis; the

@@ -102,7 +102,7 @@ this app currently uses (verified visually — both are solid `currentColor` sil
 enough that the overlaid union still reads correctly), but it's an unsupported pairing: any
 future icon addition isn't guaranteed to render cleanly, and no test can catch a purely visual
 regression like this. Revisit only as part of a real PatternFly v5→v6 core migration (core +
-table + icons bumped together), never as a standalone icons bump.
+table + icons bumped together), never as a standalone icons bump. Tracked in #59.
 
 **`recharts` is on v3** (bumped from v2, issue #3) — the only chart type it's used for is the
 Dashboard's Treemap (`DashboardPage.tsx`), since PatternFly-charts/Victory has no Treemap
@@ -180,6 +180,14 @@ so its baked-in Alpine packages were permanently frozen pre-fix. Verified via re
 rebuilt) already carry the fixed `openssl` packages. If a future CVE report on this image
 assumes "just rebuild it", check the base tag's actual last-push date on Docker Hub first —
 an EOL runtime's official image can silently stop receiving any OS-level security rebuilds.
+
+**Do not bump `node:24-alpine` → `node:26-alpine` before Node 26 reaches Active LTS
+(2026-10-28) — tracked in #57.** Dependabot PR #29 proposing this was closed (not
+`@dependabot ignore`d) rather than merged: the bump itself builds and runs cleanly (verified
+live), but Node 24 is Active LTS until 2026-10-20 / Maintenance until 2028-04-30, while Node 26
+is still on the less battle-tested "Current" release line until its LTS date. No urgency to
+take on that risk early. Dependabot's own weekly scan will re-propose an equivalent PR on its
+own — merge it once Node 26 is actually Active LTS, don't defer indefinitely.
 
 **`frontend/Containerfile` is a multi-stage build** (`builder` → `runtime`, #13), mirroring
 the backend's #20 refactor for the same reason: `builder` runs `npm ci` (now copies
@@ -1979,7 +1987,7 @@ The cumulative `realized_pv_total` is never reset.
   mismatched client version produces dumps the server's own pg_restore can't read
 
 **A PostgreSQL major-version bump (e.g. 16→18) is not a simple image-tag swap — do not merge
-one via Dependabot without a real migration plan.** Confirmed live: `postgres:18-alpine`'s
+one via Dependabot without a real migration plan (tracked in #58).** Confirmed live: `postgres:18-alpine`'s
 official image changed its volume mount convention (a single mount at `/var/lib/postgresql`
 with a version-scoped subdirectory, instead of today's direct mount at
 `/var/lib/postgresql/data`) — it refuses to even start on a **fresh, empty** volume under the

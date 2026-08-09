@@ -2,6 +2,13 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.3.3] - 2026-08-09
+
+### Fixed
+
+- **frontend:** Bump react-router-dom to v7 and fix splat-route fallback redirect (#47)
+- **security:** Multi-stage frontend build to drop npm's own vulnerable node_modules
+
 ## [1.3.2] - 2026-08-09
 
 ### Fixed

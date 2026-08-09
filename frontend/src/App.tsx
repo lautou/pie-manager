@@ -303,6 +303,7 @@ function SystemLayout({ children }: { children: React.ReactNode }) {
 }
 
 function PortfolioRoutes() {
+  const { portfolioId } = useParams<{ portfolioId: string }>();
   return (
     <PortfolioLayout>
       <Routes>
@@ -317,7 +318,7 @@ function PortfolioRoutes() {
         <Route path="pv" element={<CapitalGainsPage />} />
         <Route path="fiscalite" element={<TaxPage />} />
         <Route path="admin" element={<AdminPage />} />
-        <Route path="*" element={<Navigate to="dashboard" replace />} />
+        <Route path="*" element={<Navigate to={`/portfolio/${portfolioId}/dashboard`} replace />} />
       </Routes>
     </PortfolioLayout>
   );

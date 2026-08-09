@@ -93,6 +93,17 @@ create-transaction code path as manual UI entry.
 | Deployment | **Podman** Compose (never Docker) |
 | Containerfiles | `Containerfile` (never `Dockerfile`) |
 
+**Keep `@patternfly/react-icons` on the same major as `@patternfly/react-core`/`react-table`
+(currently v5) — do not bump it alone.** Confirmed live: react-icons v6 ships a dual-glyph
+mechanism per icon (an old design + a new "RH-UI" redesign) meant to be toggled via PatternFly
+v6 core's own CSS, which this app doesn't load (still on core v5). Without that CSS both
+glyphs render nested, unstyled, simultaneously. It happens to look fine today for every icon
+this app currently uses (verified visually — both are solid `currentColor` silhouettes similar
+enough that the overlaid union still reads correctly), but it's an unsupported pairing: any
+future icon addition isn't guaranteed to render cleanly, and no test can catch a purely visual
+regression like this. Revisit only as part of a real PatternFly v5→v6 core migration (core +
+table + icons bumped together), never as a standalone icons bump.
+
 ## Mandatory conventions
 
 - **Code in English** — all source code, variable names, function names, comments, commit messages, and PR descriptions MUST be in English. Exception: README.md and user-facing documentation files may be in French. The UI itself is translated via i18n (fr/en).

@@ -139,6 +139,7 @@ interface TreemapNode {
   poolColor?: string;
   pct?: number;
   children?: TreemapNode[];
+  [key: string]: unknown;
 }
 
 export function TreemapContent(props: {

@@ -181,6 +181,26 @@ rebuilt) already carry the fixed `openssl` packages. If a future CVE report on t
 assumes "just rebuild it", check the base tag's actual last-push date on Docker Hub first —
 an EOL runtime's official image can silently stop receiving any OS-level security rebuilds.
 
+**`frontend/Containerfile` is a multi-stage build** (`builder` → `runtime`, #13), mirroring
+the backend's #20 refactor for the same reason: `builder` runs `npm ci` (now copies
+`package-lock.json` before install too — previously only `package.json` was copied, so the
+image's `npm install` silently ignored the pinned lockfile and re-resolved from the registry
+at build time, picking up whatever transitive versions happened to be current) and the app
+source; `runtime` starts fresh from the same base+digest, deletes the base image's own bundled
+npm CLI (`rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx`) before
+copying in `builder`'s `/app`. This structurally removes a class of Trivy finding
+`package.json` has no lever to fix: HIGH/CRITICAL CVEs in npm's own vendored `tar`/
+`brace-expansion`/`ip-address`/`undici` (pre-installed in the `node:24-alpine` base image, not
+from anything this app's own dependencies pull in — confirmed by locating them under
+`/usr/local/lib/node_modules/npm/node_modules/`, not `app/node_modules/`). Safe to remove
+because the dev server is invoked via its own binary (`node_modules/.bin/vite`, both in the
+Containerfile's `CMD` and in `compose.yaml`'s dev override), never via `npm run` — `node`
+itself doesn't depend on npm's bundled `node_modules` at runtime. Verified: real
+`podman build`, a from-scratch Trivy scan going from 4 HIGH/CRITICAL findings to 0, and a full
+`podman-compose up` smoke test (dev stack, isolated project name) confirming the Vite dev
+server still starts and serves the app correctly. As with the backend, **both `FROM` lines
+must be bumped to the same digest together** on a future base-image update.
+
 ### Development (compose.yaml)
 
 ```
@@ -1021,7 +1041,8 @@ above still applies — a passing CI job doesn't prove the Containerfile itself 
 `backend/Containerfile` has **two** `FROM` lines since its multi-stage refactor (#20, both
 pinned to the same base+digest) — a Dependabot PR bumping one must bump both, or the
 `builder` stage's `ldd`-computed shared-library closure ends up staged for a different glibc
-than the `runtime` stage actually ships.
+than the `runtime` stage actually ships. `frontend/Containerfile` also has two `FROM` lines
+since its own multi-stage refactor (#13) — same rule: bump both together.
 
 ### Windows executable code signing
 

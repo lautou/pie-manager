@@ -1988,3 +1988,10 @@ no locale-sensitive collation in this app's schema/queries) and `initdb: warning
 connections when only `POSTGRES_PASSWORD` is set; the ephemeral, network-isolated CI container
 is torn down at job end, never exposed). Both come from `postgres:16-alpine`'s own `initdb`
 bootstrap, not this repo's config — not something to fix.
+
+Also expected: `ERROR: duplicate key value violates unique constraint
+"uq_fiscal_carry_forward_portfolio_year"`. Postgres always logs a constraint violation at
+`ERROR` level before SQLAlchemy raises `IntegrityError` to the caller — a test deliberately
+exercises the fiscal carry-forward create endpoint's duplicate-entry path, which
+`fiscal.py`'s `except IntegrityError` converts into a clean `400`. The database confirming a
+business rule (one carry-forward entry per portfolio per tax year) is enforced, not a bug.

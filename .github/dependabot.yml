@@ -9,6 +9,15 @@ updates:
     directory: "/frontend"
     schedule:
       interval: "weekly"
+    ignore:
+      # Vite 8 replaces esbuild with Oxc, which strips the `-- @preserve` coverage
+      # ignore-hint this repo's 100% coverage gate relies on. Open upstream bug,
+      # not fixable here — see CLAUDE.md "Problem 6" (PRs #46, #38). Remove once
+      # the upstream vitest/Oxc issue closes.
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitejs/plugin-react"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "docker"
     directory: "/backend"

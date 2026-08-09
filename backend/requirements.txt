@@ -12,5 +12,5 @@ yfinance==0.2.50
 httpx==0.28.1
 python-dateutil==2.9.0
 python-multipart==0.0.32
-packaging==24.2
+packaging==26.3
 openpyxl==3.1.5

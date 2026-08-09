@@ -1980,3 +1980,11 @@ is just the map of where tests live and which CI job runs them.)
   - Test helpers: `frontend/tests/utils/` (outside `src/`)
 - CI/CD: `ci.yml` job `validate` runs TypeScript + vitest + coverage (no DB); `ci.yml` job
   `integration-tests` runs full pytest with ephemeral PostgreSQL.
+
+**Expected noise in `integration-tests`' Postgres service container**: `WARNING: no usable
+system locales were found` (Alpine ships no locale data, Postgres falls back to `C`, harmless —
+no locale-sensitive collation in this app's schema/queries) and `initdb: warning: enabling
+"trust" authentication for local connections` (initdb's default for local Unix-socket
+connections when only `POSTGRES_PASSWORD` is set; the ephemeral, network-isolated CI container
+is torn down at job end, never exposed). Both come from `postgres:16-alpine`'s own `initdb`
+bootstrap, not this repo's config — not something to fix.

@@ -8,6 +8,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -55,3 +57,87 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: 0
+
+  # Real backup/restore round-trip against the just-published backend image — #20's
+  # multi-stage build hand-copies pg_dump/pg_restore's shared-library closure instead of
+  # apt-installing postgresql-client, and the Containerfile's own build-time check only
+  # proves the binaries *start* (`--version`), not that a full round-trip against a real
+  # database still works. continue-on-error until proven reliable across a few releases,
+  # mirroring test-windows-install/test-linux-install in build-installer.yml (see #45).
+  smoke-test-backend:
+    needs: publish
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: pie
+          POSTGRES_PASSWORD: pie_password
+          POSTGRES_DB: pie_db
+        options: >-
+          --health-cmd "pg_isready -U pie -d pie_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:8-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Run backend image
+        run: |
+          podman run -d --name backend-smoke --network host \
+            -e DATABASE_URL="postgresql+asyncpg://pie:pie_password@localhost:5432/pie_db" \
+            -e REDIS_URL="redis://localhost:6379/0" \
+            -e PYTHONPATH=/app \
+            "quay.io/ltourreau/pie-manager-backend:${{ needs.publish.outputs.version }}" \
+            sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+      - name: Wait for backend health
+        run: |
+          deadline=$((SECONDS + 120))
+          until curl -sf http://localhost:8000/api/admin/health >/dev/null 2>&1; do
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::Backend never became healthy"
+              podman logs backend-smoke
+              exit 1
+            fi
+            sleep 2
+          done
+
+      - name: Seed minimal data
+        run: |
+          curl -sf -X POST http://localhost:8000/api/portfolios/ \
+            -H "Content-Type: application/json" \
+            -d '{"name":"SmokeTest"}'
+
+      - name: Download backup
+        run: |
+          curl -sf http://localhost:8000/api/admin/backup -o /tmp/smoke.dump
+          test -s /tmp/smoke.dump
+
+      - name: Restore backup
+        run: |
+          curl -sf -X POST http://localhost:8000/api/admin/restore \
+            -F "file=@/tmp/smoke.dump"
+
+      - name: Verify data survived the round-trip
+        run: |
+          curl -sf http://localhost:8000/api/portfolios/ | grep -q "SmokeTest"
+
+      - name: Dump backend logs on failure
+        if: failure()
+        run: podman logs backend-smoke || true
+
+      - name: Clean up
+        if: always()
+        run: podman rm -f backend-smoke || true

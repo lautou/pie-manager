@@ -200,7 +200,7 @@ vi.mock('./pages/IndicatorsPage', () => ({
 let shouldThrow = false;
 vi.mock('./pages/RebalancingPage', () => ({
   default: () => {
-    if (shouldThrow) throw new Error('boom');
+    if (shouldThrow) throw new Error('Simulated crash for ErrorBoundary test');
     return <div data-testid="rebalancing-page">RebalancingPage</div>;
   },
 }));
@@ -326,7 +326,7 @@ describe('App', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { getByText } = render(<App />);
     expect(getByText('Une erreur est survenue')).toBeTruthy();
-    expect(getByText('boom')).toBeTruthy();
+    expect(getByText('Simulated crash for ErrorBoundary test')).toBeTruthy();
     spy.mockRestore();
   });
 

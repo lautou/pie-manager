@@ -1734,6 +1734,18 @@ above for the root cause and fix (commit 8ca41c2). Result: fast, clean exit.
 - `globalSetup teardown()` → only called AFTER all workers finish
 - `--forceExit` → does not exist as CLI flag in Vitest 4.x
 
+### Expected noise: `act(...)` warnings across many page test files
+`Warning: An update to <Component> inside a test was not wrapped in act(...)` appears in
+several page test files — an async state update (React Query background refetch, a `useEffect`
+timer) lands slightly outside React Testing Library's tracked `act()` boundary. Not a sign of
+incorrect component behavior by itself, and the suite still passes with 100% coverage regardless.
+Given the number of files involved and the varied async causes, this is deliberately left as
+documented noise rather than chased down file-by-file for a purely cosmetic fix (see #8) — unlike
+the `validateDOMNesting` warning that used to accompany it (fixed at the source: `patternfly-mocks.tsx`'s
+`Thead`/`Tbody` mocks were bare passthrough fragments, so `<Tr>` landed directly under `<table>`
+with no wrapping element — now real `<thead>`/`<tbody>` elements), there's no single shared root
+cause here to fix.
+
 ### i18n initialization in tests
 `patternfly-mocks.tsx` imports `../../src/i18n` to ensure `initReactI18next` runs in each
 test file's module context — required for `useTranslation()` to work without a provider.

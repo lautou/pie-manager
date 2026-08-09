@@ -1027,6 +1027,22 @@ to a real release gate (`exit-code: 1`, drop `continue-on-error`) once the filte
 clean across a handful of releases, mirroring the `test-windows-install`/`test-linux-install`
 progressive-hardening pattern below.
 
+### Backend backup/restore smoke test (`smoke-test-backend`, #45)
+
+`publish-images.yml`'s `smoke-test-backend` job (`needs: publish`, `continue-on-error: true` —
+same progressive-hardening pattern as `test-windows-install`/`test-linux-install`) runs a real
+`pg_dump`/`pg_restore` round-trip against the just-published backend image: starts real
+`postgres:16-alpine`/`redis:8-alpine` GitHub Actions services, runs the image via
+`podman run --network host` (so `localhost:5432`/`localhost:6379` inside the container reach the
+services' host-published ports) with the same `alembic upgrade head && uvicorn ...` command as
+`compose-prod.yaml`, waits for `/api/admin/health`, seeds one portfolio, downloads
+`/api/admin/backup`, re-uploads it to `/api/admin/restore`, then confirms the seeded portfolio is
+still present. This exists because #20's multi-stage build hand-copies `pg_dump`/`pg_restore`'s
+shared-library closure instead of apt-installing `postgresql-client`, and the Containerfile's own
+build-time check (`pg_dump --version`) only proves the binaries *start* — it can't catch a future
+base-image bump breaking the closure in a way that only surfaces against a real database. Verified
+locally end-to-end (same commands, standalone containers) before landing.
+
 ### Dependabot + pinned base image digests
 
 `.github/dependabot.yml` covers 6 ecosystems: `pip`/`npm`/`docker` (backend and frontend each),

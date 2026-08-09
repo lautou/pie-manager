@@ -1886,6 +1886,20 @@ The cumulative `realized_pv_total` is never reset.
 - `backend/Containerfile` pins `postgresql-client-16` to match the server (PostgreSQL 16) — a
   mismatched client version produces dumps the server's own pg_restore can't read
 
+**A PostgreSQL major-version bump (e.g. 16→18) is not a simple image-tag swap — do not merge
+one via Dependabot without a real migration plan.** Confirmed live: `postgres:18-alpine`'s
+official image changed its volume mount convention (a single mount at `/var/lib/postgresql`
+with a version-scoped subdirectory, instead of today's direct mount at
+`/var/lib/postgresql/data`) — it refuses to even start on a **fresh, empty** volume under the
+current `compose.yaml`/`compose-prod.yaml` mount layout, let alone an existing data volume.
+A v16 `pg_dump` client also flatly refuses to dump a v18 server (`aborting because of server
+version mismatch`), so the pinned client above must be bumped in lockstep. A dump/restore
+migration path (matching-version dump, then restore into a fresh volume under the new mount
+layout with a matching-or-newer client) was verified to work end-to-end on a throwaway volume
+— but treat any future postgres major bump as its own migration project (compose changes +
+client bump + a tested, documented upgrade path for existing installs, including real
+end-users of the published installer), never a routine dependency bump.
+
 ## Security / secrets and personal data
 
 Never commit:

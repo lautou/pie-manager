@@ -1713,6 +1713,13 @@ cd frontend
 NODE_OPTIONS='--max-old-space-size=8192' npx vitest run --reporter=dot
 ```
 
+**Expected noise: `Error: <message>` lines from the App.test.tsx ErrorBoundary tests.**
+jsdom reports an error thrown inside a React component through its own internal event-dispatch
+"virtual console", a separate channel from `console.error` — so it prints even though those
+tests already mock `console.error` to suppress React's own dev-mode logging. Not a real failure; the suite still exits 0 with every test green. Confirmed via
+`--reporter=verbose`: the trace points at `App.test.tsx`'s mocked `RebalancingPage` throw, not
+an unhandled error elsewhere.
+
 ## Frontend test performance — resolved issue
 
 A 16-minute test hang was traced to `StalePriceWarning` (`DashboardPage.tsx`)'s infinite

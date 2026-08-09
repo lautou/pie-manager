@@ -209,8 +209,8 @@ export const pfTableStubs = {
   Table: ({ children, 'aria-label': ariaLabel }: any) => (
     <table aria-label={ariaLabel}>{children}</table>
   ),
-  Thead: Stub,
-  Tbody: Stub,
+  Thead: ({ children }: any) => <thead>{children}</thead>,
+  Tbody: ({ children }: any) => <tbody>{children}</tbody>,
   Tr: ({ children, onRowClick, style }: any) => (
     <tr style={style} onClick={onRowClick}>{children}</tr>
   ),

@@ -104,6 +104,14 @@ future icon addition isn't guaranteed to render cleanly, and no test can catch a
 regression like this. Revisit only as part of a real PatternFly v5→v6 core migration (core +
 table + icons bumped together), never as a standalone icons bump.
 
+**`recharts` is on v3** (bumped from v2, issue #3) — the only chart type it's used for is the
+Dashboard's Treemap (`DashboardPage.tsx`), since PatternFly-charts/Victory has no Treemap
+equivalent. v3's `Treemap` requires an index signature (`[key: string]: unknown`) on custom
+data node types to pass extra fields (`pool`, `poolColor`, `pct`) through to the `content`
+render prop — add it to any new `TreemapNode`-like interface, or those fields silently come
+back `undefined`. Trade-off accepted: v3's internal rewrite onto `@reduxjs/toolkit` adds ~8%
+to the production bundle size.
+
 ## Mandatory conventions
 
 - **Code in English** — all source code, variable names, function names, comments, commit messages, and PR descriptions MUST be in English. Exception: README.md and user-facing documentation files may be in French. The UI itself is translated via i18n (fr/en).

@@ -1856,6 +1856,10 @@ ever sees them. This is an open upstream bug
 [#10628](https://github.com/vitest-dev/vitest/issues/10628)), not something fixable here.
 `vite@^7.3.6`/`@vitejs/plugin-react@^5.2.0` (still esbuild-based) was verified to build clean and
 hold 100% coverage — safe to take. Revisit the Vite 8 jump only once the upstream issue closes.
+A second, independent Dependabot PR (#38, `vite@8.2.0` alone) reproduced the identical failure
+hours after #46 was closed — closing one PR doesn't stop the next major-version proposal.
+`.github/dependabot.yml` now has an `ignore` rule for `vite`/`@vitejs/plugin-react` major bumps
+so this stops recurring; remove that rule when re-attempting the Vite 8 jump.
 
 **Current CI thresholds:**
 - statements: **100%** (unreachable code marked with `/* v8 ignore next -- @preserve */`)

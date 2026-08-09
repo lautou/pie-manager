@@ -116,6 +116,29 @@ green while `podman build` failed outright trying to compile it from source. Alw
 Python-version bump by actually running `podman build -f backend/Containerfile backend/`,
 not just by trusting CI.
 
+**`backend/Containerfile` is a multi-stage build** (`builder` → `runtime`, #20) — the final
+image no longer carries `pip`, `setuptools`, `build-essential`, `curl`, or `gnupg`, none of
+which the app needs after `pip install` finishes at build time. This structurally closes a
+class of Trivy finding that `requirements.txt` has no lever to fix: HIGH CVEs in pip's own
+vendored `msgpack` and in `setuptools` itself (both ship pre-installed in the `python:3.14-slim`
+base image, not from anything this Containerfile's own `RUN` steps add — see #11/#20).
+`builder` installs Python deps into an isolated `--prefix=/install` (kept separate from the
+base image's own pip) and stages `pg_dump`/`pg_restore` plus their full transitive
+shared-library closure into `/pg-runtime/` via an `ldd`-based walk (self-computing on every
+build, not a hand-maintained `.so` list that goes stale). `runtime` starts fresh from the same
+base+digest, removes the base image's own pip/setuptools/wheel
+(`python -m pip uninstall -y pip setuptools wheel` — uses pip's own RECORD manifest so
+companion files like the `_distutils_hack` `.pth` shim are removed correctly, not a `rm -rf`
+glob), then copies both artifacts in. A `RUN` step at the end of the `runtime` stage — a real
+import of `app.main`/`app.tasks.celery_app` plus `pg_dump --version`/`pg_restore --version` —
+fails the build itself immediately if either copy is incomplete, instead of only surfacing at
+container start. **Both `FROM` lines must be bumped to the same digest together** — a future
+Dependabot base-image PR that only updates one would silently run the `builder`'s `ldd`
+closure against a different glibc than the `runtime` stage ships. Verified live: real
+`podman build`, a local Trivy scan confirming `msgpack`/`setuptools` are gone (present on the
+old single-stage image, absent here), a ~43% image size reduction (772 MB → 439 MB), and full
+`podman-compose up` smoke tests (see below) on both dev and prod-style stacks.
+
 **`backend/Containerfile` runs as a non-root user (`appuser`, UID/GID 1000)** — fixed
 issue #17 (previously ran fully as root). Celery Beat's schedule file is redirected to
 `/tmp` (`beat_schedule_filename` in `app/tasks/celery_app.py`) instead of the default
@@ -956,6 +979,10 @@ not actionable (confirmed live: 103 such HIGH/CRITICAL findings on a single rele
 filtering them out keeps the report limited to CVEs that can actually be fixed by bumping a
 pinned version.
 
+`msgpack`/`setuptools` (the two HIGH CVEs `requirements.txt` had no lever to fix — see #11) are
+now structurally gone from the backend image via the multi-stage build in #20 (see "Container
+architecture" above) rather than suppressed in the scan config.
+
 **Still report-only for now** (`exit-code: 0` + `continue-on-error: true`) — see #21 to flip this
 to a real release gate (`exit-code: 1`, drop `continue-on-error`) once the filtered scan has run
 clean across a handful of releases, mirroring the `test-windows-install`/`test-linux-install`
@@ -972,6 +999,10 @@ base image silently drifts underneath a floating tag (see #11/#19: a Trivy-flagg
 already gone from a same-tag rebuild days later). If a Dependabot PR changes the tag itself (not
 just refreshes the digest on the same tag), the "match CI's Python version" verification rule
 above still applies — a passing CI job doesn't prove the Containerfile itself still builds.
+`backend/Containerfile` has **two** `FROM` lines since its multi-stage refactor (#20, both
+pinned to the same base+digest) — a Dependabot PR bumping one must bump both, or the
+`builder` stage's `ldd`-computed shared-library closure ends up staged for a different glibc
+than the `runtime` stage actually ships.
 
 ### Windows executable code signing
 

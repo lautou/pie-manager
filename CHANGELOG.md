@@ -2,6 +2,17 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.3.2] - 2026-08-09
+
+### Fixed
+
+- **backend:** Suppress pip root-user warning in Containerfile
+- **backend:** Bump fastapi/starlette/python-multipart for HIGH CVEs
+- **ci:** Filter Trivy image scans to fixable CVEs only
+- **security:** Enable Dependabot and pin container base images by digest
+- **security:** Run backend/worker containers as non-root user
+- **security:** Refactor backend Containerfile to multi-stage build
+
 ## [1.3.1] - 2026-08-08
 
 ### Fixed

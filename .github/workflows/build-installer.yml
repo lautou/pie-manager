@@ -353,6 +353,136 @@ jobs:
             gh release delete "$tag" --repo ${{ github.repository }} --yes 2>/dev/null || true
           done
 
+  package-launcher-msix:
+    # Builds the real, Store-identity MSIX package of launcher.exe (issue
+    # #63's fix for #60's Smart App Control block) as a durable release
+    # asset. This does NOT submit anything to the Microsoft Store — the "PIE
+    # Manager" Store listing is still an unpublished draft in Partner Center;
+    # uploading this .msix there and filling in listing details stays a
+    # manual step for now. Runs on every release (not gated behind
+    # detect-installer-changes) since it's cheap and keeps a submittable
+    # package available at every version, independent of whether the
+    # installer's own embed-launcher.exe fallback path changed.
+    #
+    # A native windows-latest build of launcher.exe is used here rather than
+    # sharing the cross-compiled copy from `build` above — makeappx/signtool
+    # only exist on Windows anyway, so there's no cross-compilation to avoid
+    # duplicating, and it keeps this job fully independent of `build`'s own
+    # artifacts.
+    needs: build
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: '1.22'
+
+      - name: Build launcher.exe
+        working-directory: installer/launcher
+        shell: pwsh
+        run: |
+          $env:CGO_ENABLED = "0"
+          go build -ldflags "-H windowsgui -s -w -X main.Version=${{ needs.build.outputs.version }}" -o launcher.exe .
+
+      - name: Generate Store logo assets from the app icon
+        working-directory: installer/launcher
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path Assets | Out-Null
+          go run ./gen-assets 256x256.png Assets
+
+      - name: Stage manifest with the real version
+        working-directory: installer/launcher
+        shell: pwsh
+        run: |
+          $version = "${{ needs.build.outputs.version }}"
+          (Get-Content AppxManifest.xml) -replace '__VERSION__', $version | Set-Content AppxManifest.xml
+
+      - name: Locate Windows SDK packaging/signing tools
+        working-directory: installer/launcher
+        shell: pwsh
+        run: |
+          $sdkRoot = "C:\Program Files (x86)\Windows Kits\10\bin"
+          $sdkVer = Get-ChildItem $sdkRoot -Directory |
+            Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' } |
+            Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $sdkVer) {
+            Write-Host "::error::No Windows 10 SDK bin directory found under $sdkRoot"
+            exit 1
+          }
+          $makeappx = Join-Path $sdkVer.FullName "x64\makeappx.exe"
+          $signtool = Join-Path $sdkVer.FullName "x64\signtool.exe"
+          if (-not (Test-Path $makeappx)) {
+            Write-Host "::error::makeappx.exe not found at $makeappx"
+            exit 1
+          }
+          if (-not (Test-Path $signtool)) {
+            Write-Host "::error::signtool.exe not found at $signtool"
+            exit 1
+          }
+          Write-Host "Using makeappx: $makeappx"
+          Write-Host "Using signtool: $signtool"
+          Add-Content -Path $env:GITHUB_ENV -Value "MAKEAPPX=$makeappx"
+          Add-Content -Path $env:GITHUB_ENV -Value "SIGNTOOL=$signtool"
+
+      - name: Package MSIX
+        working-directory: installer/launcher
+        shell: pwsh
+        run: |
+          $version = "${{ needs.build.outputs.version }}"
+          & $env:MAKEAPPX pack /d . /p "pie-manager-launcher-$version.msix" /o
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::makeappx pack failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+
+      - name: Sign with an ephemeral cert matching the real Store Publisher CN
+        # Per Microsoft's own docs, a Store submission's original signature
+        # never needs to chain to a trusted root — Microsoft re-signs the
+        # package at publish time. This cert only needs to make the package
+        # internally valid for makeappx/upload, and its Subject must exactly
+        # match AppxManifest.xml's Identity/Publisher. Generated fresh every
+        # run and discarded immediately after — never persisted anywhere.
+        working-directory: installer/launcher
+        shell: pwsh
+        run: |
+          $version = "${{ needs.build.outputs.version }}"
+          $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=2654AE3A-D473-41CE-8C17-0C2734C3B4A3" `
+            -KeyUsage DigitalSignature -FriendlyName "PieManagerLauncherPackaging" `
+            -CertStoreLocation "Cert:\CurrentUser\My" `
+            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
+          & $env:SIGNTOOL sign /fd SHA256 /sha1 $cert.Thumbprint "pie-manager-launcher-$version.msix"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::signtool sign failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+          Remove-Item "Cert:\CurrentUser\My\$($cert.Thumbprint)" -ErrorAction SilentlyContinue
+
+      - name: Upload launcher MSIX as a workflow artifact
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: pie-manager-launcher-msix
+          path: installer/launcher/pie-manager-launcher-*.msix
+          retention-days: 1
+
+      - name: Attach launcher MSIX to the GitHub release
+        # Unlike the workflow artifact above (1-day retention), the Store
+        # submission in Partner Center happens whenever the user is ready —
+        # potentially long after this release — so the durable copy lives on
+        # the GitHub Release itself, alongside the other release binaries.
+        # Never runs on a manual workflow_dispatch test run, matching every
+        # other release-only step in this workflow.
+        if: github.event_name == 'push'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "${{ needs.build.outputs.version }}"
+          gh release upload "${{ github.ref_name }}" "installer/launcher/pie-manager-launcher-$version.msix" --repo "${{ github.repository }}" --clobber
+
   test-macos:
     # Real Apple Silicon hardware — the only way to actually run this binary,
     # since arm64 macOS cannot be virtualized on the x86_64 host used elsewhere

@@ -28,6 +28,16 @@ var launcherExe []byte
 
 const noWindow = 0x08000000 // CREATE_NO_WINDOW
 
+// Real Microsoft Store identity for launcher.exe (issue #63), assigned by
+// Partner Center when the "PIE Manager" app name was reserved — see
+// installer/launcher/AppxManifest.xml, which must stay in sync with these.
+const (
+	launcherPackageName = "PIEManager.PIEManager"
+	launcherPFN         = "PIEManager.PIEManager_9h5hzpm8nc7w0"
+	launcherAUMID       = launcherPFN + "!App"
+	launcherStoreURL    = "ms-windows-store://pdp/?productid=9PM8GPSMJG0N"
+)
+
 var logFilePath string
 
 func logMessage(message string) {
@@ -126,6 +136,66 @@ func addAppxPackage(path string) error {
 		return nil
 	}
 	return err
+}
+
+// storeAppInstalled reports whether the Store-distributed launcher.exe
+// (issue #63) is installed for the current user.
+func storeAppInstalled() bool {
+	out, err := runPS(fmt.Sprintf(`(Get-AppxPackage -Name "%s").PackageFamilyName`, launcherPackageName))
+	return err == nil && strings.TrimSpace(out) != ""
+}
+
+// waitForStoreInstall polls storeAppInstalled for up to timeout, returning
+// true as soon as it's detected.
+func waitForStoreInstall(timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if storeAppInstalled() {
+			return true
+		}
+		time.Sleep(3 * time.Second)
+	}
+	return false
+}
+
+// ensureStoreLauncherInstalled tries to get the Store-distributed
+// launcher.exe installed, by opening its Store listing and waiting for the
+// user to complete the install. Returns false — meaning "fall back to the
+// locally-embedded launcher.exe" — when the Store isn't available on this
+// machine (a fresh local-account Windows install has no Store provisioned,
+// the same class of gap already handled for WSL2/winget below via
+// installWSLFromGitHub/installWingetFromGitHub), when the user declines to
+// keep waiting, or when CI=true (never block on an interactive Store install
+// in a headless test run — see popup's own CI guard for the same reasoning).
+func ensureStoreLauncherInstalled() bool {
+	if storeAppInstalled() {
+		return true
+	}
+	if os.Getenv("CI") != "" {
+		logMessage("INFO: CI run — skipping interactive Store install wait, using local launcher.exe fallback")
+		return false
+	}
+
+	popup("Installation depuis le Microsoft Store",
+		"Le Microsoft Store va s'ouvrir pour installer PIE Manager.\n\n"+
+			"Cliquez sur « Installer » ou « Obtenir », attendez la fin du "+
+			"téléchargement, PUIS cliquez sur OK ici.")
+
+	if err := run("cmd", "/c", "start", "", launcherStoreURL); err != nil {
+		logMessage(fmt.Sprintf("WARN: could not open the Microsoft Store (not available on this machine?): %v", err))
+		return false
+	}
+
+	for {
+		if waitForStoreInstall(5 * time.Minute) {
+			return true
+		}
+		if !popupYesNo("Store non détecté",
+			"PIE Manager n'a pas été détecté dans le Store après 5 minutes.\n\n"+
+				"Continuer d'attendre (Oui) ou utiliser le lanceur local à la place (Non) ?") {
+			return false
+		}
+	}
 }
 
 // installWSLFromGitHub downloads and installs the official WSL package
@@ -726,32 +796,49 @@ Register-ScheduledTask `+
 	}
 
 	// ── Desktop integration ───────────────────────────────────────────────────
-	// launcher.exe : native Go + WebView2 binary with the PIE Manager icon
-	// embedded as a Windows PE resource. Handles single-instance detection,
-	// polls until the backend is ready, then shows the app in a WebView2 window.
-	// Windows extracts the icon from the .exe automatically — no IconLocation needed.
+	// Store-first, local-fallback (issue #63): launcher.exe distributed via
+	// the Microsoft Store avoids the Smart App Control block from #60 (a
+	// full-trust MSIX-packaged WebView2 control was confirmed live to reach
+	// the app's own backend on localhost exactly like it does unpackaged
+	// today — see installer/testing/msix-loopback-poc/). When the Store
+	// isn't available or the user doesn't complete the install, this falls
+	// back to today's exact embed-write-shortcut-launch behavior.
 	fmt.Println("=== PIE Manager — Intégration bureau ===")
-	logMessage("INFO: deploying launcher.exe and desktop shortcut...")
+	logMessage("INFO: setting up desktop integration...")
 
-	// Deploy launcher.exe — the WebView2 native Go launcher with embedded icon.
-	launcherExePath := filepath.Join(target, "launcher.exe")
-	if err := os.WriteFile(launcherExePath, launcherExe, 0755); err != nil {
-		logMessage(fmt.Sprintf("WARN: could not write launcher.exe: %v", err))
+	useStoreApp := ensureStoreLauncherInstalled()
+
+	var launchTarget, launchArgs string
+	if useStoreApp {
+		logMessage("OK: using Store-distributed launcher (PFN " + launcherPFN + ")")
+		launchTarget = "explorer.exe"
+		launchArgs = `shell:AppsFolder\` + launcherAUMID
 	} else {
-		logMessage("OK: launcher.exe deployed to " + launcherExePath)
+		// launcher.exe : native Go + WebView2 binary with the PIE Manager icon
+		// embedded as a Windows PE resource. Handles single-instance detection,
+		// polls until the backend is ready, then shows the app in a WebView2 window.
+		// Windows extracts the icon from the .exe automatically — no IconLocation needed.
+		launcherExePath := filepath.Join(target, "launcher.exe")
+		if err := os.WriteFile(launcherExePath, launcherExe, 0755); err != nil {
+			logMessage(fmt.Sprintf("WARN: could not write launcher.exe: %v", err))
+		} else {
+			logMessage("OK: launcher.exe deployed to " + launcherExePath)
+		}
+		launchTarget = launcherExePath
 	}
 
-	// Start Menu shortcut → launcher.exe directly.
-	// Windows extracts the taskbar/Start Menu icon from the .exe PE resources —
-	// no IconLocation needed on the shortcut.
+	// Start Menu shortcut. When targeting the Store app via shell:AppsFolder,
+	// Explorer resolves the correct tile icon from the AUMID itself — no
+	// IconLocation needed, same as the local .exe case (PE resource icon).
 	startMenu := filepath.Join(os.Getenv("APPDATA"), "Microsoft", "Windows", "Start Menu", "Programs")
 	shortcutPath := filepath.Join(startMenu, "PIE Manager.lnk")
 	psShortcut := fmt.Sprintf(`
 $ws = New-Object -ComObject WScript.Shell
 $s  = $ws.CreateShortcut('%s')
 $s.TargetPath  = '%s'
+$s.Arguments   = '%s'
 $s.Description = 'PIE Manager — Portfolio Tracker'
-$s.Save()`, shortcutPath, launcherExePath)
+$s.Save()`, shortcutPath, launchTarget, launchArgs)
 	if _, err := runPS(psShortcut); err != nil {
 		logMessage(fmt.Sprintf("WARN: could not create shortcut: %v", err))
 	} else {
@@ -766,8 +853,9 @@ $desktop = [Environment]::GetFolderPath('Desktop')
 $ws = New-Object -ComObject WScript.Shell
 $s  = $ws.CreateShortcut((Join-Path $desktop 'PIE Manager.lnk'))
 $s.TargetPath  = '%s'
+$s.Arguments   = '%s'
 $s.Description = 'PIE Manager — Portfolio Tracker'
-$s.Save()`, launcherExePath)
+$s.Save()`, launchTarget, launchArgs)
 	if _, err := runPS(psDesktopShortcut); err != nil {
 		logMessage(fmt.Sprintf("WARN: could not create desktop shortcut: %v", err))
 	} else {
@@ -776,8 +864,14 @@ $s.Save()`, launcherExePath)
 
 	if popupYesNo("Succès",
 		"PIE Manager est installé et démarré.\n\nVoulez-vous lancer PIE Manager maintenant ?") {
-		if err := exec.Command(launcherExePath).Start(); err != nil {
-			logMessage(fmt.Sprintf("WARN: could not launch PIE Manager: %v", err))
+		var launchErr error
+		if launchArgs != "" {
+			launchErr = exec.Command(launchTarget, launchArgs).Start()
+		} else {
+			launchErr = exec.Command(launchTarget).Start()
+		}
+		if launchErr != nil {
+			logMessage(fmt.Sprintf("WARN: could not launch PIE Manager: %v", launchErr))
 		} else {
 			logMessage("OK: PIE Manager launched")
 		}

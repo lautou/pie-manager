@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+    xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+    xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+    xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+    xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+    IgnorableNamespaces="uap uap10 rescap">
+
+  <!--
+    Real Microsoft Store identity for launcher.exe (issue #63), assigned by
+    Partner Center when the "PIE Manager" app name was reserved -- these
+    values are not placeholders, do not change them without updating the
+    reservation in Partner Center to match.
+  -->
+  <Identity
+      Name="PIEManager.PIEManager"
+      Publisher="CN=2654AE3A-D473-41CE-8C17-0C2734C3B4A3"
+      Version="__VERSION__.0"
+      ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>PIE Manager</DisplayName>
+    <PublisherDisplayName>PIE Manager</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.22631.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="fr-fr" />
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+
+  <Applications>
+    <!--
+      Full-trust (mediumIL) Desktop Bridge app -- confirmed live (issue #63)
+      that this trust level does not run inside an AppContainer, so
+      launcher.exe reaches the app's own backend on 127.0.0.1 exactly like it
+      does unpackaged today.
+    -->
+    <Application Id="App" Executable="launcher.exe" uap10:RuntimeBehavior="packagedClassicApp" uap10:TrustLevel="mediumIL">
+      <uap:VisualElements
+          DisplayName="PIE Manager"
+          Description="Suivi de portefeuille d'investissement multi-comptes"
+          BackgroundColor="transparent"
+          Square150x150Logo="Assets\Square150x150Logo.png"
+          Square44x44Logo="Assets\Square44x44Logo.png" />
+    </Application>
+  </Applications>
+</Package>

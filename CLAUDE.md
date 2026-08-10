@@ -1187,6 +1187,28 @@ confirmed live and approved, real users only ever take the local-fallback path a
 behavior to before this feature, since the Store-detection check simply never finds the app
 installed.
 
+**Automating every update *after* the first manual submission.** Microsoft's Store submission
+API cannot create an app or its first submission — that one-time step (upload, listing details,
+age ratings, certification) must happen by hand in Partner Center, no way around it. Every
+update after that first live, approved submission can be automated: `package-launcher-msix`'s
+last two steps (`build-installer.yml`) call the official `microsoft/microsoft-store-apppublisher`
+GitHub Action + `msstore` CLI (`msstore reconfigure` then `msstore publish <msix> -id
+9PM8GPSMJG0N`) to push every new release's `.msix` straight to the Store — no more manual
+uploads. These steps self-skip (an `if:` checking all four secrets are non-empty) until the
+one-time setup below is done, so they're harmless to have merged early:
+
+1. Create/associate a Microsoft Entra ID (Azure AD) tenant with the Partner Center account
+   (Partner Center → Account settings → Entra applications) — free, doable from an individual
+   account, no pre-existing organization needed.
+2. Register an app in that tenant, assign it the **Manager** role on the Partner Center account.
+3. Add 4 repo secrets (Settings → Secrets and variables → Actions): `AZURE_AD_TENANT_ID`,
+   `AZURE_AD_APPLICATION_CLIENT_ID`, `AZURE_AD_APPLICATION_SECRET` (from the Entra app
+   registration), `SELLER_ID` (Partner Center Account settings → Identifiers → "ID de vendeur").
+
+Not live-tested (can't be, until the first manual submission is live) — written directly from
+[Microsoft's own GitHub Actions publishing guide](https://learn.microsoft.com/en-us/windows/apps/publish/msstore-dev-cli/github-actions),
+verify the actual publish step once the secrets are in place.
+
 **Window title bar icon** requires an explicit `IconId` — `jchv/go-webview2`'s `webview2.New()`
 falls back to the generic Win32 stock icon (`IDI_APPLICATION`) whenever `WindowOptions.IconId`
 is left at zero; it does not automatically pick up the exe's own embedded icon resource, even

@@ -483,6 +483,50 @@ jobs:
           $version = "${{ needs.build.outputs.version }}"
           gh release upload "${{ github.ref_name }}" "installer/launcher/pie-manager-launcher-$version.msix" --repo "${{ github.repository }}" --clobber
 
+      - name: Configure Microsoft Store CLI
+        # Self-skips (via the secrets check below) until the four
+        # AZURE_AD_*/SELLER_ID repo secrets are configured — see CLAUDE.md's
+        # "Windows installation architecture" section for the one-time setup
+        # this depends on (an Entra ID app registration associated with
+        # Partner Center). Per Microsoft's own docs, this whole automated
+        # publish path only works once the app has already been published
+        # and is live at least once via a manual Partner Center submission —
+        # until then this step existing is harmless, it just never runs.
+        if: >-
+          github.event_name == 'push' &&
+          secrets.AZURE_AD_TENANT_ID != '' &&
+          secrets.AZURE_AD_APPLICATION_CLIENT_ID != '' &&
+          secrets.AZURE_AD_APPLICATION_SECRET != '' &&
+          secrets.SELLER_ID != ''
+        uses: microsoft/microsoft-store-apppublisher@v1.1
+
+      - name: Publish launcher update to the Microsoft Store
+        if: >-
+          github.event_name == 'push' &&
+          secrets.AZURE_AD_TENANT_ID != '' &&
+          secrets.AZURE_AD_APPLICATION_CLIENT_ID != '' &&
+          secrets.AZURE_AD_APPLICATION_SECRET != '' &&
+          secrets.SELLER_ID != ''
+        working-directory: installer/launcher
+        shell: pwsh
+        env:
+          AZURE_AD_TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID }}
+          AZURE_AD_APPLICATION_CLIENT_ID: ${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}
+          AZURE_AD_APPLICATION_SECRET: ${{ secrets.AZURE_AD_APPLICATION_SECRET }}
+          SELLER_ID: ${{ secrets.SELLER_ID }}
+        run: |
+          $version = "${{ needs.build.outputs.version }}"
+          msstore reconfigure --tenantId $env:AZURE_AD_TENANT_ID --sellerId $env:SELLER_ID --clientId $env:AZURE_AD_APPLICATION_CLIENT_ID --clientSecret $env:AZURE_AD_APPLICATION_SECRET
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::msstore reconfigure failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+          msstore publish "pie-manager-launcher-$version.msix" -id 9PM8GPSMJG0N
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::msstore publish failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+
   test-macos:
     # Real Apple Silicon hardware — the only way to actually run this binary,
     # since arm64 macOS cannot be virtualized on the x86_64 host used elsewhere

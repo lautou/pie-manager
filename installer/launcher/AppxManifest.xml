@@ -8,7 +8,7 @@
 
   <!--
     Real Microsoft Store identity for launcher.exe (issue #63), assigned by
-    Partner Center when the "PIE Manager" app name was reserved -- these
+    Partner Center when the "PIE Manager" app name was reserved — these
     values are not placeholders, do not change them without updating the
     reservation in Partner Center to match.
   -->
@@ -39,7 +39,7 @@
 
   <Applications>
     <!--
-      Full-trust (mediumIL) Desktop Bridge app -- confirmed live (issue #63)
+      Full-trust (mediumIL) Desktop Bridge app — confirmed live (issue #63)
       that this trust level does not run inside an AppContainer, so
       launcher.exe reaches the app's own backend on 127.0.0.1 exactly like it
       does unpackaged today.

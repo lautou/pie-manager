@@ -1146,6 +1146,47 @@ It replaces the old `launcher.ps1`/`open-app.vbs`/Edge `--app` chain. It:
 - Shows a native loading screen while polling `/api/admin/version`
 - Navigates to the app in a WebView2 window once the backend is ready
 
+**Launcher distribution: Store-first, local-exe fallback (issue #63, fix for #60's Smart App
+Control block).** SAC can hard-block a sideloaded `launcher.exe` outright with no in-product
+override (issue #60) — no code-signing certificate path fixes this reliably. `launcher.exe`
+itself needs no elevation, so it's distributed as a full-trust MSIX package
+(`installer/launcher/AppxManifest.xml`, identity `PIEManager.PIEManager`, PFN
+`PIEManager.PIEManager_9h5hzpm8nc7w0`, Store ID `9PM8GPSMJG0N`) via the Microsoft Store — Store
+apps bypass SAC/SmartScreen by design. Confirmed live
+(`installer/testing/msix-loopback-poc/`) that a full-trust (`mediumIL`) packaged WebView2
+control reaches `localhost` exactly like the unpackaged exe does — the loopback-isolation
+restriction only ever applied to sandboxed AppContainer/UWP apps, never to full-trust Desktop
+Bridge apps.
+
+`main_windows.go`'s desktop-integration step is hybrid: `ensureStoreLauncherInstalled()` checks
+`Get-AppxPackage`, and if absent, opens `ms-windows-store://pdp/?productid=9PM8GPSMJG0N` and
+waits (with a "keep waiting or fall back?" prompt after each 5-minute window). If the Store
+isn't available on the machine at all (the same class of gap already handled for WSL2/winget
+via `installWSLFromGitHub`/`installWingetFromGitHub`), the user declines, or `CI=true`, it falls
+back to today's exact embed-write-shortcut-launch behavior — confirmed live via a full
+`test-windows-install`-style run that this fallback fires cleanly with no hang/crash. Shortcuts
+target `explorer.exe` with `Arguments = shell:AppsFolder\<AUMID>` on the Store path (Explorer
+resolves the correct tile icon from the AUMID itself, no `IconLocation` needed) or the raw exe
+path on the fallback path.
+
+`installer/launcher/gen-assets/main.go` renders the MSIX Store logo assets (`Square44x44Logo`,
+`Square150x150Logo`, `StoreLogo`) by extracting the largest PNG-encoded frame directly from
+`pie-manager.ico` and bilinearly downsampling it — **not** from `installer/launcher/*.png`,
+which are gitignored local-only icon-extraction artifacts (see `.gitignore`) absent on a fresh
+checkout. `build-installer.yml`'s `package-launcher-msix` job builds, packages, and signs a real
+`pie-manager-launcher-<version>.msix` release artifact on every release (ephemeral self-signed
+cert matching the real Publisher CN — a Store submission's original signature never needs to
+chain to a trusted root, Microsoft re-signs at publish time) — this only produces a downloadable
+artifact, it does **not** submit anything to Partner Center.
+
+**As of this writing the Store listing is a reserved-but-unpublished Partner Center draft** —
+uploading `pie-manager-launcher-<version>.msix` there, filling in listing details, and
+submitting for certification are manual steps for the repo owner (registering the Store
+developer account itself required personal identity verification). Until the listing is
+confirmed live and approved, real users only ever take the local-fallback path above — identical
+behavior to before this feature, since the Store-detection check simply never finds the app
+installed.
+
 **Window title bar icon** requires an explicit `IconId` — `jchv/go-webview2`'s `webview2.New()`
 falls back to the generic Win32 stock icon (`IDI_APPLICATION`) whenever `WindowOptions.IconId`
 is left at zero; it does not automatically pick up the exe's own embedded icon resource, even

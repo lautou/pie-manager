@@ -1,10 +1,15 @@
 // Command gen-assets renders the MSIX Store logo assets for launcher.exe
 // (Square44x44Logo.png, Square150x150Logo.png, StoreLogo.png) by bilinearly
-// downsampling the existing 256x256 app icon. A hand-written resize avoids
-// pulling in an image-processing dependency for this one build-time step.
+// downsampling the largest frame embedded in pie-manager.ico. A hand-written
+// resize avoids pulling in an image-processing dependency for this one
+// build-time step, and reading directly from the .ico avoids depending on
+// installer/launcher/*.png — those are gitignored, local-only extraction
+// artifacts (see .gitignore), not committed source assets.
 package main
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"image"
 	"image/color"
@@ -14,13 +19,53 @@ import (
 	"path/filepath"
 )
 
-func loadPNG(path string) (image.Image, error) {
-	f, err := os.Open(path)
+var pngMagic = []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
+
+// loadLargestPNGFrame extracts the largest PNG-encoded frame embedded in a
+// Windows .ico file. Modern icon tooling stores large (>=256x256) frames as
+// PNG data inside the ICO container rather than raw DIB — confirmed for this
+// app's own pie-manager.ico by inspecting its directory entries — so no
+// third-party ICO decoder is needed here, just Go's stdlib PNG decoder
+// pointed at the right byte range.
+func loadLargestPNGFrame(path string) (image.Image, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
-	return png.Decode(f)
+	if len(data) < 6 || binary.LittleEndian.Uint16(data[2:4]) != 1 {
+		return nil, fmt.Errorf("%s is not a valid ICO file", path)
+	}
+	count := int(binary.LittleEndian.Uint16(data[4:6]))
+
+	bestArea := -1
+	var bestFrame []byte
+	for i := 0; i < count; i++ {
+		off := 6 + i*16
+		if off+16 > len(data) {
+			break
+		}
+		w, h := int(data[off]), int(data[off+1])
+		if w == 0 {
+			w = 256
+		}
+		if h == 0 {
+			h = 256
+		}
+		bytesInRes := int(binary.LittleEndian.Uint32(data[off+8 : off+12]))
+		imageOffset := int(binary.LittleEndian.Uint32(data[off+12 : off+16]))
+		end := imageOffset + bytesInRes
+		if imageOffset < 0 || end > len(data) || !bytes.HasPrefix(data[imageOffset:], pngMagic) {
+			continue // not a decodable PNG-in-ICO frame — skip
+		}
+		if area := w * h; area > bestArea {
+			bestArea = area
+			bestFrame = data[imageOffset:end]
+		}
+	}
+	if bestFrame == nil {
+		return nil, fmt.Errorf("%s has no PNG-encoded frame to decode", path)
+	}
+	return png.Decode(bytes.NewReader(bestFrame))
 }
 
 func clampInt(v, lo, hi int) int {
@@ -90,12 +135,12 @@ func writeResized(src image.Image, size int, path string) error {
 
 func main() {
 	if len(os.Args) != 3 {
-		fmt.Fprintln(os.Stderr, "usage: gen-assets <source-256x256.png> <output-dir>")
+		fmt.Fprintln(os.Stderr, "usage: gen-assets <source.ico> <output-dir>")
 		os.Exit(1)
 	}
 	srcPath, outDir := os.Args[1], os.Args[2]
 
-	src, err := loadPNG(srcPath)
+	src, err := loadLargestPNGFrame(srcPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

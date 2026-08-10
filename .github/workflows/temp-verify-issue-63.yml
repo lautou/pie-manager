@@ -53,7 +53,7 @@ jobs:
       - name: Generate Store logo assets from the app icon
         run: |
           New-Item -ItemType Directory -Force -Path Assets | Out-Null
-          go run ./gen-assets 256x256.png Assets
+          go run ./gen-assets pie-manager.ico Assets
 
       - name: Stage manifest with the real version
         run: |

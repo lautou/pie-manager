@@ -61,6 +61,17 @@ const loadingHTMLTpl = `<!DOCTYPE html>
 </body>
 </html>`
 
+// errorHTMLTpl renders a static error screen — no spinner, since whatever
+// this reports has already been given up on. Shared by every failure case
+// below (not installed, Podman/container startup timeouts) instead of each
+// inlining its own copy.
+const errorHTMLTpl = `<!DOCTYPE html><html><body style="font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#1a1a2e;color:#e0e0e0;flex-direction:column;text-align:center;padding:0 40px"><h2>PIE Manager</h2><p style="margin-top:16px;color:#ff6b6b;line-height:1.6">%s</p></body></html>`
+
+// showErrorScreen replaces the WebView2 page with a static error message.
+func showErrorScreen(w webview2.WebView, message string) {
+	w.Dispatch(func() { w.SetHtml(fmt.Sprintf(errorHTMLTpl, message)) })
+}
+
 // focusExistingWindow brings the existing PIE Manager window to the foreground.
 // Returns true if a window was found.
 func focusExistingWindow() bool {
@@ -75,10 +86,30 @@ func focusExistingWindow() bool {
 	return false
 }
 
+// pieManagerEnvPath returns the path to the .env file written by the real
+// system installer (pie-manager-windows-amd64.exe) once it has finished
+// setting up WSL2/Podman/the app containers.
+func pieManagerEnvPath() string {
+	return filepath.Join(os.Getenv("APPDATA"), "pie-manager", ".env")
+}
+
+// isFullyInstalled reports whether the real system installer has ever run on
+// this machine. launcher.exe can now be launched standalone — distributed
+// via the Microsoft Store (issue #63), it no longer requires the local
+// embed-write-shortcut-launch path that always ran it right after the
+// installer set up Podman. Without this check, a user who finds "PIE
+// Manager" in the Store and installs it directly (skipping the real
+// installer) hits Phase 1/2 below with Podman never installed at all —
+// confirmed live as a real Microsoft Store certification failure ("The
+// product loads indefinitely at launch") on a clean test machine.
+func isFullyInstalled() bool {
+	_, err := os.Stat(pieManagerEnvPath())
+	return err == nil
+}
+
 // getAppPort reads APP_PORT from %APPDATA%\pie-manager\.env, falling back to 14943.
 func getAppPort() int {
-	appdata := os.Getenv("APPDATA")
-	envPath := filepath.Join(appdata, "pie-manager", ".env")
+	envPath := pieManagerEnvPath()
 	port := 14943
 
 	if data, err := os.ReadFile(envPath); err == nil {
@@ -137,23 +168,53 @@ func main() {
 	w.SetSize(1400, 900, webview2.HintNone)
 	w.SetHtml(strings.Replace(loadingHTMLTpl, "{{VERSION}}", Version, 1))
 
+	// Fail fast, with a clear message, instead of spinning on Phase 1 forever
+	// — see isFullyInstalled's comment for why this case is now reachable.
+	if !isFullyInstalled() {
+		showErrorScreen(w, "PIE Manager is not installed yet.<br>"+
+			"Please download and run the full installer first:<br>"+
+			"github.com/lautou/pie-manager/releases/latest")
+		w.Run()
+		return
+	}
+
 	go func() {
-		// ── Phase 1: Wait for Podman Machine (no timeout — it will always start) ──
+		// ── Phase 1: Wait for Podman Machine — bounded. A real end-user
+		// install can legitimately take up to a minute or so for a cold
+		// Podman Machine start, but it must never spin forever: confirmed
+		// live as a real Microsoft Store certification failure ("The
+		// product loads indefinitely at launch") on a machine where Podman
+		// was never installed at all (isFullyInstalled guards the common
+		// case above; this timeout is defense-in-depth for a broken/
+		// partial install where .env exists but Podman itself doesn't).
 		if !machineIsRunning() {
 			setStatus(w, "Podman machine starting…")
+			deadline := time.Now().Add(90 * time.Second)
 			for !machineIsRunning() {
+				if time.Now().After(deadline) {
+					showErrorScreen(w, "Podman machine did not start within 90 seconds.<br>"+
+						"Please try restarting PIE Manager, or reinstall if the problem persists.")
+					return
+				}
 				time.Sleep(2 * time.Second)
 			}
 		}
 
-		// ── Phase 2: Wait for port to open (HAProxy + containers, no timeout) ──
+		// ── Phase 2: Wait for port to open (HAProxy + containers) — bounded,
+		// same reasoning as Phase 1.
 		setStatus(w, "Containers starting…")
 		addr := fmt.Sprintf("localhost:%d", port)
+		containersDeadline := time.Now().Add(60 * time.Second)
 		for {
 			conn, err := net.DialTimeout("tcp", addr, time.Second)
 			if err == nil {
 				conn.Close()
 				break
+			}
+			if time.Now().After(containersDeadline) {
+				showErrorScreen(w, "Containers did not start within 60 seconds.<br>"+
+					"Please try restarting PIE Manager, or reinstall if the problem persists.")
+				return
 			}
 			time.Sleep(time.Second)
 		}
@@ -161,8 +222,8 @@ func main() {
 		// ── Phase 3: Poll /api/admin/version — 30 s max ──────────────────────────
 		setStatus(w, "Connecting to application…")
 		client := &http.Client{Timeout: 2 * time.Second}
-		deadline := time.Now().Add(30 * time.Second)
-		for time.Now().Before(deadline) {
+		apiDeadline := time.Now().Add(30 * time.Second)
+		for time.Now().Before(apiDeadline) {
 			resp, err := client.Get(apiURL)
 			if err == nil && resp.StatusCode == 200 {
 				resp.Body.Close()
@@ -173,9 +234,9 @@ func main() {
 		}
 
 		// Phase 3 timed out — backend reachable but not responding correctly.
-		w.Dispatch(func() {
-			w.SetHtml(`<!DOCTYPE html><html><body style="font-family:Segoe UI;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#1a1a2e;color:#e0e0e0;flex-direction:column"><h2>PIE Manager</h2><p style="margin-top:16px;color:#ff6b6b">Application did not respond within 30 seconds.<br>HAProxy is reachable but the backend may still be starting.<br>Please try again in a few seconds.</p></body></html>`)
-		})
+		showErrorScreen(w, "Application did not respond within 30 seconds.<br>"+
+			"HAProxy is reachable but the backend may still be starting.<br>"+
+			"Please try again in a few seconds.")
 	}()
 
 	w.Run()

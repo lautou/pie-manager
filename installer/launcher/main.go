@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -21,11 +22,19 @@ import (
 // Version is injected at build time via -ldflags "-X main.Version=x.y.z"
 var Version = "dev"
 
+// installerDownloadURL is the stable "latest release" alias for the full
+// system installer, published by build-installer.yml alongside every
+// versioned release asset (see the "Create GitHub Release" step there).
+const installerDownloadURL = "https://github.com/lautou/pie-manager/releases/latest/download/pie-manager-windows-amd64.exe"
+
 var (
 	user32                  = syscall.NewLazyDLL("user32.dll")
 	procFindWindowW         = user32.NewProc("FindWindowW")
 	procShowWindow          = user32.NewProc("ShowWindow")
 	procSetForegroundWindow = user32.NewProc("SetForegroundWindow")
+
+	shell32           = syscall.NewLazyDLL("shell32.dll")
+	procShellExecuteW = shell32.NewProc("ShellExecuteW")
 )
 
 const loadingHTMLTpl = `<!DOCTYPE html>
@@ -63,13 +72,123 @@ const loadingHTMLTpl = `<!DOCTYPE html>
 
 // errorHTMLTpl renders a static error screen — no spinner, since whatever
 // this reports has already been given up on. Shared by every failure case
-// below (not installed, Podman/container startup timeouts) instead of each
-// inlining its own copy.
+// below (Podman/container startup timeouts) instead of each inlining its own
+// copy.
 const errorHTMLTpl = `<!DOCTYPE html><html><body style="font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#1a1a2e;color:#e0e0e0;flex-direction:column;text-align:center;padding:0 40px"><h2>PIE Manager</h2><p style="margin-top:16px;color:#ff6b6b;line-height:1.6">%s</p></body></html>`
 
 // showErrorScreen replaces the WebView2 page with a static error message.
 func showErrorScreen(w webview2.WebView, message string) {
 	w.Dispatch(func() { w.SetHtml(fmt.Sprintf(errorHTMLTpl, message)) })
+}
+
+// notInstalledHTML is shown when launcher.exe is run standalone (issue #63:
+// distributed via the Microsoft Store) without the full system installer
+// ever having run. It must not just point the user at an external download
+// — Microsoft Store policy 10.1.2 ("Your product must be fully functional")
+// rejected an earlier version of this screen that did exactly that
+// ("Unusable Feature: The product fails to start with a message to download
+// the App from outside the Store"). Instead, this screen's button itself
+// downloads and launches the real installer (with a UAC elevation prompt —
+// triggered by this explicit user action, not automatically on launch,
+// which is the distinction Store certification cares about) via the bound
+// triggerInstall JS function.
+const notInstalledHTML = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    height: 100vh; background: #1a1a2e; color: #e0e0e0;
+    text-align: center; padding: 0 40px;
+  }
+  h2 { font-size: 2rem; font-weight: 300; letter-spacing: 2px; margin-bottom: 16px; }
+  p { font-size: 0.95rem; color: #aaa; margin-bottom: 24px; line-height: 1.6; }
+  button {
+    font-family: inherit; font-size: 1rem; padding: 12px 28px;
+    background: #4a9eff; color: #fff; border: none; border-radius: 6px;
+    cursor: pointer;
+  }
+  button:disabled { background: #555; cursor: default; }
+  #status { margin-top: 16px; min-height: 1.2em; }
+</style>
+</head>
+<body>
+  <h2>PIE Manager</h2>
+  <p>This is the first time PIE Manager runs on this computer.<br>
+  Click below to download and set up the application — Windows will ask you
+  to approve the one-time setup (administrator rights required).</p>
+  <button id="installBtn" onclick="startInstall()">Install PIE Manager</button>
+  <p id="status"></p>
+  <script>
+    async function startInstall() {
+      document.getElementById('installBtn').disabled = true;
+      var status = document.getElementById('status');
+      status.style.color = '#aaa';
+      status.textContent = 'Downloading installer…';
+      try {
+        await triggerInstall();
+        status.textContent = 'Setup launched — this window will close.';
+      } catch (err) {
+        status.style.color = '#ff6b6b';
+        status.textContent = 'Error: ' + err;
+        document.getElementById('installBtn').disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>`
+
+// downloadInstaller fetches the full system installer to a temp file and
+// returns its path.
+func downloadInstaller() (string, error) {
+	resp, err := http.Get(installerDownloadURL)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	dest := filepath.Join(os.TempDir(), "pie-manager-windows-amd64.exe")
+	f, err := os.Create(dest)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		return "", err
+	}
+	return dest, nil
+}
+
+// runElevated launches path with a UAC elevation prompt via ShellExecuteW's
+// "runas" verb — os/exec has no equivalent, since a non-elevated process
+// cannot elevate a child any other way on Windows.
+func runElevated(path string) error {
+	verb, _ := syscall.UTF16PtrFromString("runas")
+	file, _ := syscall.UTF16PtrFromString(path)
+	dir, _ := syscall.UTF16PtrFromString(filepath.Dir(path))
+	const swShowNormal = 1
+	ret, _, _ := procShellExecuteW.Call(
+		0,
+		uintptr(unsafe.Pointer(verb)),
+		uintptr(unsafe.Pointer(file)),
+		0,
+		uintptr(unsafe.Pointer(dir)),
+		swShowNormal,
+	)
+	// ShellExecuteW returns a value > 32 on success; anything else
+	// (including the user declining the UAC prompt) is a failure code.
+	if ret <= 32 {
+		return fmt.Errorf("ShellExecuteW failed (code %d) — did you decline the elevation prompt?", ret)
+	}
+	return nil
 }
 
 // focusExistingWindow brings the existing PIE Manager window to the foreground.
@@ -168,12 +287,27 @@ func main() {
 	w.SetSize(1400, 900, webview2.HintNone)
 	w.SetHtml(strings.Replace(loadingHTMLTpl, "{{VERSION}}", Version, 1))
 
-	// Fail fast, with a clear message, instead of spinning on Phase 1 forever
-	// — see isFullyInstalled's comment for why this case is now reachable.
+	// Fail fast with an actionable install button, instead of spinning on
+	// Phase 1 forever — see isFullyInstalled's and notInstalledHTML's
+	// comments for why this case is now reachable and why it must let the
+	// user actually do something, not just point them elsewhere.
 	if !isFullyInstalled() {
-		showErrorScreen(w, "PIE Manager is not installed yet.<br>"+
-			"Please download and run the full installer first:<br>"+
-			"github.com/lautou/pie-manager/releases/latest")
+		err := w.Bind("triggerInstall", func() error {
+			dest, err := downloadInstaller()
+			if err != nil {
+				return fmt.Errorf("could not download the installer: %v", err)
+			}
+			if err := runElevated(dest); err != nil {
+				return fmt.Errorf("could not launch the installer: %v", err)
+			}
+			w.Terminate()
+			return nil
+		})
+		if err != nil {
+			showErrorScreen(w, "Internal error: could not initialize the installer button.")
+		} else {
+			w.SetHtml(notInstalledHTML)
+		}
 		w.Run()
 		return
 	}

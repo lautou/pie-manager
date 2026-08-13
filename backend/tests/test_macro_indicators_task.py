@@ -10,11 +10,13 @@ fetch_yahoo_history's own retry/backoff/parsing mechanics are tested once, gener
 test_yahoo_fetch.py. get_redis/write_status are tested in test_sync_status.py.
 """
 
+import asyncio
 import json
 import pytest
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from tests.conftest import fetch_latest_job_run
 from app.models.macro_indicator import MacroRegion
 from app.tasks.macro_indicators import (
     _run_macro_indicators_refresh,
@@ -202,3 +204,44 @@ def test_refresh_macro_indicators_handles_exception_and_writes_failed():
 
 def test_sync_status_key_value():
     assert SYNC_STATUS_KEY == "pie:macro:status"
+
+
+# ---------------------------------------------------------------------------
+# job_runs dual-write (issue #66 step 1) — real DB row, real asyncio.run this time
+# ---------------------------------------------------------------------------
+
+def test_refresh_macro_indicators_writes_job_runs_row_on_success(engine):
+    """Depends on the `engine` fixture (unused directly) purely to guarantee the schema
+    exists when this file runs in isolation."""
+    mock_r = MagicMock()
+    success_result = {
+        "started_at": "2026-05-15T14:30:00+00:00",
+        "finished_at": "2026-05-15T14:30:05+00:00",
+        "status": "success",
+        "total_tickers": 4,
+        "succeeded": 4,
+        "failed_tickers": [],
+    }
+    with patch("app.tasks.macro_indicators.get_redis", return_value=mock_r), \
+         patch("app.tasks.macro_indicators._run_macro_indicators_refresh",
+               new_callable=AsyncMock, return_value=success_result):
+        result = refresh_macro_indicators()
+
+    assert result == success_result
+    run = asyncio.run(fetch_latest_job_run("refresh_macro_indicators"))
+    assert run.status == "success"
+    assert run.total_steps == 4
+    assert run.succeeded_steps == 4
+    assert run.failed_items == []
+
+
+def test_refresh_macro_indicators_writes_job_runs_failed_row_on_exception(engine):
+    mock_r = MagicMock()
+    with patch("app.tasks.macro_indicators.get_redis", return_value=mock_r), \
+         patch("app.tasks.macro_indicators._run_macro_indicators_refresh",
+               new_callable=AsyncMock, side_effect=RuntimeError("DB down")):
+        refresh_macro_indicators()
+
+    run = asyncio.run(fetch_latest_job_run("refresh_macro_indicators"))
+    assert run.status == "failed"
+    assert run.error == "DB down"

@@ -13,9 +13,12 @@ pattern in test_price_sync.py. Key invariants:
 get_redis/write_status are tested once, generically, in test_sync_status.py.
 """
 
+import asyncio
 import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+from tests.conftest import fetch_latest_job_run
 
 from app.tasks.etf_holdings import (
     _get_yahoo_session_crumb,
@@ -456,3 +459,44 @@ def test_refresh_etf_holdings_handles_exception_and_writes_failed():
 
 def test_sync_status_key_value():
     assert SYNC_STATUS_KEY == "pie:etf_holdings:status"
+
+
+# ---------------------------------------------------------------------------
+# job_runs dual-write (issue #66 step 1) — real DB row, real asyncio.run this time
+# ---------------------------------------------------------------------------
+
+def test_refresh_etf_holdings_writes_job_runs_row_on_success(engine):
+    """Depends on the `engine` fixture (unused directly) purely to guarantee the schema
+    exists when this file runs in isolation."""
+    mock_r = MagicMock()
+    success_result = {
+        "started_at": "2026-05-15T14:30:00+00:00",
+        "finished_at": "2026-05-15T14:30:05+00:00",
+        "status": "partial",
+        "total_tickers": 4,
+        "succeeded": 3,
+        "failed_tickers": ["ETF1(no crumb)"],
+    }
+    with patch("app.tasks.etf_holdings.get_redis", return_value=mock_r), \
+         patch("app.tasks.etf_holdings._run_etf_holdings_refresh",
+               new_callable=AsyncMock, return_value=success_result):
+        result = refresh_etf_holdings()
+
+    assert result == success_result
+    run = asyncio.run(fetch_latest_job_run("refresh_etf_holdings"))
+    assert run.status == "partial"
+    assert run.total_steps == 4
+    assert run.succeeded_steps == 3
+    assert run.failed_items == ["ETF1(no crumb)"]
+
+
+def test_refresh_etf_holdings_writes_job_runs_failed_row_on_exception(engine):
+    mock_r = MagicMock()
+    with patch("app.tasks.etf_holdings.get_redis", return_value=mock_r), \
+         patch("app.tasks.etf_holdings._run_etf_holdings_refresh",
+               new_callable=AsyncMock, side_effect=RuntimeError("DB down")):
+        refresh_etf_holdings()
+
+    run = asyncio.run(fetch_latest_job_run("refresh_etf_holdings"))
+    assert run.status == "failed"
+    assert run.error == "DB down"

@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
+from app.tasks import job_runs
 from app.tasks.celery_app import celery_app
 from app.tasks.sync_status import get_redis, write_status
 from app.tasks.yahoo_fetch import fetch_yahoo_history
@@ -124,6 +125,10 @@ def refresh_country_performance():
         "succeeded": 0,
         "failed_tickers": [],
     }, ttl_seconds=SYNC_STATUS_TTL)
+    # job_runs dual-write (issue #66 step 1) — see app/tasks/job_runs.py. "schedule" is a
+    # best-effort default here since Celery doesn't tell a task how it was triggered; a later
+    # step threads the real trigger through once routers actually read from job_runs.
+    run_id = job_runs.run_tracked(job_runs.start_run("refresh_country_performance", trigger="schedule"))
 
     try:
         result = asyncio.run(_run_country_performance_refresh())
@@ -139,4 +144,12 @@ def refresh_country_performance():
         }
 
     write_status(r, SYNC_STATUS_KEY, result, ttl_seconds=SYNC_STATUS_TTL)
+    job_runs.run_tracked(job_runs.finish_run(
+        run_id,
+        status=result["status"],
+        total_steps=result.get("total_tickers", 0),
+        succeeded_steps=result.get("succeeded", 0),
+        failed_items=result.get("failed_tickers", []),
+        error=result.get("error"),
+    ))
     return result

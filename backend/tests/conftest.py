@@ -82,3 +82,24 @@ async def client(db_session):
     async with AsyncClient(transport=ASGITransport(app=fastapi_app), base_url="http://test") as ac:
         yield ac
     fastapi_app.dependency_overrides.clear()
+
+
+async def fetch_latest_job_run(task_name: str):
+    """Test helper (issue #66 step 1): read back the most recent job_runs row for a task via a
+    fresh engine/session — mirrors app/tasks/job_runs.py's own fresh-engine-per-call pattern,
+    since these task wrapper tests let the real asyncio.run/job_runs dual-write execute rather
+    than mocking it away."""
+    from sqlalchemy import select
+
+    from app.models.job_run import JobRun
+
+    eng = create_async_engine(os.environ.get("DATABASE_URL", TEST_DB_URL), echo=False, pool_size=2)
+    Session = async_sessionmaker(eng, expire_on_commit=False, class_=AsyncSession)
+    try:
+        async with Session() as db:
+            result = await db.execute(
+                select(JobRun).where(JobRun.task_name == task_name).order_by(JobRun.id.desc())
+            )
+            return result.scalars().first()
+    finally:
+        await eng.dispose()

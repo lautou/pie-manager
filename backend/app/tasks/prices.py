@@ -1,11 +1,10 @@
 """
-Live price refresh — runs every 15 min via Celery Beat.
+Live price refresh — runs every 15 min via PgQueuer (see app/tasks/pgq_app.py).
 
 Strategy:
   - Parallel HTTP calls to query1.finance.yahoo.com/v8/finance/chart/{ticker}
   - regularMarketPrice → real-time quote during market hours, last close otherwise
-  - Exponential backoff on 429; individual ticker failures recorded in Redis
-  - Result written to Redis key "pie:sync:status" for frontend display
+  - Exponential backoff on 429; individual ticker failures recorded in job_runs
 """
 
 import asyncio
@@ -13,14 +12,8 @@ from datetime import datetime, date, timezone
 
 import httpx
 
-from app.tasks import job_runs
-from app.tasks.celery_app import celery_app
-from app.tasks.sync_status import get_redis, write_status
 from app.tasks.yahoo_fetch import fetch_yahoo_chart
 from app.services.price_service import get_active_tickers
-
-SYNC_STATUS_KEY = "pie:sync:status"
-SYNC_STATUS_TTL = 3600  # expire after 1 h
 
 
 # ---------------------------------------------------------------------------
@@ -143,58 +136,3 @@ async def _run_price_refresh() -> dict:
         "succeeded": n_ok,
         "failed_tickers": failed,
     }
-
-
-# ---------------------------------------------------------------------------
-# Celery tasks
-# ---------------------------------------------------------------------------
-
-@celery_app.task(name="app.tasks.prices.refresh_prices_live")
-def refresh_prices_live():
-    """
-    Main scheduled task: fetch live prices every 15 min.
-    Writes sync status to Redis for frontend display.
-    """
-    r = get_redis()
-    write_status(r, SYNC_STATUS_KEY, {
-        "started_at": datetime.now(timezone.utc).isoformat(),
-        "finished_at": None,
-        "status": "running",
-        "total_tickers": 0,
-        "succeeded": 0,
-        "failed_tickers": [],
-    }, ttl_seconds=SYNC_STATUS_TTL)
-    # job_runs dual-write (issue #66 step 1) — see app/tasks/job_runs.py. "schedule" is a
-    # best-effort default here since Celery doesn't tell a task how it was triggered; a later
-    # step threads the real trigger through once routers actually read from job_runs.
-    run_id = job_runs.run_tracked(job_runs.start_run("refresh_prices_live", trigger="schedule"))
-
-    try:
-        result = asyncio.run(_run_price_refresh())
-    except Exception as exc:
-        result = {
-            "started_at": datetime.now(timezone.utc).isoformat(),
-            "finished_at": datetime.now(timezone.utc).isoformat(),
-            "status": "failed",
-            "total_tickers": 0,
-            "succeeded": 0,
-            "failed_tickers": [],
-            "error": str(exc)[:200],
-        }
-
-    write_status(r, SYNC_STATUS_KEY, result, ttl_seconds=SYNC_STATUS_TTL)
-    job_runs.run_tracked(job_runs.finish_run(
-        run_id,
-        status=result["status"],
-        total_steps=result.get("total_tickers", 0),
-        succeeded_steps=result.get("succeeded", 0),
-        failed_items=result.get("failed_tickers", []),
-        error=result.get("error"),
-    ))
-    return result
-
-
-@celery_app.task(name="app.tasks.prices.fetch_all_prices")
-def fetch_all_prices():
-    """Alias — old daily cron entry points here for backward-compat."""
-    return refresh_prices_live()

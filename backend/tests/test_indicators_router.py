@@ -2,10 +2,11 @@
 Integration tests for /api/indicators — global growth/inflation ratio endpoints + region CRUD.
 """
 
-import json
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.core.pgq import get_pgq_queries
+from app.main import app as fastapi_app
 from app.models.macro_indicator import MacroRegion, MacroSeriesPrice
 
 
@@ -113,22 +114,24 @@ async def test_get_inflation_indicator_unknown_region_returns_404(client, db_ses
 
 
 @pytest.mark.asyncio
-async def test_refresh_dispatches_celery_task(client, db_session):
-    mock_task = MagicMock()
-    mock_task.id = "macro-task-abc"
-    with patch("app.tasks.macro_indicators.refresh_macro_indicators") as mock_refresh:
-        mock_refresh.delay.return_value = mock_task
+async def test_refresh_dispatches_via_pgqueuer(client, db_session):
+    mock_queries = MagicMock()
+    mock_queries.enqueue = AsyncMock(return_value=[9])
+
+    fastapi_app.dependency_overrides[get_pgq_queries] = lambda: mock_queries
+    try:
         r = await client.post("/api/indicators/refresh")
+    finally:
+        fastapi_app.dependency_overrides.pop(get_pgq_queries, None)
+
     assert r.status_code == 200
-    assert r.json() == {"task_id": "macro-task-abc", "status": "queued"}
-    mock_refresh.delay.assert_called_once()
+    assert r.json() == {"job_id": 9, "status": "queued"}
+    mock_queries.enqueue.assert_called_once_with("refresh_macro_indicators", payload=b"on_demand")
 
 
 @pytest.mark.asyncio
 async def test_sync_status_never_synced(client, db_session):
-    mock_redis = MagicMock()
-    mock_redis.get.return_value = None
-    with patch("redis.Redis.from_url", return_value=mock_redis):
+    with patch("app.tasks.job_runs.get_latest", new_callable=AsyncMock, return_value=None):
         r = await client.get("/api/indicators/sync-status")
     assert r.status_code == 200
     body = r.json()
@@ -138,17 +141,17 @@ async def test_sync_status_never_synced(client, db_session):
 
 @pytest.mark.asyncio
 async def test_sync_status_returns_last_sync(client, db_session):
-    payload = {
-        "status": "success",
-        "started_at": "2026-07-14T07:00:00Z",
-        "finished_at": "2026-07-14T07:00:05Z",
-        "total_tickers": 4,
-        "succeeded": 4,
-        "failed_tickers": [],
-    }
-    mock_redis = MagicMock()
-    mock_redis.get.return_value = json.dumps(payload)
-    with patch("redis.Redis.from_url", return_value=mock_redis):
+    from datetime import datetime
+
+    fake_run = MagicMock()
+    fake_run.status = "success"
+    fake_run.started_at = datetime(2026, 7, 14, 7, 0, 0)
+    fake_run.finished_at = datetime(2026, 7, 14, 7, 0, 5)
+    fake_run.total_steps = 4
+    fake_run.succeeded_steps = 4
+    fake_run.failed_items = []
+
+    with patch("app.tasks.job_runs.get_latest", new_callable=AsyncMock, return_value=fake_run):
         r = await client.get("/api/indicators/sync-status")
     assert r.status_code == 200
     assert r.json()["status"] == "success"

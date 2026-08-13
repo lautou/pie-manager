@@ -64,6 +64,17 @@ services:
         condition: service_healthy
     command: celery -A app.tasks.celery_app worker --loglevel=info -B
 
+  pgq-worker:
+    restart: unless-stopped
+    image: quay.io/ltourreau/pie-manager-backend:${APP_VERSION:-latest}
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-pie}:${POSTGRES_PASSWORD:-pie_password}@postgres:5432/pie_db
+      PYTHONPATH: /app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: pgq run app.tasks.pgq_app:main
+
   frontend:
     restart: unless-stopped
     image: quay.io/ltourreau/pie-manager-frontend:${APP_VERSION:-latest}

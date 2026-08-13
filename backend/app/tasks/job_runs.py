@@ -5,14 +5,17 @@ Generalizes two things Celery+Redis currently provide for free that no queue-lib
 replacement gives out of the box: `recompute_snapshots_range`'s live PROGRESS state, and the
 4 sync tasks' rich terminal status dict. See app/models/job_run.py for the schema.
 
-In this step every write here happens *alongside* the existing Celery/Redis `write_status`
-calls (app/tasks/sync_status.py) -- Celery/Redis remain the primary read path for the frontend
-until a later step cuts routers over to read from job_runs instead.
+As of issue #66 step 3, `job_runs` is the sole status store for the 4 independent sync tasks
+(refresh_prices_live/refresh_etf_holdings/refresh_macro_indicators/refresh_country_performance)
+-- their Redis dual-write (app/tasks/sync_status.py) has been removed. The 2 remaining
+snapshot tasks are still Celery-only and don't touch this module at all yet (a later step).
 
 Two API levels: `_start_run`/`_update_progress`/`_finish_run` take an explicit `db` session
 (directly testable against the real db_session fixture); `start_run`/`update_progress`/
-`finish_run` are the standalone, own-session convenience wrappers that task modules call from
-inside a sync Celery task body via `asyncio.run(...)`.
+`finish_run`/`get_latest` are the standalone, own-session convenience wrappers callable from
+either a sync Celery task body (via `asyncio.run(...)`) or directly `await`ed from an async
+context (PgQueuer handlers, FastAPI routes) — both are safe since each opens its own fresh
+engine per call (see below).
 
 The standalone wrappers each open a *fresh* engine per call rather than reusing the shared
 module-level `AsyncSessionLocal` — mirroring app/tasks/snapshots.py's own `make_session()`
@@ -29,6 +32,7 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Any, Coroutine
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
@@ -82,13 +86,45 @@ def _make_session() -> tuple[async_sessionmaker, AsyncEngine]:
     return async_sessionmaker(eng, expire_on_commit=False, class_=AsyncSession), eng
 
 
-async def start_run(task_name: str, trigger: str) -> int:
+async def start_run(task_name: str, trigger: str, pgq_job_id: int | None = None) -> int:
     Session, eng = _make_session()
     try:
         async with Session() as db:
-            return await _start_run(db, task_name, trigger)
+            return await _start_run(db, task_name, trigger, pgq_job_id=pgq_job_id)
     finally:
         await eng.dispose()
+
+
+async def get_latest(task_name: str) -> JobRun | None:
+    Session, eng = _make_session()
+    try:
+        async with Session() as db:
+            result = await db.execute(
+                select(JobRun).where(JobRun.task_name == task_name)
+                .order_by(JobRun.id.desc()).limit(1)
+            )
+            return result.scalars().first()
+    finally:
+        await eng.dispose()
+
+
+def to_sync_status_dict(run: JobRun | None) -> dict:
+    """Maps a JobRun onto the sync-status JSON shape every GET .../sync-status endpoint
+    returns — a free function (not a JobRun method) since it must also represent the
+    "never run" case, which a method can't cleanly do on a None receiver."""
+    if run is None:
+        return {
+            "status": "never", "started_at": None, "finished_at": None,
+            "total_tickers": 0, "succeeded": 0, "failed_tickers": [],
+        }
+    return {
+        "status": run.status,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "total_tickers": run.total_steps,
+        "succeeded": run.succeeded_steps,
+        "failed_tickers": run.failed_items,
+    }
 
 
 async def update_progress(run_id: int, current: int, total: int, label: str | None) -> None:

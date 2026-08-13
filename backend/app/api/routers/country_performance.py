@@ -5,16 +5,16 @@ independent data), kept in its own router file since it's a distinct feature (a 
 not a region-scoped ratio) with its own CRUD/task/schemas."""
 from __future__ import annotations
 
-import json
-
 from fastapi import APIRouter, Depends, HTTPException
+from pgqueuer import Queries
 from pydantic import BaseModel
 
-from app.core.config import settings
 from app.core.database import get_db
+from app.core.pgq import get_pgq_queries
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routers.indicators import MacroSyncStatusOut
+from app.tasks import job_runs
 from app.services.country_performance_service import (
     compute_country_performance,
     create_country_config,
@@ -119,28 +119,14 @@ async def delete_country_endpoint(code: str, db: AsyncSession = Depends(get_db))
 # ---------------------------------------------------------------------------
 
 @router.post("/country-performance/refresh", response_model=dict)
-async def refresh_country_performance_endpoint():
-    """Trigger manual country performance refresh via Celery worker (admin use)."""
-    from app.tasks.country_performance import refresh_country_performance
-    task = refresh_country_performance.delay()
-    return {"task_id": task.id, "status": "queued"}
+async def refresh_country_performance_endpoint(queries: Queries = Depends(get_pgq_queries)):
+    """Trigger manual country performance refresh via PgQueuer (admin use)."""
+    job_ids = await queries.enqueue("refresh_country_performance", payload=b"on_demand")
+    return {"job_id": job_ids[0], "status": "queued"}
 
 
 @router.get("/country-performance/sync-status", response_model=MacroSyncStatusOut)
 async def get_country_performance_sync_status():
-    """Return last country performance sync status from Redis (populated by the daily
-    Celery Beat task)."""
-    import redis as redis_lib
-    from app.tasks.country_performance import SYNC_STATUS_KEY
-    r = redis_lib.Redis.from_url(settings.celery_broker_url, decode_responses=True)
-    raw = r.get(SYNC_STATUS_KEY)
-    if not raw:
-        return {
-            "status": "never",
-            "started_at": None,
-            "finished_at": None,
-            "total_tickers": 0,
-            "succeeded": 0,
-            "failed_tickers": [],
-        }
-    return json.loads(raw)
+    """Return the last country performance sync status from job_runs (populated by PgQueuer)."""
+    run = await job_runs.get_latest("refresh_country_performance")
+    return job_runs.to_sync_status_dict(run)

@@ -2,10 +2,10 @@
 Non-regression tests for the job_runs progress/status helpers (app/tasks/job_runs.py).
 
 Real Postgres via the db_session fixture for the `_start_run`/`_update_progress`/`_finish_run`
-core (no reason to mock straightforward DB code, unlike sync_status.py's Redis client — see
-test_sync_status.py). The standalone (own-session) `start_run`/`update_progress`/`finish_run`
-wrappers open their own AsyncSessionLocal session rather than the fixture's SAVEPOINT-isolated
-one, so their round-trip test cleans up explicitly instead of relying on rollback.
+core (no reason to mock straightforward DB code). The standalone (own-session)
+`start_run`/`update_progress`/`finish_run`/`get_latest` wrappers open their own fresh
+engine/session per call rather than the fixture's SAVEPOINT-isolated one, so tests exercising
+them clean up explicitly instead of relying on rollback.
 """
 
 import pytest
@@ -36,6 +36,23 @@ async def test_start_run_accepts_pgq_job_id(db_session):
     )
     run = await db_session.get(JobRun, run_id)
     assert run.pgq_job_id == 42
+
+
+@pytest.mark.asyncio
+async def test_start_run_allows_duplicate_pgq_job_id(db_session):
+    """Confirmed live (issue #66 step 3, kill/restart resilience pass): PgQueuer redelivers a
+    job that was `picked` but never finished to the same job.id after a worker restart, so
+    start_run legitimately runs twice for one pgq_job_id — a second row, not an IntegrityError."""
+    first_id = await job_runs._start_run(
+        db_session, "refresh_country_performance", trigger="on_demand", pgq_job_id=27,
+    )
+    second_id = await job_runs._start_run(
+        db_session, "refresh_country_performance", trigger="on_demand", pgq_job_id=27,
+    )
+    assert first_id != second_id
+    first = await db_session.get(JobRun, first_id)
+    second = await db_session.get(JobRun, second_id)
+    assert first.pgq_job_id == second.pgq_job_id == 27
 
 
 @pytest.mark.asyncio
@@ -133,3 +150,66 @@ def test_run_tracked_swallows_exceptions_and_returns_none():
         raise RuntimeError("boom")
 
     assert job_runs.run_tracked(_boom()) is None
+
+
+@pytest.mark.asyncio
+async def test_standalone_start_run_forwards_pgq_job_id():
+    run_id = await job_runs.start_run("refresh_prices_live", trigger="on_demand", pgq_job_id=99)
+
+    eng = create_async_engine(settings.database_url, echo=False, pool_size=2)
+    Session = async_sessionmaker(eng, expire_on_commit=False, class_=AsyncSession)
+    try:
+        async with Session() as db:
+            run = await db.get(JobRun, run_id)
+            assert run.pgq_job_id == 99
+            await db.delete(run)
+            await db.commit()
+    finally:
+        await eng.dispose()
+
+
+@pytest.mark.asyncio
+async def test_get_latest_returns_most_recent_row_for_task():
+    """Uses the standalone (own-session, real-commit) wrappers for setup — get_latest() opens
+    its own fresh connection, which can't see db_session's SAVEPOINT-isolated, never-really-
+    committed writes (same class of issue documented in job_runs.py's module docstring)."""
+    older = await job_runs.start_run("refresh_country_performance", trigger="schedule")
+    await job_runs.finish_run(older, status="success")
+    newer = await job_runs.start_run("refresh_country_performance", trigger="on_demand")
+    await job_runs.finish_run(newer, status="partial")
+
+    run = await job_runs.get_latest("refresh_country_performance")
+    assert run is not None
+    assert run.id == newer
+    assert run.status == "partial"
+
+
+@pytest.mark.asyncio
+async def test_get_latest_returns_none_when_no_rows_exist():
+    run = await job_runs.get_latest("a_task_name_nothing_ever_writes_to")
+    assert run is None
+
+
+def test_to_sync_status_dict_never_run_placeholder():
+    assert job_runs.to_sync_status_dict(None) == {
+        "status": "never", "started_at": None, "finished_at": None,
+        "total_tickers": 0, "succeeded": 0, "failed_tickers": [],
+    }
+
+
+@pytest.mark.asyncio
+async def test_to_sync_status_dict_maps_a_populated_run(db_session):
+    run_id = await job_runs._start_run(db_session, "refresh_etf_holdings", trigger="schedule")
+    await job_runs._finish_run(
+        db_session, run_id, status="partial",
+        total_steps=4, succeeded_steps=3, failed_items=["X(reason)"],
+    )
+    run = await db_session.get(JobRun, run_id)
+
+    mapped = job_runs.to_sync_status_dict(run)
+    assert mapped["status"] == "partial"
+    assert mapped["total_tickers"] == 4
+    assert mapped["succeeded"] == 3
+    assert mapped["failed_tickers"] == ["X(reason)"]
+    assert mapped["started_at"] is not None
+    assert mapped["finished_at"] is not None

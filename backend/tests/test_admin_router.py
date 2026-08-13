@@ -8,11 +8,13 @@ are NEVER called against any real database. The production database (ude_db)
 is completely untouched by this test suite.
 
 Task-status tests mock celery.result.AsyncResult to cover all five state
-branches without requiring a live Celery broker.
+branches without requiring a live Celery broker (still Celery — only
+recompute-snapshots/fill-missing-snapshots use this endpoint, unaffected by
+issue #66 step 3). refresh-prices/sync-status now go through PgQueuer/job_runs
+instead (see test_refresh_prices_dispatches_via_pgqueuer/test_sync_status_*).
 """
 
 import io
-import json
 import subprocess
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -329,16 +331,22 @@ async def test_task_status_unknown_state_passthrough():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_refresh_prices_dispatches_celery_task():
-    mock_task = MagicMock()
-    mock_task.id = "price-task-abc"
-    with patch("app.tasks.prices.refresh_prices_live") as mock_live:
-        mock_live.delay.return_value = mock_task
+async def test_refresh_prices_dispatches_via_pgqueuer():
+    from app.core.pgq import get_pgq_queries
+
+    mock_queries = MagicMock()
+    mock_queries.enqueue = AsyncMock(return_value=[42])
+
+    fastapi_app.dependency_overrides[get_pgq_queries] = lambda: mock_queries
+    try:
         async with _client() as client:
             r = await client.post("/api/admin/refresh-prices")
+    finally:
+        fastapi_app.dependency_overrides.pop(get_pgq_queries, None)
+
     assert r.status_code == 200
-    assert r.json()["task_id"] == "price-task-abc"
-    mock_live.delay.assert_called_once()
+    assert r.json()["job_id"] == 42
+    mock_queries.enqueue.assert_called_once_with("refresh_prices_live", payload=b"on_demand")
 
 
 @pytest.mark.asyncio
@@ -413,9 +421,7 @@ async def test_recompute_snapshots_no_end_date_defaults_to_yesterday():
 
 @pytest.mark.asyncio
 async def test_sync_status_never_synced():
-    mock_redis = MagicMock()
-    mock_redis.get.return_value = None
-    with patch("redis.Redis.from_url", return_value=mock_redis):
+    with patch("app.tasks.job_runs.get_latest", new_callable=AsyncMock, return_value=None):
         async with _client() as client:
             r = await client.get("/api/admin/sync-status")
     assert r.status_code == 200
@@ -426,17 +432,17 @@ async def test_sync_status_never_synced():
 
 @pytest.mark.asyncio
 async def test_sync_status_returns_last_sync():
-    payload = {
-        "status": "partial",
-        "started_at": "2026-05-16T10:00:00Z",
-        "finished_at": "2026-05-16T10:00:05Z",
-        "total_tickers": 5,
-        "succeeded": 3,
-        "failed_tickers": ["X.PA", "Y.DE"],
-    }
-    mock_redis = MagicMock()
-    mock_redis.get.return_value = json.dumps(payload)
-    with patch("redis.Redis.from_url", return_value=mock_redis):
+    from datetime import datetime
+
+    fake_run = MagicMock()
+    fake_run.status = "partial"
+    fake_run.started_at = datetime(2026, 5, 16, 10, 0, 0)
+    fake_run.finished_at = datetime(2026, 5, 16, 10, 0, 5)
+    fake_run.total_steps = 5
+    fake_run.succeeded_steps = 3
+    fake_run.failed_items = ["X.PA", "Y.DE"]
+
+    with patch("app.tasks.job_runs.get_latest", new_callable=AsyncMock, return_value=fake_run):
         async with _client() as client:
             r = await client.get("/api/admin/sync-status")
     assert r.status_code == 200

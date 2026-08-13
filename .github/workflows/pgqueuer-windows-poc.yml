@@ -8,6 +8,12 @@ name: PgQueuer Windows-native POC (issue #66 step 1)
 # as a plain native Windows process against a plain native Windows PostgreSQL — no containers.
 on:
   workflow_dispatch:
+  # workflow_dispatch only registers/runs against whatever is on the default branch, even
+  # with --ref pointed elsewhere — also trigger on push to this specific POC branch so it can
+  # actually run against its own version of the file without touching main.
+  push:
+    branches:
+      - feat/66-pgqueuer-poc
 
 jobs:
   windows-native-pgqueuer-poc:

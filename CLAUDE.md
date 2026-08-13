@@ -1106,6 +1106,44 @@ binaries, identical except Go's own build-ID cache string) that renaming back to
 `main_windows_amd64.syso` produces the exact same signed Windows binary while fixing every
 other platform. Never go back to a bare `main.syso`.
 
+### MSIX/Microsoft Store distribution of launcher.exe — investigated and rejected (issue #63)
+
+Issue #63 explored Store-distributing only `launcher.exe` as an MSIX package to route around
+#60's Smart App Control (SAC) block (Store apps bypass SAC/SmartScreen by design). Confirmed
+live that a full-trust MSIX-packaged WebView2 control can reach `localhost` exactly like the
+unpackaged exe (the loopback-isolation restriction only applies to sandboxed AppContainer/UWP
+apps) — but the approach is a dead end regardless, rejected twice by real Microsoft Store
+certification on two separate policies:
+
+- **10.2.5 Security** ("Installing and Updating Store Apps"): *"The product is primarily an
+  installer for another app. Products distributed through the Store may only be installed
+  through the Store."* — rejected an explicit "Install PIE Manager" button that downloaded and
+  launched the real system installer (`pie-manager-windows-amd64.exe`) with a UAC elevation
+  prompt triggered by that button click, not automatically on app launch.
+- **10.1.5 Software Distribution**: *"The product promotes acquiring software outside the
+  Store."* — rejected on content grounds, citing the button's own text.
+
+A first, passive-message variant fared no better either (rejected under 10.1.2 Functionality:
+*"fails to start with a message to download the App from outside the Store"*). There is no
+in-between design that satisfies "the Store app must be fully functional on its own" while the
+real app still needs a separately-elevated WSL2/Podman/container stack that cannot itself be
+Store-packaged (already ruled out when this was first scoped — a single MSIX cannot mix an
+elevated and non-elevated component, and Store certification is documented as very unlikely to
+pass an app that forces elevation on launch).
+
+**Not pursuing the paid-certificate path either** (SignPath Foundation, Azure Trusted Signing,
+Sectigo/SSL.com — see #60): the realistic recurring cost (~$370-410/year) isn't justified for a
+personal project, and even a paid cert must still build reputation with Microsoft's cloud
+service before SAC reliably allows it through, so it wouldn't even be a guaranteed fix.
+
+**Current status: no free fix exists for SAC blocking `launcher.exe`.** SAC checks whether a
+signature chains to a CA in the Microsoft Trusted Root Program — not whether the signature is
+otherwise valid — so a self-signed certificate can never satisfy it, no matter how it's deployed
+or locally trusted. The only workaround is the end user disabling Smart App Control themselves
+(Settings → Privacy & security → Windows Security → App & browser control) — a real but drastic
+step, since re-enabling SAC afterward requires reinstalling Windows. This is a known, accepted
+limitation, not something this project can fix for free.
+
 ### Installed files (Linux)
 ```
 ~/.local/share/pie-manager/   compose-prod.yaml, haproxy.cfg, .env, pie-manager (binary), VERSION

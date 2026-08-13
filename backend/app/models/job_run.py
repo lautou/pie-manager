@@ -1,28 +1,31 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Index, Integer, String, func, text
+from sqlalchemy import JSON, DateTime, Index, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
 
 
 class JobRun(Base):
-    """One row per background-task execution (schedule/on-demand/startup-triggered).
+    """One row per background-task execution attempt (schedule/on-demand/startup-triggered).
 
     Generalizes two things Celery currently gives for free that no queue library replacement
     provides out of the box: `recompute_snapshots_range`'s live PROGRESS state (`current_step`/
     `total_steps`/`current_label`) and the 4 sync tasks' rich terminal status dict
     (`total_steps`/`succeeded_steps`/`failed_items`/`error`) — see issue #66. `pgq_job_id` is
     intentionally not a foreign key: PgQueuer deletes its own job row on completion, so a hard
-    FK would either block that deletion or be dangling by design."""
+    FK would either block that deletion or be dangling by design.
+
+    `pgq_job_id` is deliberately NOT unique. Confirmed live (issue #66 step 3, resilience pass):
+    if pgq-worker dies mid-handler, PgQueuer redelivers the same still-`picked` job (same
+    `job.id`) after restart, so the entrypoint handler's own `start_run` call runs a second time
+    for that job_id — a unique constraint here turned a routine, expected redelivery into an
+    unhandled IntegrityError. Each row is one execution attempt; several rows sharing a
+    `pgq_job_id` is the normal shape of a job that needed more than one attempt, not corruption."""
 
     __tablename__ = "job_runs"
     __table_args__ = (
         Index("idx_job_runs_task_name_started_at", "task_name", "started_at"),
-        Index(
-            "uq_job_runs_pgq_job_id", "pgq_job_id", unique=True,
-            postgresql_where=text("pgq_job_id IS NOT NULL"),
-        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

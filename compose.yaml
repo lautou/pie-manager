@@ -65,6 +65,21 @@ services:
         condition: service_healthy
     command: celery -A app.tasks.celery_app worker --loglevel=info -B
 
+  pgq-worker:
+    build:
+      context: ./backend
+      dockerfile: Containerfile
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      PYTHONPATH: /app
+    volumes:
+      - ./backend:/app:z
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: pgq run app.tasks.pgq_app:main
+
   frontend:
     build:
       context: ./frontend

@@ -1,5 +1,5 @@
 """
-Macro indicators daily refresh — runs once a day via Celery Beat.
+Macro indicators daily refresh — runs once a day via PgQueuer (see app/tasks/pgq_app.py).
 
 Strategy:
   - Same unauthenticated query1.finance.yahoo.com/v8/finance/chart/{ticker} endpoint as
@@ -12,7 +12,6 @@ Strategy:
     returns true, uncapped daily data. Refetching the full history every run is cheap
     (~6500 rows/series) and self-heals any gap or Yahoo revision — no separate
     backfill-vs-daily-delta logic needed.
-  - Result written to Redis key "pie:macro:status" for consistency with prices.py/etf_holdings.py.
 """
 
 import asyncio
@@ -20,9 +19,6 @@ from datetime import date, datetime, timezone
 
 import httpx
 
-from app.tasks import job_runs
-from app.tasks.celery_app import celery_app
-from app.tasks.sync_status import get_redis, write_status
 from app.tasks.yahoo_fetch import fetch_yahoo_history
 from app.services.macro_indicators_service import (
     DEFAULT_TICKERS,
@@ -30,9 +26,6 @@ from app.services.macro_indicators_service import (
     list_regions,
 )
 from app.services.macro_series_price_service import replace_series_prices
-
-SYNC_STATUS_KEY = "pie:macro:status"
-SYNC_STATUS_TTL = 3600 * 24 * 7  # expire after 1 week
 
 # Comfortably before all 4 series' real Yahoo inception (^SPXEW 2006, ^TNX 1985,
 # CL=F/GC=F 2000) — no need for per-ticker introspection of firstTradeDate.
@@ -101,52 +94,3 @@ async def _run_macro_indicators_refresh() -> dict:
         "succeeded": n_ok,
         "failed_tickers": failed,
     }
-
-
-# ---------------------------------------------------------------------------
-# Celery task
-# ---------------------------------------------------------------------------
-
-@celery_app.task(name="app.tasks.macro_indicators.refresh_macro_indicators")
-def refresh_macro_indicators():
-    """
-    Main scheduled task: refresh every region's equity/bond series plus oil/gold once a day.
-    Writes sync status to Redis, mirroring app.tasks.prices.refresh_prices_live.
-    """
-    r = get_redis()
-    write_status(r, SYNC_STATUS_KEY, {
-        "started_at": datetime.now(timezone.utc).isoformat(),
-        "finished_at": None,
-        "status": "running",
-        "total_tickers": 0,
-        "succeeded": 0,
-        "failed_tickers": [],
-    }, ttl_seconds=SYNC_STATUS_TTL)
-    # job_runs dual-write (issue #66 step 1) — see app/tasks/job_runs.py. "schedule" is a
-    # best-effort default here since Celery doesn't tell a task how it was triggered; a later
-    # step threads the real trigger through once routers actually read from job_runs.
-    run_id = job_runs.run_tracked(job_runs.start_run("refresh_macro_indicators", trigger="schedule"))
-
-    try:
-        result = asyncio.run(_run_macro_indicators_refresh())
-    except Exception as exc:
-        result = {
-            "started_at": datetime.now(timezone.utc).isoformat(),
-            "finished_at": datetime.now(timezone.utc).isoformat(),
-            "status": "failed",
-            "total_tickers": 0,
-            "succeeded": 0,
-            "failed_tickers": [],
-            "error": str(exc)[:200],
-        }
-
-    write_status(r, SYNC_STATUS_KEY, result, ttl_seconds=SYNC_STATUS_TTL)
-    job_runs.run_tracked(job_runs.finish_run(
-        run_id,
-        status=result["status"],
-        total_steps=result.get("total_tickers", 0),
-        succeeded_steps=result.get("succeeded", 0),
-        failed_items=result.get("failed_tickers", []),
-        error=result.get("error"),
-    ))
-    return result

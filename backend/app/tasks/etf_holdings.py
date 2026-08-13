@@ -1,5 +1,5 @@
 """
-ETF look-through holdings refresh — runs weekly via Celery Beat.
+ETF look-through holdings refresh — runs weekly via PgQueuer (see app/tasks/pgq_app.py).
 
 Strategy:
   - Unlike the price-sync task's chart endpoint, ETF composition requires an unofficial
@@ -12,7 +12,6 @@ Strategy:
   - Direct-stock products (instrument_type='Action') in a pool that also holds an ETF:
     module=assetProfile gives sectorKey, written as a synthetic 100%-self holding/sector
     row so pool-level look-through aggregation never special-cases "ETF vs direct stock".
-  - Result written to Redis key "pie:etf_holdings:status" for consistency with prices.py.
 """
 
 import asyncio
@@ -21,9 +20,6 @@ from typing import Callable, Optional, TypeVar
 
 import httpx
 
-from app.tasks import job_runs
-from app.tasks.celery_app import celery_app
-from app.tasks.sync_status import get_redis, write_status
 from app.services.etf_holdings_service import (
     get_etf_tickers,
     get_direct_stock_tickers_in_etf_pools,
@@ -32,8 +28,6 @@ from app.services.etf_holdings_service import (
 
 T = TypeVar("T")
 
-SYNC_STATUS_KEY = "pie:etf_holdings:status"
-SYNC_STATUS_TTL = 3600 * 24 * 7  # expire after 1 week
 YAHOO_QUOTE_SUMMARY_URL = "https://query2.finance.yahoo.com/v10/finance/quoteSummary/{ticker}"
 YAHOO_CRUMB_URL = "https://query2.finance.yahoo.com/v1/test/getcrumb"
 YAHOO_WARMUP_URL = "https://fc.yahoo.com"
@@ -262,52 +256,3 @@ async def _run_etf_holdings_refresh() -> dict:
         "succeeded": n_ok,
         "failed_tickers": failed,
     }
-
-
-# ---------------------------------------------------------------------------
-# Celery task
-# ---------------------------------------------------------------------------
-
-@celery_app.task(name="app.tasks.etf_holdings.refresh_etf_holdings")
-def refresh_etf_holdings():
-    """
-    Main scheduled task: refresh ETF top-10 holdings/sector weightings weekly.
-    Writes sync status to Redis, mirroring app.tasks.prices.refresh_prices_live.
-    """
-    r = get_redis()
-    write_status(r, SYNC_STATUS_KEY, {
-        "started_at": datetime.now(timezone.utc).isoformat(),
-        "finished_at": None,
-        "status": "running",
-        "total_tickers": 0,
-        "succeeded": 0,
-        "failed_tickers": [],
-    }, ttl_seconds=SYNC_STATUS_TTL)
-    # job_runs dual-write (issue #66 step 1) — see app/tasks/job_runs.py. "schedule" is a
-    # best-effort default here since Celery doesn't tell a task how it was triggered; a later
-    # step threads the real trigger through once routers actually read from job_runs.
-    run_id = job_runs.run_tracked(job_runs.start_run("refresh_etf_holdings", trigger="schedule"))
-
-    try:
-        result = asyncio.run(_run_etf_holdings_refresh())
-    except Exception as exc:
-        result = {
-            "started_at": datetime.now(timezone.utc).isoformat(),
-            "finished_at": datetime.now(timezone.utc).isoformat(),
-            "status": "failed",
-            "total_tickers": 0,
-            "succeeded": 0,
-            "failed_tickers": [],
-            "error": str(exc)[:200],
-        }
-
-    write_status(r, SYNC_STATUS_KEY, result, ttl_seconds=SYNC_STATUS_TTL)
-    job_runs.run_tracked(job_runs.finish_run(
-        run_id,
-        status=result["status"],
-        total_steps=result.get("total_tickers", 0),
-        succeeded_steps=result.get("succeeded", 0),
-        failed_items=result.get("failed_tickers", []),
-        error=result.get("error"),
-    ))
-    return result

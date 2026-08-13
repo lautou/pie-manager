@@ -29,6 +29,9 @@ back to update them. Distinguish:
 - Installer (Go): `cd installer && go test ./... -cover` — covers all pure utility functions
 - Use `db_session.flush()` (never `commit()`) in test fixtures
 - For Celery tasks: call the function directly (not `.delay()`), mock DB calls
+- For PgQueuer tasks (`app/tasks/pgq_app.py`): exercise the `@pgq.schedule`/`@pgq.entrypoint`
+  handler directly via `PgQueuer.in_memory()` (see `test_pgq_app.py`) — real Postgres for
+  `job_runs` writes, no reason to mock straightforward DB code
 
 ### Installer test coverage policy
 
@@ -92,7 +95,7 @@ create-transaction code path as manual UI entry.
 | Layer | Technology |
 |-------|-----------|
 | Frontend | React 18 + TypeScript + PatternFly 5 + TanStack Query v5 + Vite |
-| Backend | Python FastAPI + SQLAlchemy 2.0 async + Celery + Redis |
+| Backend | Python FastAPI + SQLAlchemy 2.0 async + Celery + Redis + PgQueuer |
 | Database | PostgreSQL 16 |
 | Deployment | **Podman** Compose (never Docker) |
 | Containerfiles | `Containerfile` (never `Dockerfile`) |
@@ -221,6 +224,7 @@ compose.yaml
 ├── redis
 ├── backend (FastAPI)
 ├── worker (Celery worker + Beat, `-B` flag)
+├── pgq-worker (PgQueuer, `pgq run app.tasks.pgq_app:main`)
 └── frontend (Vite dev server, port 5173)
 ```
 
@@ -232,6 +236,7 @@ compose-prod.yaml
 ├── redis                                restart: unless-stopped
 ├── backend (FastAPI)                    restart: unless-stopped, no exposed ports
 ├── worker (Celery worker + Beat, -B)    restart: unless-stopped
+├── pgq-worker (PgQueuer)                restart: unless-stopped
 ├── frontend (Vite dev server)           restart: unless-stopped, no exposed ports
 └── haproxy (reverse proxy)              restart: unless-stopped, port APP_PORT:8080
 ```
@@ -733,6 +738,71 @@ Actuel/Après bars (shared by both, since the target doesn't change between them
 per-row `Écart actuel` / `Écart cible` label next to each bar instead of one combined line at
 the bottom — the combined line used to sit far from the "Actuel" row it partly described.
 
+## Background job processing — Celery/Redis migrating to PgQueuer (issue #66)
+
+This app is single-user; a distributed-worker model (separate broker + worker process class) is
+more machinery than it needs. Issue #66 tracks migrating off Celery/Redis **incrementally**, one
+small, independently live-verified step at a time, not a single big-bang rewrite.
+
+**Current state**: 4 of the 6 periodic/on-demand background tasks — `refresh_prices_live`,
+`refresh_etf_holdings`, `refresh_macro_indicators`, `refresh_country_performance` — run through
+PgQueuer, not Celery. The 2 snapshot tasks (`compute_daily_snapshots_all_users`,
+`compute_monthly_snapshots_all_users`) plus `recompute_snapshots_range`/`fill_missing_snapshots`
+remain Celery-only: `recompute_snapshots_range`'s live progress-bar UI is the main reason this
+isn't a single cutover. The `job_runs` model below was deliberately designed to generalize that
+progress-reporting need too, but converting that specific task hasn't happened yet — Celery,
+Redis, and the `worker` container all stay until it does.
+
+**`job_runs` table** (`app/models/job_run.py`, `app/tasks/job_runs.py`) replaces Redis-based
+sync-status keys for the 4 migrated tasks: one row per **execution attempt**
+(schedule/on-demand/startup-triggered), not per logical job — `pgq_job_id` is deliberately not
+unique (see below). `to_sync_status_dict()`/`get_latest()` reproduce the exact JSON shape the
+frontend already expected from the old Redis-backed `/sync-status` endpoints, so no frontend
+changes were needed for the cutover.
+
+**`app/core/pgq.py`** holds the web process's own asyncpg pool + `Queries` instance (FastAPI
+`Depends(get_pgq_queries)`, mirrors the existing `get_db` idiom) — routers enqueue on-demand
+jobs through this, independent of whether `pgq-worker` is currently up. Confirmed live: an
+on-demand POST still returns 200 and the job sits queued even with `pgq-worker` killed.
+
+**`app/tasks/pgq_app.py`** is the worker process itself (`pgq run app.tasks.pgq_app:main`, new
+`pgq-worker` compose service) — registers both a `@pgq.schedule` (cron) and a `@pgq.entrypoint`
+(on-demand/startup) handler per migrated task, both delegating to the same unchanged
+`_run_X_refresh()` core the old Celery task called.
+
+**Critical: PgQueuer's scheduler computes cron next-run times in UTC only** — no timezone
+parameter exists anywhere in the library (confirmed from source). The 6 cron constants in
+`pgq_app.py` are UTC-shifted from Celery `beat_schedule`'s Paris-local hour numbers (e.g. daily
+snapshots' intended 19:00 Paris becomes `0 17 * * 1-5` for CEST) — a ±1h drift across the DST
+transition is accepted rather than building timezone-aware scheduling for a personal app.
+**Changing a cron expression in code does not update or clean up the old schedule row**:
+PgQueuer's bootstrap does `INSERT ... ON CONFLICT (entrypoint, expression) DO NOTHING`, so a
+changed expression creates a second row that coexists with (but no longer fires alongside) the
+old one — `clean_old=True` on `@pgq.schedule` would delete it, not used here since no schedule's
+cron value currently changes at runtime. Confirmed live via a temporary fast cron during
+resilience testing.
+
+**`job_runs.pgq_job_id` has no unique constraint — a real bug found via live kill/restart
+testing, not a design choice made upfront.** PgQueuer redelivers a job stuck `picked` (worker
+killed mid-handler) to the *same* `job.id` once `pgq-worker` restarts; the entrypoint handler's
+`start_run(..., pgq_job_id=job.id)` call then runs a second time for that job_id. A unique index
+here (added in migration `tt33uu44vv55`) turned this ordinary, expected redelivery into an
+unhandled `IntegrityError` that crashed the job — confirmed live, fixed by dropping the index in
+migration `vv55ww66xx77`. Several `job_runs` rows can legitimately share one `pgq_job_id`; a row
+stuck `running` forever with no `finished_at` is the accepted, documented shape of an
+interrupted attempt (no automatic orphan detection — same gap Celery already has today, not a
+new regression).
+
+**`pgq-worker` compose service**: same image as `backend`/`worker`, `command: pgq run
+app.tasks.pgq_app:main`, depends only on `postgres: service_healthy` — no Redis/Celery env vars,
+since this process never imports `celery_app.py`. Present in `compose.yaml` and
+`compose-prod.yaml`; also present in `installer/assets/compose-prod.yaml`, but that copy is
+generated at build time from the root file, not committed (see `.gitignore`) — no separate edit
+needed there.
+
+Tracking: #66 (main migration), #67 (considering `concurrency_limit=1` to prevent overlapping
+runs of the same sync task — not yet implemented).
+
 ## Daily snapshot logic
 
 - Auto-generated at **app startup** (via Celery task `fill_missing_snapshots`)
@@ -743,9 +813,12 @@ the bottom — the combined line used to sit far from the "Actuel" row it partly
 
 ## Yahoo Finance price sync
 
-- Every 15 min via Celery Beat (`refresh_prices_live`), plus once at **backend startup**
-  (`main.py` lifespan calls `refresh_prices_live.delay()` alongside `fill_missing_snapshots.delay()`,
-  in its own independent try/except so one failing doesn't block the other)
+- Every 15 min via PgQueuer's own cron scheduler (`pgq-worker`, `refresh_prices_live`), plus
+  once at **backend startup** (`main.py` lifespan does
+  `await get_pgq_queries().enqueue("refresh_prices_live", payload=b"startup")` alongside
+  `fill_missing_snapshots.delay()`, each in its own independent try/except so one failing
+  doesn't block the other) — see "Background job processing" above for the full migration
+  context
 - Source: `query1.finance.yahoo.com/v8/finance/chart/{ticker}` — returns `regularMarketPrice`
 - **Glitch guard**: if the new price deviates by more than ×10 from the previous day, it is rejected
   and the ticker is added to `failed_tickers`. Protects against Yahoo scale errors (e.g. JPYEUR=X
@@ -797,8 +870,9 @@ ETF), so `by_company` always carries an explicit `"__OTHER__"` bucket for the un
 remainder rather than implying completeness. `products.bond_duration`/`bond_maturity` are also
 captured for bond funds — present in Yahoo's API but never shown on Yahoo's own site.
 
-Runs weekly (`crontab(hour=6, minute=0, day_of_week="0")`) plus once at backend startup,
-mirroring the price-sync task's structure.
+Runs weekly via PgQueuer (`0 4 * * 0` UTC, Sunday) plus once at backend startup, mirroring the
+price-sync task's structure — see "Background job processing" above for the Celery→PgQueuer
+cutover and the cron UTC-shift gotcha.
 
 **Frontend**: `TickerLink` (`frontend/src/components/TickerLink.tsx`) renders a ticker as
 clickable only for `instrument_type` ETF/SICAV-FCP/Action (never Cash/Or physique/Obligation/
@@ -893,14 +967,16 @@ empirically: `range=max&interval=1d` gets silently downsampled by Yahoo to ~mont
 for long spans (only ~168 points over 42 years for `^GSPC`), while explicit `period1`/`period2`
 returns true uncapped daily data (6500+ points over 26 years). Re-fetching full history each run
 (not just "today") is cheap and self-heals gaps/revisions, mirroring the ETF holdings task's
-replace-on-fetch approach. Runs daily (`crontab(hour=7, minute=0)`) plus once at backend startup.
-The task builds its fetch list from `list_regions(db)` at runtime plus oil/gold — it scales to
-however many regions exist, no hardcoded ticker count anywhere.
+replace-on-fetch approach. Runs daily via PgQueuer (`0 5 * * *` UTC) plus once at backend
+startup — see "Background job processing" above for the Celery→PgQueuer cutover and the cron
+UTC-shift gotcha. The task builds its fetch list from `list_regions(db)` at runtime plus
+oil/gold — it scales to however many regions exist, no hardcoded ticker count anywhere.
 
 Manual trigger (`POST /api/indicators/refresh`) + status polling
-(`GET /api/indicators/sync-status`, Redis key `pie:macro:status`) mirror the ETF holdings task's
-pattern rather than price-sync's fixed-4s-guess, since a full refetch's duration isn't a safe
-constant to assume. There is no manual "Actualiser maintenant" button on the page itself
+(`GET /api/indicators/sync-status`, backed by the `job_runs` table, not Redis — see
+"Background job processing" above) mirror the ETF holdings task's pattern rather than
+price-sync's fixed-4s-guess, since a full refetch's duration isn't a safe constant to assume.
+There is no manual "Actualiser maintenant" button on the page itself
 (removed — daily auto-sync makes a manual trigger low-value); the endpoint remains for ops/curl
 use, and the page still shows "Dernière synchro" and auto-invalidates its queries when a sync
 completes.
@@ -917,7 +993,7 @@ are not interchangeable. It deliberately has no `containerComponent`/`VictoryZoo
 all: the custom mouse handlers on the wrapping `<div>` do all the work (brush AND crosshair),
 so Victory's own container is unnecessary. Clicking a preset anchors the range on the
 **dataset's latest point** (`data.dates[last]`), not `new Date()`, since this data only updates
-via the nightly Celery sync. A manual drag clears the active-preset highlight (it rarely lands
+via the nightly PgQueuer sync. A manual drag clears the active-preset highlight (it rarely lands
 exactly on a preset boundary). See the "Custom drag-to-zoom chart checklist" below — every
 item in it was found and fixed while responding to live user bug reports against this exact
 chart, in the order: wrong zoom range → native text-selection during drag → duplicate axis
@@ -954,11 +1030,13 @@ same country (e.g. Shenzhen vs Shanghai for "Chine"). Shown in the chart's hover
 (`"{country} — {index_label}: {pct}%"`) and as its own column in `MarketCountryManager`, so
 which index feeds a bar is never ambiguous.
 
-**Shared Yahoo fetch/Redis-status helpers**: `app/tasks/yahoo_fetch.py`
-(`fetch_yahoo_chart`/`fetch_yahoo_history`) and `app/tasks/sync_status.py`
-(`get_redis`/`write_status`) were extracted here from what used to be near-identical private
-copies in `prices.py`/`macro_indicators.py`/`etf_holdings.py` — this task was the third
-occurrence of the same duplication, the trigger for finally factoring it out.
+**Shared Yahoo fetch helper**: `app/tasks/yahoo_fetch.py` (`fetch_yahoo_chart`/
+`fetch_yahoo_history`) was extracted here from what used to be near-identical private copies in
+`prices.py`/`macro_indicators.py`/`etf_holdings.py` — this task was the third occurrence of the
+same duplication, the trigger for finally factoring it out. The equivalent Redis-status helper,
+`app/tasks/sync_status.py` (`get_redis`/`write_status`), was deleted in the PgQueuer cutover
+(issue #66) — status for these 4 tasks now goes through the shared `job_runs` table instead, see
+"Background job processing" above.
 
 **Seed list ticker gotchas** (found via empirical Yahoo verification before trusting the
 migration seed, same discipline as `^SBF120` above): Poland's `WIG20.WA` returns exactly 1

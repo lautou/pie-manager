@@ -3,16 +3,17 @@ charts, per user-managed region (see MacroRegion). Not scoped to a portfolio: a 
 series shared across the whole app."""
 from __future__ import annotations
 
-import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pgqueuer import Queries
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.database import get_db
+from app.core.pgq import get_pgq_queries
 from app.models.macro_indicator import MacroRegion
+from app.tasks import job_runs
 from app.services.macro_indicators_service import (
     compute_ratio_indicator,
     create_region,
@@ -152,27 +153,14 @@ async def delete_region_endpoint(code: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/refresh", response_model=dict)
-async def refresh_macro_indicators_endpoint():
-    """Trigger manual macro indicators refresh via Celery worker (admin use)."""
-    from app.tasks.macro_indicators import refresh_macro_indicators
-    task = refresh_macro_indicators.delay()
-    return {"task_id": task.id, "status": "queued"}
+async def refresh_macro_indicators_endpoint(queries: Queries = Depends(get_pgq_queries)):
+    """Trigger manual macro indicators refresh via PgQueuer (admin use)."""
+    job_ids = await queries.enqueue("refresh_macro_indicators", payload=b"on_demand")
+    return {"job_id": job_ids[0], "status": "queued"}
 
 
 @router.get("/sync-status", response_model=MacroSyncStatusOut)
 async def get_macro_sync_status():
-    """Return last macro indicators sync status from Redis (populated by the daily Celery Beat task)."""
-    import redis as redis_lib
-    from app.tasks.macro_indicators import SYNC_STATUS_KEY
-    r = redis_lib.Redis.from_url(settings.celery_broker_url, decode_responses=True)
-    raw = r.get(SYNC_STATUS_KEY)
-    if not raw:
-        return {
-            "status": "never",
-            "started_at": None,
-            "finished_at": None,
-            "total_tickers": 0,
-            "succeeded": 0,
-            "failed_tickers": [],
-        }
-    return json.loads(raw)
+    """Return the last macro indicators sync status from job_runs (populated by PgQueuer)."""
+    run = await job_runs.get_latest("refresh_macro_indicators")
+    return job_runs.to_sync_status_dict(run)

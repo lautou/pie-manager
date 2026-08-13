@@ -7,10 +7,7 @@ celery_app = Celery(
     "pie",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=[
-        "app.tasks.prices", "app.tasks.snapshots", "app.tasks.etf_holdings",
-        "app.tasks.macro_indicators", "app.tasks.country_performance",
-    ],
+    include=["app.tasks.snapshots"],
 )
 
 celery_app.conf.update(
@@ -23,11 +20,6 @@ celery_app.conf.update(
     # issue #17) never needs write access to the application source tree.
     beat_schedule_filename="/tmp/celerybeat-schedule",
     beat_schedule={
-        # Live price refresh every 15 min — parallel httpx calls, regularMarketPrice
-        "refresh-prices-live": {
-            "task": "app.tasks.prices.refresh_prices_live",
-            "schedule": crontab(minute="*/15"),
-        },
         # Compute daily snapshots every weekday at 19:00
         "compute-daily-snapshots": {
             "task": "app.tasks.snapshots.compute_daily_snapshots_all_users",
@@ -37,22 +29,6 @@ celery_app.conf.update(
         "compute-monthly-snapshots": {
             "task": "app.tasks.snapshots.compute_monthly_snapshots_all_users",
             "schedule": crontab(hour=8, minute=0, day_of_month=1),
-        },
-        # Refresh ETF top-10 holdings/sector weightings weekly (composition doesn't move daily)
-        "refresh-etf-holdings": {
-            "task": "app.tasks.etf_holdings.refresh_etf_holdings",
-            "schedule": crontab(hour=6, minute=0, day_of_week="0"),
-        },
-        # Refresh macro indicators (SP500/oil, US10Y/gold) once a day
-        "refresh-macro-indicators": {
-            "task": "app.tasks.macro_indicators.refresh_macro_indicators",
-            "schedule": crontab(hour=7, minute=0),
-        },
-        # Refresh country market-performance leaderboard once a day (offset from the macro
-        # indicators run above so both don't hit Yahoo at the same instant)
-        "refresh-country-performance": {
-            "task": "app.tasks.country_performance.refresh_country_performance",
-            "schedule": crontab(hour=7, minute=15),
         },
     },
 )

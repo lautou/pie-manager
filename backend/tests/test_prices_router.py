@@ -6,8 +6,10 @@ Covers prices.py lines: 42-51 (list with filters), 56-67 (upsert), 70-74 (fetch)
 
 import pytest
 from datetime import date
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
+from app.core.pgq import get_pgq_queries
+from app.main import app as fastapi_app
 from app.models.product import Product
 from app.models.price import AssetPrice
 
@@ -244,22 +246,23 @@ async def test_list_prices_empty_returns_list(client, db_session):
 
 
 # ---------------------------------------------------------------------------
-# POST /api/prices/fetch — trigger Celery task (lines 70-74)
+# POST /api/prices/fetch — trigger via PgQueuer (lines 70-74)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_trigger_price_fetch_returns_task_id(client):
-    """POST /prices/fetch must return 200 with task_id without a live Celery broker."""
-    fake_task = MagicMock()
-    fake_task.id = "abc-123-task-id"
+async def test_trigger_price_fetch_returns_job_id(client):
+    """POST /prices/fetch must return 200 with job_id without a live PgQueuer worker — it
+    enqueues the same "refresh_prices_live" entrypoint as admin.py's /refresh-prices."""
+    mock_queries = MagicMock()
+    mock_queries.enqueue = AsyncMock(return_value=[7])
 
-    mock_fetch = MagicMock()
-    mock_fetch.delay.return_value = fake_task
-
-    with patch("app.tasks.prices.fetch_all_prices", mock_fetch):
+    fastapi_app.dependency_overrides[get_pgq_queries] = lambda: mock_queries
+    try:
         r = await client.post("/api/prices/fetch")
+    finally:
+        fastapi_app.dependency_overrides.pop(get_pgq_queries, None)
 
     assert r.status_code == 200
     data = r.json()
-    assert "task_id" in data
-    assert data["task_id"] == "abc-123-task-id"
+    assert data["job_id"] == 7
+    mock_queries.enqueue.assert_called_once_with("refresh_prices_live", payload=b"on_demand")

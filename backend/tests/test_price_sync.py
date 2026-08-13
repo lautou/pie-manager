@@ -17,6 +17,7 @@ _fetch_ticker's own thin parsing logic (regularMarketPrice extraction/rounding).
 get_redis/write_status are tested in test_sync_status.py.
 """
 
+import asyncio
 import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -27,6 +28,7 @@ from app.tasks.prices import (
     fetch_all_prices,
     refresh_prices_live,
 )
+from tests.conftest import fetch_latest_job_run
 
 
 # ---------------------------------------------------------------------------
@@ -359,6 +361,51 @@ def test_refresh_prices_live_handles_exception_and_writes_failed():
     assert mock_r.set.call_count == 2
     final = json.loads(mock_r.set.call_args_list[1][0][1])
     assert final["status"] == "failed"
+
+
+# ---------------------------------------------------------------------------
+# job_runs dual-write (issue #66 step 1) — real DB row, real asyncio.run this time
+# ---------------------------------------------------------------------------
+
+def test_refresh_prices_live_writes_job_runs_row_on_success(engine):
+    """A real job_runs row is created alongside the (mocked) Redis write, with fields
+    correctly remapped from the sync-status dict shape. Depends on the `engine` fixture
+    (unused directly) purely to guarantee the schema exists when this file runs in isolation."""
+    mock_r = MagicMock()
+    success_result = {
+        "started_at": "2026-05-15T14:30:00+00:00",
+        "finished_at": "2026-05-15T14:30:05+00:00",
+        "status": "success",
+        "total_tickers": 3,
+        "succeeded": 3,
+        "failed_tickers": [],
+    }
+    with patch("app.tasks.prices.get_redis", return_value=mock_r), \
+         patch("app.tasks.prices._run_price_refresh",
+               new_callable=AsyncMock, return_value=success_result):
+        result = refresh_prices_live()
+
+    assert result == success_result
+    run = asyncio.run(fetch_latest_job_run("refresh_prices_live"))
+    assert run.status == "success"
+    assert run.trigger == "schedule"
+    assert run.total_steps == 3
+    assert run.succeeded_steps == 3
+    assert run.failed_items == []
+    assert run.finished_at is not None
+
+
+def test_refresh_prices_live_writes_job_runs_failed_row_on_exception(engine):
+    """If _run_price_refresh raises, the job_runs row also lands as 'failed' with the error."""
+    mock_r = MagicMock()
+    with patch("app.tasks.prices.get_redis", return_value=mock_r), \
+         patch("app.tasks.prices._run_price_refresh",
+               new_callable=AsyncMock, side_effect=RuntimeError("DB down")):
+        refresh_prices_live()
+
+    run = asyncio.run(fetch_latest_job_run("refresh_prices_live"))
+    assert run.status == "failed"
+    assert run.error == "DB down"
 
 
 # ---------------------------------------------------------------------------

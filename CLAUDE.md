@@ -65,6 +65,10 @@ acceptable for a system-interaction binary.
 - `launcher/` — separate Go module, builds `launcher.exe` (Windows WebView2 native launcher)
 - `testing/` — reproducible scripts to recreate the win11 libvirt/QEMU test VM from scratch on
   a fresh Fedora host (not part of the shipped product; see its own `README.md`)
+- `testing/msix-loopback-poc/` — throwaway diagnostic confirming (live, on a real `windows-latest`
+  GitHub Actions runner) that a full-trust MSIX-packaged WebView2 control can reach `localhost` —
+  the gating question for issue #63 (Store-distributing `launcher.exe` as a free fix for #60's
+  Smart App Control block); not part of the shipped product, see its own `README.md`
 
 ## Absolute rule: refactor after every change
 
@@ -1082,9 +1086,43 @@ backup of the PFX exists outside the repo/VM, not tracked here.
 CA-issued certificate with accumulated reputation does that. It provides a valid, verifiable,
 non-expiring signature (integrity/authenticity), nothing more.
 
+**Worse than SmartScreen: Smart App Control (SAC) can hard-block `launcher.exe` with no
+override at all (issue #60).** Confirmed live on a fresh Windows 11 install (win11 test VM,
+v1.3.3): after the installer completed successfully (all 6 containers healthy) and offered to
+launch the app, Windows blocked `launcher.exe` outright ("Le Contrôle intelligent des
+applications a bloqué une application potentiellement dangereuse") — unlike SmartScreen, this
+dialog has no "Run anyway" option; the app simply never opens. Root cause confirmed via
+registry (`HKLM\SYSTEM\CurrentControlSet\Control\CI\Policy\VerifiedAndReputablePolicyState =
+0x1`, i.e. SAC in full enforcement mode, not just the default post-install Evaluation state):
+per Microsoft's own docs, SAC only accepts signatures chained to a CA in the Microsoft Trusted
+Root Program — our self-signed cert doesn't qualify. **Notably, `pie-manager-windows-amd64.exe`
+(the installer itself, signed with the same cert) was NOT blocked** — SAC classifies each
+binary independently via cloud reputation first and only falls back to signature validity when
+inconclusive, so this isn't fully deterministic from our side. SAC starts in "Evaluation" mode
+on a fresh Win11 22H2+ install and can transition to full "On" on its own — exactly what
+happened on this from-scratch VM, meaning any real user doing a truly fresh Windows install can
+hit this wall with zero in-product workaround. **Confirmed this has no local-trust-store
+workaround either**: the win11 test VM's `CN=PIEManager` cert is already present in both the
+Root and TrustedPublisher stores (imported manually at some point, outside any setup script —
+see caveat below) and SAC still blocked `launcher.exe` anyway, since SAC specifically requires
+a chain to a CA in the Microsoft Trusted Root Program, not just local machine trust. See #60
+for the full writeup — a real CA-issued cert is the only fully reliable fix; neither a
+self-signed cert nor manually trusting it locally resolves this.
+
 **The UAC prompt and the Firewall "allow this app" prompt read the publisher from two
 different, unrelated places.** UAC shows "Éditeur vérifié: PIEManager" because it validates
-the Authenticode signature. The Firewall prompt shows "Éditeur: Inconnu" regardless of
+the Authenticode signature — **caveat confirmed 2026-08-10 (see #60): the win11 test VM's
+baseline snapshot (`base-clean-tuned-2026-07-17`) has the self-signed `CN=PIEManager` cert
+pre-imported into Root/TrustedPublisher/`CurrentUser\My` (the last one with its full private
+key, not just the public cert) — confirmed present on a virgin snapshot boot, before the
+installer was ever run, so it predates any test session and was never part of the documented
+`installer/testing/` setup scripts. A genuinely fresh Windows machine without that manual trust
+step likely shows "Éditeur inconnu" instead** — this VM is not representative of a clean
+install for UAC-publisher testing; re-verify on a real clean machine before trusting this
+claim. The private-key-in-VM finding also means the PFX (not just the public cert) was
+manually copied into this VM at some point, contradicting the "PFX lives only in GitHub
+secrets + a personal backup outside the repo/VM" intent stated above — worth purging from a
+future snapshot rebuild. The Firewall prompt shows "Éditeur: Inconnu" regardless of
 signing, because it reads the `CompanyName`/`ProductName` fields from the binary's embedded
 VERSIONINFO resource, separate from the manifest/icon. Fixed: `installer/winres/winres.json`
 (go-winres, same tool/format as `installer/launcher/winres/winres.json`) regenerates

@@ -22,6 +22,16 @@ child process launched from inside a full-trust MSIX package.** Confirmed on the
 - No PostgreSQL admin-refusal message ever appeared, on this run or on any of the deeper Phase 1
   runs that got far enough to matter.
 
+**Re-verified a second time with the fully Store-compatible fix in place**: the missing
+Visual C++ Redistributable runtime is bundled *inside the package itself*
+(`vcruntime140.dll`/`vcruntime140_1.dll`/`msvcp140.dll` copied into `pgsql/bin`, "app-local"
+deployment — a Microsoft-documented redistribution method, not a workaround) instead of being
+installed system-wide via `vc_redist.x64.exe`. On a VM reverted to a snapshot that had *never*
+had the redistributable installed, confirmed by `Test-Path` before the test: the same
+result — live `postgres.exe` processes, successful TCP connection to port 5432 — with **zero
+external installer of any kind ever run**, matching the real target architecture exactly (no
+elevation, no system-wide install, everything bundled in the MSIX).
+
 This was the single most foundational open question for issue #65's native-Windows-port
 epic — it's now empirically settled, not just researched. See Phase 2 below for the full
 narrative, including two more real (non-elevation) problems this uncovered.
@@ -145,6 +155,24 @@ elapsed before `result.txt` got its final `Set-Content` — not a failure, just 
 by checking for live `postgres.exe` processes and a real TCP connection instead of waiting
 longer on the file. Postgres was then stopped cleanly via `pg_ctl stop`, and the VM was shut
 down and reverted back to its `base-clean-tuned-2026-07-17` snapshot, leaving no trace.
+
+### Second re-verification: app-local VC++ runtime, zero external installer
+
+The first successful run above still relied on `vc_redist.x64.exe` having been run once on the
+VM — not compatible with a real Store-distributable MSIX, which can't run an elevated external
+installer at activation time. Re-verified with the actual fix: the CI workflow now installs the
+redistributable once on the (disposable) runner purely to obtain
+`vcruntime140.dll`/`vcruntime140_1.dll`/`msvcp140.dll`, then copies those 3 files into
+`pgsql/bin` *inside the package* before signing — "app-local" deployment, a
+Microsoft-documented redistribution method (Windows' DLL search order checks the executable's
+own directory before any system path, so no installation step is needed by the end user or the
+package at all).
+
+Tested end-to-end on the VM reverted to the same clean snapshot, confirmed via `Test-Path` to
+have never had the redistributable installed. Same result: live `postgres.exe` processes,
+successful TCP connection to `127.0.0.1:5432` — this time with the redistributable never
+touching the system at all, only ever existing inside the package. This is the fully
+Store-compatible shape of the fix.
 
 ## How it works
 

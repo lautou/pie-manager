@@ -2,6 +2,13 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.4.2] - 2026-08-14
+
+### Fixed
+
+- Serialize naive-UTC datetimes with an explicit UTC offset (#72)
+- Use vi.stubEnv instead of raw process.env in useSyncStatus.test.ts
+
 ## [1.4.1] - 2026-08-14
 
 ### Fixed

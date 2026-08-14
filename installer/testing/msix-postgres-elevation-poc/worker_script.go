@@ -47,14 +47,18 @@ New-Item -ItemType Directory -Force -Path (Split-Path $PgData -Parent) | Out-Nul
 # initdb launch (no more Access Denied) but then fail on "file /share/postgres.bki does not
 # exist" — postgres.exe/initdb.exe locate share/ via a path relative to bin/, so partially
 # copying just bin/ breaks that relative lookup against the share/ left behind in $PkgRoot.
+# robocopy, not Copy-Item -Recurse: a later run bundling many more small files (the Python
+# folder, see below) found Copy-Item -Recurse can hang indefinitely partway through a
+# many-small-files tree on this VM's storage, with no exception and near-zero CPU use (blocked,
+# not slow) — robocopy is the standard, far more robust tool for exactly this. /R:1 /W:1
+# (1 retry, 1s wait) explicitly overrides robocopy's own well-known footgun default of
+# effectively unlimited retries on a locked/inaccessible file, which would introduce the same
+# class of hang risk right back. Exit codes 0-7 all mean success (varying detail); only 8+ is a
+# real failure.
 $localPgsql = Join-Path (Split-Path $PgData -Parent) "pgsql"
-$copyException = $null
-try {
-    Copy-Item -Path (Join-Path $PkgRoot "pgsql") -Destination $localPgsql -Recurse -Force
-} catch {
-    $copyException = $_.Exception.Message
-}
-$lines += "COPY_PGSQL_TO_LOCALSTATE_EXCEPTION: $copyException"
+$pgsqlCopyOut = Join-Path (Split-Path $PgData -Parent) "robocopy-pgsql.log"
+$pgsqlCopyProc = Start-Process -FilePath "robocopy.exe" -ArgumentList @((Join-Path $PkgRoot "pgsql"), $localPgsql, "/E", "/R:1", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/NC", "/NS", "/NP") -NoNewWindow -Wait -PassThru -RedirectStandardOutput $pgsqlCopyOut -RedirectStandardError "$pgsqlCopyOut.err"
+$lines += "COPY_PGSQL_TO_LOCALSTATE_ROBOCOPY_EXIT: $($pgsqlCopyProc.ExitCode)"
 
 $pgBin = Join-Path $localPgsql "bin"
 $initdb = Join-Path $pgBin "initdb.exe"
@@ -115,16 +119,14 @@ if ($initdbExit -eq 0) {
         Start-Process -FilePath $pgctl -ArgumentList @("-D", $PgData, "status") -NoNewWindow -Wait -RedirectStandardOutput $statusOut -RedirectStandardError $statusErr
 
         # PgQueuer (the Celery/Redis replacement, issue #66) — same LocalState-copy pattern as
-        # pgsql above: the bundled embeddable Python/pgq.exe can't run in-place from the
-        # package's own read-only install directory either.
+        # pgsql above (robocopy, not Copy-Item -Recurse — see that step's comment for why): the
+        # bundled embeddable Python/pgq.exe can't run in-place from the package's own read-only
+        # install directory either. This is the copy that first exposed the Copy-Item hang (a
+        # Python install's site-packages tree has far more, smaller files than pgsql's).
         $localPython = Join-Path (Split-Path $PgData -Parent) "python"
-        $pyCopyException = $null
-        try {
-            Copy-Item -Path (Join-Path $PkgRoot "python") -Destination $localPython -Recurse -Force
-        } catch {
-            $pyCopyException = $_.Exception.Message
-        }
-        $lines += "COPY_PYTHON_TO_LOCALSTATE_EXCEPTION: $pyCopyException"
+        $pyCopyOut = Join-Path (Split-Path $PgData -Parent) "robocopy-python.log"
+        $pyCopyProc = Start-Process -FilePath "robocopy.exe" -ArgumentList @((Join-Path $PkgRoot "python"), $localPython, "/E", "/R:1", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/NC", "/NS", "/NP") -NoNewWindow -Wait -PassThru -RedirectStandardOutput $pyCopyOut -RedirectStandardError "$pyCopyOut.err"
+        $lines += "COPY_PYTHON_TO_LOCALSTATE_ROBOCOPY_EXIT: $($pyCopyProc.ExitCode)"
 
         $pythonExe = Join-Path $localPython "python.exe"
         $pgqExe = Join-Path $localPython "Scripts\pgq.exe"

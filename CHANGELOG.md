@@ -2,6 +2,14 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.4.0] - 2026-08-14
+
+### Added
+
+- **tasks:** Add job_runs foundation + PgQueuer viability POC (issue #66 step 1)
+- **backend:** Cut over 4 sync tasks from Celery to PgQueuer (issue #66 step 3)
+- **backend:** Cut over the 4 remaining snapshot tasks to PgQueuer (issue #66 step 4)
+
 ## [1.3.3] - 2026-08-09
 
 ### Fixed

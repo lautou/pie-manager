@@ -129,14 +129,12 @@ describe('formatSyncDateTime', () => {
 // ---------------------------------------------------------------------------
 
 describe('formatSyncTime — UTC-to-local conversion (issue #72)', () => {
-  const originalTZ = process.env.TZ
-
   beforeEach(() => {
-    process.env.TZ = 'Europe/Paris'
+    vi.stubEnv('TZ', 'Europe/Paris')
   })
 
   afterEach(() => {
-    process.env.TZ = originalTZ
+    vi.unstubAllEnvs()
   })
 
   it('converts a UTC timestamp to Paris summer time (CEST, UTC+2)', () => {

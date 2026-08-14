@@ -792,6 +792,16 @@ stuck `running` forever with no `finished_at` is the accepted, documented shape 
 interrupted attempt (no automatic orphan detection — the same gap Celery had, not a new
 regression).
 
+**Every `DateTime` column in this app stores naive UTC — always serialize it through
+`app/utils/datetime_utils.py`'s `to_utc_iso()`, never bare `.isoformat()`.** Found live
+(issue #72): `job_runs.started_at`/`finished_at` and `portfolios.created_at` were serialized
+with plain `.isoformat()`, which on a naive datetime omits the UTC offset entirely. JavaScript's
+`Date` constructor then parses an offset-less string as *local* time, not UTC — every "dernière
+synchro" badge across the app (price/ETF/macro/country-performance sync status all flow through
+`to_sync_status_dict`) displayed a time off by exactly the browser's UTC offset (2h in CEST, 1h
+in CET). `to_utc_iso()` attaches an explicit `+00:00` before serializing; use it at every point a
+naive-UTC datetime crosses the API boundary, including any new one added later.
+
 **`pgq-worker` compose service**: same image as `backend`, `command: pgq run
 app.tasks.pgq_app:main`, depends on `backend` — no Redis env vars, since Celery/Redis were
 removed entirely in issue #66's final step. Present in `compose.yaml` and `compose-prod.yaml`;

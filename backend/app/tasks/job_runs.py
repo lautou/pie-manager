@@ -42,6 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.core.config import settings
 from app.models.job_run import JobRun
+from app.utils.datetime_utils import to_utc_iso
 
 
 async def _start_run(
@@ -159,8 +160,8 @@ def to_sync_status_dict(run: JobRun | None) -> dict:
         }
     return {
         "status": run.status,
-        "started_at": run.started_at.isoformat() if run.started_at else None,
-        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "started_at": to_utc_iso(run.started_at),
+        "finished_at": to_utc_iso(run.finished_at),
         "total_tickers": run.total_steps,
         "succeeded": run.succeeded_steps,
         "failed_tickers": run.failed_items,

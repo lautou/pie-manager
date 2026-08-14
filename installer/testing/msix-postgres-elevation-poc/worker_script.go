@@ -7,6 +7,16 @@ package main
 // System.Collections.Generic.List[string]` (unquoted generic type argument) is a known
 // Windows PowerShell 5.1 parsing ambiguity; a plain array avoids that whole class of risk for
 // the handful of lines this script ever accumulates.
+//
+// Native processes are launched via Start-Process -PassThru -Wait with explicit
+// -RedirectStandardOutput/-RedirectStandardError, not `& $exe ... *> file` — a first version
+// used the `&`/`*>` pattern and it left INITDB_EXIT and the captured output both completely
+// empty despite the run correctly reaching a VERDICT, which isn't good enough evidence to
+// confirm the failure was PostgreSQL's own admin-refusal specifically (vs. e.g. Defender/AV
+// silently blocking a freshly-signed, unknown binary from running at all — a distinct failure
+// mode that would also correlate with IS_ADMIN_ROLE=True by coincidence on this runner).
+// Start-Process's own ExitCode/redirected-file mechanism is the reliable way to capture both
+// for a native child process in PowerShell.
 const workerScript = `
 param(
     [Parameter(Mandatory=$true)][string]$PkgRoot,
@@ -32,29 +42,39 @@ $pgctl = Join-Path $pgBin "pg_ctl.exe"
 New-Item -ItemType Directory -Force -Path (Split-Path $PgData -Parent) | Out-Null
 
 $logDir = Split-Path $ResultPath -Parent
-$initdbLog = Join-Path $logDir "msix-poc-initdb.log"
-Remove-Item $initdbLog -ErrorAction SilentlyContinue
-& $initdb -D $PgData -U pie --auth=trust *> $initdbLog
-$initdbExit = $LASTEXITCODE
+$initdbOut = Join-Path $logDir "msix-poc-initdb.out.log"
+$initdbErr = Join-Path $logDir "msix-poc-initdb.err.log"
+Remove-Item $initdbOut, $initdbErr -ErrorAction SilentlyContinue
+
+$initdbArgs = @("-D", $PgData, "-U", "pie", "--auth=trust")
+$initdbProc = Start-Process -FilePath $initdb -ArgumentList $initdbArgs -NoNewWindow -Wait -PassThru -RedirectStandardOutput $initdbOut -RedirectStandardError $initdbErr
+$initdbExit = $initdbProc.ExitCode
 $lines += "INITDB_EXIT: $initdbExit"
-$lines += "--- INITDB_OUTPUT ---"
-$lines += @(Get-Content $initdbLog -ErrorAction SilentlyContinue)
+$lines += "--- INITDB_STDOUT ---"
+$lines += @(Get-Content $initdbOut -ErrorAction SilentlyContinue)
+$lines += "--- INITDB_STDERR ---"
+$initdbStderr = @(Get-Content $initdbErr -ErrorAction SilentlyContinue)
+$lines += $initdbStderr
+$adminRefusalSeen = ($initdbStderr -join [Environment]::NewLine) -match "administrative permissions is not permitted"
+$lines += "INITDB_ADMIN_REFUSAL_MESSAGE_SEEN: $adminRefusalSeen"
 
 $startExit = $null
 if ($initdbExit -eq 0) {
-    $startLog = Join-Path $logDir "msix-poc-pgctl-start.log"
-    Remove-Item $startLog -ErrorAction SilentlyContinue
-    & $pgctl -D $PgData -l $startLog -w start
-    $startExit = $LASTEXITCODE
+    $startOut = Join-Path $logDir "msix-poc-pgctl-start.out.log"
+    $startErr = Join-Path $logDir "msix-poc-pgctl-start.err.log"
+    Remove-Item $startOut, $startErr -ErrorAction SilentlyContinue
+    $startArgs = @("-D", $PgData, "-w", "start")
+    $startProc = Start-Process -FilePath $pgctl -ArgumentList $startArgs -NoNewWindow -Wait -PassThru -RedirectStandardOutput $startOut -RedirectStandardError $startErr
+    $startExit = $startProc.ExitCode
     $lines += "PGCTL_START_EXIT: $startExit"
-    $lines += "--- PGCTL_START_LOG ---"
-    $lines += @(Get-Content $startLog -ErrorAction SilentlyContinue)
+    $lines += "--- PGCTL_START_STDOUT ---"
+    $lines += @(Get-Content $startOut -ErrorAction SilentlyContinue)
+    $lines += "--- PGCTL_START_STDERR ---"
+    $lines += @(Get-Content $startErr -ErrorAction SilentlyContinue)
 
     if ($startExit -eq 0) {
-        & $pgctl -D $PgData status
-        $lines += "PGCTL_STATUS_EXIT: $LASTEXITCODE"
-        & $pgctl -D $PgData stop -w
-        $lines += "PGCTL_STOP_EXIT: $LASTEXITCODE"
+        Start-Process -FilePath $pgctl -ArgumentList @("-D", $PgData, "status") -NoNewWindow -Wait
+        Start-Process -FilePath $pgctl -ArgumentList @("-D", $PgData, "-w", "stop") -NoNewWindow -Wait
     }
 } else {
     $lines += "PGCTL_START_EXIT: SKIPPED (initdb failed)"
@@ -62,8 +82,10 @@ if ($initdbExit -eq 0) {
 
 if ($initdbExit -eq 0 -and $startExit -eq 0) {
     $verdict = "SUCCESS: postgres started with no elevation issue (IS_ADMIN_ROLE=$isAdmin)"
+} elseif ($adminRefusalSeen) {
+    $verdict = "EXPECTED_FAILURE: initdb printed PostgreSQL's own admin-refusal message while IS_ADMIN_ROLE=True (this is the known negative control, confirmed by message text, not just inferred from the account state)"
 } elseif ($isAdmin -eq $true) {
-    $verdict = "EXPECTED_FAILURE: blocked while IS_ADMIN_ROLE=True (matches PostgreSQL's documented admin-refusal behavior - this is the known negative control, not a surprise)"
+    $verdict = "UNEXPECTED_FAILURE: blocked while IS_ADMIN_ROLE=True but WITHOUT PostgreSQL's own admin-refusal message text - some other cause (e.g. AV/Defender blocking the binary, a missing DLL) - investigate the captured stdout/stderr above"
 } else {
     $verdict = "UNEXPECTED_FAILURE: blocked while IS_ADMIN_ROLE=False (does NOT match the known admin-refusal cause - investigate separately, likely an MSIX path/permission issue unrelated to elevation)"
 }

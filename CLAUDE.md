@@ -28,7 +28,6 @@ back to update them. Distinguish:
 - Frontend: `cd frontend && npm test` (must exit 0)
 - Installer (Go): `cd installer && go test ./... -cover` — covers all pure utility functions
 - Use `db_session.flush()` (never `commit()`) in test fixtures
-- For Celery tasks: call the function directly (not `.delay()`), mock DB calls
 - For PgQueuer tasks (`app/tasks/pgq_app.py`): exercise the `@pgq.schedule`/`@pgq.entrypoint`
   handler directly via `PgQueuer.in_memory()` (see `test_pgq_app.py`) — real Postgres for
   `job_runs` writes, no reason to mock straightforward DB code
@@ -95,7 +94,7 @@ create-transaction code path as manual UI entry.
 | Layer | Technology |
 |-------|-----------|
 | Frontend | React 18 + TypeScript + PatternFly 5 + TanStack Query v5 + Vite |
-| Backend | Python FastAPI + SQLAlchemy 2.0 async + Celery + Redis + PgQueuer |
+| Backend | Python FastAPI + SQLAlchemy 2.0 async + PgQueuer |
 | Database | PostgreSQL 16 |
 | Deployment | **Podman** Compose (never Docker) |
 | Containerfiles | `Containerfile` (never `Dockerfile`) |
@@ -156,7 +155,7 @@ base+digest, removes the base image's own pip/setuptools/wheel
 (`python -m pip uninstall -y pip setuptools wheel` — uses pip's own RECORD manifest so
 companion files like the `_distutils_hack` `.pth` shim are removed correctly, not a `rm -rf`
 glob), then copies both artifacts in. A `RUN` step at the end of the `runtime` stage — a real
-import of `app.main`/`app.tasks.celery_app` plus `pg_dump --version`/`pg_restore --version` —
+import of `app.main`/`app.tasks.pgq_app` plus `pg_dump --version`/`pg_restore --version` —
 fails the build itself immediately if either copy is incomplete, instead of only surfacing at
 container start. **Both `FROM` lines must be bumped to the same digest together** — a future
 Dependabot base-image PR that only updates one would silently run the `builder`'s `ldd`
@@ -166,13 +165,14 @@ old single-stage image, absent here), a ~43% image size reduction (772 MB → 43
 `podman-compose up` smoke tests (see below) on both dev and prod-style stacks.
 
 **`backend/Containerfile` runs as a non-root user (`appuser`, UID/GID 1000)** — fixed
-issue #17 (previously ran fully as root). Celery Beat's schedule file is redirected to
-`/tmp` (`beat_schedule_filename` in `app/tasks/celery_app.py`) instead of the default
-CWD (`/app`), so `appuser` never needs write access to the application source tree —
-this also sidesteps host/container UID mismatches on the dev bind-mount
+issue #17 (previously ran fully as root). `appuser` never needs write access to the
+application source tree: `pg_dump`/`pg_restore` (admin backup/restore) and the Excel import
+only ever touch `/tmp` or memory, and nothing else in the app writes to disk at all since
+Celery's removal (issue #66) — Celery Beat used to need its own schedule file redirected to
+`/tmp` (see git history if resurrecting this), but that mechanism is gone along with Celery
+itself. This also sidesteps host/container UID mismatches on the dev bind-mount
 (`./backend:/app:z`), since reading it only relies on standard "other" read permission
-bits, not an exact UID match. `pg_dump`/`pg_restore` (admin backup/restore) and the
-Excel import already only touch `/tmp` or memory, so neither needed any change.
+bits, not an exact UID match.
 Verified live (not just build success): a real `podman-compose up` in both dev
 (bind-mount) and prod-style (`alembic upgrade head && uvicorn`, baked image) modes,
 confirming clean startup, no permission errors, and a working backup+restore
@@ -221,9 +221,7 @@ must be bumped to the same digest together** on a future base-image update.
 ```
 compose.yaml
 ├── postgres (PostgreSQL 16)
-├── redis
 ├── backend (FastAPI)
-├── worker (Celery worker + Beat, `-B` flag)
 ├── pgq-worker (PgQueuer, `pgq run app.tasks.pgq_app:main`)
 └── frontend (Vite dev server, port 5173)
 ```
@@ -233,9 +231,7 @@ compose.yaml
 ```
 compose-prod.yaml
 ├── postgres (PostgreSQL 16)             restart: unless-stopped
-├── redis                                restart: unless-stopped
 ├── backend (FastAPI)                    restart: unless-stopped, no exposed ports
-├── worker (Celery worker + Beat, -B)    restart: unless-stopped
 ├── pgq-worker (PgQueuer)                restart: unless-stopped
 ├── frontend (Vite dev server)           restart: unless-stopped, no exposed ports
 └── haproxy (reverse proxy)              restart: unless-stopped, port APP_PORT:8080
@@ -739,20 +735,16 @@ Actuel/Après bars (shared by both, since the target doesn't change between them
 per-row `Écart actuel` / `Écart cible` label next to each bar instead of one combined line at
 the bottom — the combined line used to sit far from the "Actuel" row it partly described.
 
-## Background job processing — Celery/Redis migrating to PgQueuer (issue #66)
+## Background job processing — PgQueuer (issue #66, Celery/Redis fully removed)
 
-This app is single-user; a distributed-worker model (separate broker + worker process class) is
-more machinery than it needs. Issue #66 tracks migrating off Celery/Redis **incrementally**, one
-small, independently live-verified step at a time, not a single big-bang rewrite.
-
-**Current state**: all 6 periodic/on-demand background tasks now run through PgQueuer, not
-Celery — `refresh_prices_live`/`refresh_etf_holdings`/`refresh_macro_indicators`/
-`refresh_country_performance` (step 3), plus `compute_daily_snapshots_all_users`/
-`compute_monthly_snapshots_all_users`/`fill_missing_snapshots`/`recompute_snapshots_range`
-(step 4). Celery/Redis/the `worker` container all stay installed but **idle** —
-`celery_app.py`'s `beat_schedule` is now `{}`, since nothing is left for Celery Beat to
-dispatch. Full removal (dropping the `redis` service, the Celery `worker` service,
-`celery_app.py` itself) is a later step, not yet done.
+This app is single-user; a distributed-worker model (separate broker + worker process class) was
+more machinery than it needed. Issue #66 migrated all 6 periodic/on-demand background tasks off
+Celery/Redis onto PgQueuer **incrementally**, one small, independently live-verified step at a
+time (steps 1+3: `refresh_prices_live`/`refresh_etf_holdings`/`refresh_macro_indicators`/
+`refresh_country_performance`; step 4: `compute_daily_snapshots_all_users`/
+`compute_monthly_snapshots_all_users`/`fill_missing_snapshots`/`recompute_snapshots_range`; step
+5: removed Celery/Redis/the `worker` container and `celery_app.py` entirely, since nothing used
+them anymore by that point). `pgq-worker` is now the only worker process/container in this app.
 
 **`job_runs` table** (`app/models/job_run.py`, `app/tasks/job_runs.py`) replaces Redis-based
 sync-status keys *and* Celery's `AsyncResult` for every task: one row per **execution attempt**
@@ -797,12 +789,12 @@ here (added in migration `tt33uu44vv55`) turned this ordinary, expected redelive
 unhandled `IntegrityError` that crashed the job — confirmed live, fixed by dropping the index in
 migration `vv55ww66xx77`. Several `job_runs` rows can legitimately share one `pgq_job_id`; a row
 stuck `running` forever with no `finished_at` is the accepted, documented shape of an
-interrupted attempt (no automatic orphan detection — same gap Celery already has today, not a
-new regression).
+interrupted attempt (no automatic orphan detection — the same gap Celery had, not a new
+regression).
 
-**`pgq-worker` compose service**: same image as `backend`/`worker`, `command: pgq run
-app.tasks.pgq_app:main`, depends only on `postgres: service_healthy` — no Redis/Celery env vars,
-since this process never imports `celery_app.py`. Present in `compose.yaml` and
+**`pgq-worker` compose service**: same image as `backend`, `command: pgq run
+app.tasks.pgq_app:main`, depends only on `postgres: service_healthy` — no Redis env vars, since
+Celery/Redis were removed entirely in issue #66's final step. Present in `compose.yaml` and
 `compose-prod.yaml`; also present in `installer/assets/compose-prod.yaml`, but that copy is
 generated at build time from the root file, not committed (see `.gitignore`) — no separate edit
 needed there.
@@ -837,8 +829,8 @@ the shared `_run_tracked` helper. Confirmed live: killing `pgq-worker` mid-run l
 and redelivers the job to the same `job.id`, the handler correctly resumes against the *same*
 `run_id` rather than creating a duplicate row.
 
-Tracking: #66 (main migration), #67 (considering `concurrency_limit=1` to prevent overlapping
-runs of the same sync task — not yet implemented).
+Tracking: #66 (main migration, complete). Related: #67 (considering `concurrency_limit=1` to
+prevent overlapping runs of the same sync task — separate, not yet implemented).
 
 ## Daily snapshot logic
 
@@ -1159,10 +1151,10 @@ progressive-hardening pattern below.
 
 `publish-images.yml`'s `smoke-test-backend` job (`needs: publish`, `continue-on-error: true` —
 same progressive-hardening pattern as `test-windows-install`/`test-linux-install`) runs a real
-`pg_dump`/`pg_restore` round-trip against the just-published backend image: starts real
-`postgres:16-alpine`/`redis:8-alpine` GitHub Actions services, runs the image via
-`podman run --network host` (so `localhost:5432`/`localhost:6379` inside the container reach the
-services' host-published ports) with the same `alembic upgrade head && uvicorn ...` command as
+`pg_dump`/`pg_restore` round-trip against the just-published backend image: starts a real
+`postgres:16-alpine` GitHub Actions service, runs the image via
+`podman run --network host` (so `localhost:5432` inside the container reaches the
+service's host-published port) with the same `alembic upgrade head && uvicorn ...` command as
 `compose-prod.yaml`, waits for `/api/admin/health`, seeds one portfolio, downloads
 `/api/admin/backup`, re-uploads it to `/api/admin/restore`, then confirms the seeded portfolio is
 still present. This exists because #20's multi-stage build hand-copies `pg_dump`/`pg_restore`'s

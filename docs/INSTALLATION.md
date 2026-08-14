@@ -34,12 +34,15 @@ Les mesures ci-dessous sont relevées avec **1 à 2 portefeuilles actifs**, prix
 | Service | RAM | CPU repos | CPU synchro prix |
 |---|---|---|---|
 | postgres | ~50 Mo | ~0 % | ~1 % |
-| redis | ~10 Mo | ~0 % | ~0 % |
 | backend (FastAPI) | ~150 Mo | ~0 % | ~5 % |
-| worker (Celery) | ~80 Mo | ~0 % | ~10 % |
+| pgq-worker (PgQueuer) | — | — | — |
 | frontend (Vite) | ~200 Mo | ~0 % | ~0 % |
 | haproxy | ~5 Mo | ~0 % | ~0 % |
-| **Total** | **~500 Mo** | **~0 %** | **~15 % (15 s/15 min)** |
+| **Total** | *à re-mesurer* | *à re-mesurer* | *à re-mesurer* |
+
+*Mesures non rafraîchies depuis le remplacement de Celery/Redis par PgQueuer (issue #66) — les
+lignes `redis`/`worker (Celery)` ont disparu, mais `pgq-worker` n'a pas encore été mesuré
+séparément.*
 
 #### Windows 11 (état de repos, app démarrée)
 
@@ -49,7 +52,7 @@ Sur Windows, les containers tournent dans la **Podman Machine** (VM WSL2). Il fa
 |---|---|---|
 | WSL2 (hyperviseur) | ~100 Mo | — |
 | Podman Machine (VM Fedora CoreOS) | ~400 Mo | ~3 Go (disque virtuel .vhdx) |
-| 6 containers PIE Manager | ~500 Mo | ~50 Mo (données) |
+| 5 containers PIE Manager | *non re-mesuré* | *non re-mesuré* |
 | **Total VmmemWSL** | **~2 Go** | **~3,5 Go** |
 
 Le processus `VmmemWSL` visible dans le Gestionnaire des tâches représente la mémoire totale de la VM WSL2 — c'est normal.
@@ -61,7 +64,7 @@ Sur macOS, comme sur Windows, les containers tournent dans une **Podman Machine*
 | Couche | RAM | Disque |
 |---|---|---|
 | Podman Machine (VM Fedora CoreOS) | ~400 Mo | ~4 Go (disque virtuel) |
-| 6 containers PIE Manager | ~500 Mo | ~50 Mo (données) |
+| 5 containers PIE Manager | *non re-mesuré* | *non re-mesuré* |
 | **Total** | **~1 Go** | **~4,5 Go** |
 
 Contrairement à Windows, il n'y a pas de processus hôte unique consolidant toute la mémoire de la VM (pas d'équivalent `VmmemWSL`) — `podman machine info` donne l'état courant de la machine.
@@ -78,7 +81,7 @@ La base de données reste légère — les prix historiques (yfinance) représen
 
 ### Impact des synchronisations
 
-- **Toutes les 15 minutes** : Celery synchronise les prix Yahoo Finance → pic CPU de 5–15 s
+- **Toutes les 15 minutes** : PgQueuer synchronise les prix Yahoo Finance → pic CPU de 5–15 s
 - **Au démarrage** : Alembic vérifie les migrations → 2–5 s de CPU supplémentaire
 - **Régénération snapshots** (Admin) : CPU ~30 % pendant 10–30 s selon la plage de dates
 
@@ -139,7 +142,7 @@ chmod +x ~/Downloads/pie-manager-linux-amd64
 L'installateur effectue les étapes suivantes :
 
 1. Vérification de Podman
-2. Téléchargement des images (backend, frontend, postgres, redis, HAProxy) depuis Quay.io
+2. Téléchargement des images (backend, frontend, postgres, HAProxy) depuis Quay.io
 3. Écriture des fichiers de configuration dans `~/.local/share/pie-manager/`
 4. Détection d'un port libre (14943 par défaut)
 5. Création de l'icône GNOME et du raccourci
@@ -185,7 +188,7 @@ L'installateur Windows gère tout automatiquement — aucune installation manuel
    - Initialisation de la Podman Machine (~650 Mo, quelques minutes)
    - Installation de `podman-compose` dans la machine
    - Téléchargement des images (~1,5 Go)
-   - Démarrage des 6 containers
+   - Démarrage des 5 containers
    - Ouverture de PIE Manager dans Edge (fenêtre sans barre d'adresse)
 
 **Icône menu Démarrer :** après installation, l'icône PIE Manager lance l'application directement. Plusieurs clics ramènent la fenêtre au premier plan sans ouvrir de doublon.
@@ -215,7 +218,7 @@ L'installateur effectue les étapes suivantes :
 
 1. Installation de Podman via son paquet officiel (`.pkg` téléchargé depuis GitHub, pas Homebrew)
 2. Initialisation et démarrage de la Podman Machine (VM légère via l'hyperviseur natif d'Apple, aucun redémarrage requis)
-3. Téléchargement des images (backend, frontend, postgres, redis, HAProxy)
+3. Téléchargement des images (backend, frontend, postgres, HAProxy)
 4. Écriture des fichiers de configuration dans `~/Library/Application Support/PieManager/`
 5. Détection d'un port libre (14943 par défaut)
 6. Création du raccourci `PIE Manager.app` dans `~/Applications`
@@ -298,7 +301,7 @@ L'option `--volumes` supprime également les volumes de données (base de donné
 ```bash
 podman rmi quay.io/ltourreau/pie-manager-backend:latest
 podman rmi quay.io/ltourreau/pie-manager-frontend:latest
-podman rmi postgres:16-alpine redis:7-alpine haproxy:alpine
+podman rmi postgres:16-alpine haproxy:alpine
 ```
 
 ### Supprimer les fichiers installés

@@ -5,10 +5,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_serializer
 
 from app.core.database import get_db
 from app.models import Portfolio
+from app.utils.datetime_utils import to_utc_iso
 
 router = APIRouter(tags=["portfolios"])
 
@@ -27,6 +28,10 @@ class PortfolioOut(BaseModel):
     id: int
     name: str
     created_at: Optional[datetime] = None
+
+    @field_serializer("created_at")
+    def _serialize_created_at(self, dt: Optional[datetime]) -> Optional[str]:
+        return to_utc_iso(dt)
 
 
 @router.get("/", response_model=list[PortfolioOut])

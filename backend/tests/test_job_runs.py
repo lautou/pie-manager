@@ -213,6 +213,10 @@ async def test_to_sync_status_dict_maps_a_populated_run(db_session):
     assert mapped["failed_tickers"] == ["X(reason)"]
     assert mapped["started_at"] is not None
     assert mapped["finished_at"] is not None
+    # issue #72: must carry an explicit UTC offset, not a naive/ambiguous string —
+    # otherwise the frontend's `new Date(...)` parses it as local time instead of UTC.
+    assert mapped["started_at"].endswith("+00:00")
+    assert mapped["finished_at"].endswith("+00:00")
 
 
 # ---------------------------------------------------------------------------

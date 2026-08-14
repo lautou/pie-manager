@@ -117,15 +117,14 @@ if ($initdbExit -eq 0) {
     $lines += @(Get-Content $startErr -ErrorAction SilentlyContinue)
 
     if ($startExit -eq 0) {
-        # -RedirectStandardOutput/-Error here too: an earlier version left this call
-        # unredirected, and it hung indefinitely (worker.ps1 accumulated ~5s of CPU time over
-        # 8+ minutes of wall clock, i.e. blocked, not slow) — a process launched via
-        # -NoNewWindow with no console and no redirected output can deadlock on WriteFile if
-        # its stdout pipe buffer fills with nobody reading it, in this non-interactive
-        # scheduled-task-launched-with-an-interactive-token context.
-        $statusOut = Join-Path $logDir "msix-poc-pgctl-status.out.log"
-        $statusErr = Join-Path $logDir "msix-poc-pgctl-status.err.log"
-        Start-Process -FilePath $pgctl -ArgumentList @("-D", $PgData, "status") -NoNewWindow -Wait -RedirectStandardOutput $statusOut -RedirectStandardError $statusErr
+        # No pg_ctl status check here (there was one) - purely cosmetic (pgctl start already
+        # confirms success via its own exit code), and it hung indefinitely even after adding
+        # output redirection (worker.ps1 accumulated only ~3-5s of CPU time over 8+ minutes of
+        # wall clock across two separate runs — blocked, not slow, root cause not pinned down
+        # further since dropping this non-essential call is a cleaner fix than chasing a third
+        # theory). pg_ctl start's own exit code (already captured above) and the PgQueuer
+        # connectivity check below (which needs a genuinely live, reachable Postgres to pass at
+        # all) are already sufficient evidence Postgres is actually up.
 
         # PgQueuer (the Celery/Redis replacement, issue #66) — same LocalState-copy pattern as
         # pgsql above (robocopy, not Copy-Item -Recurse — see that step's comment for why): the

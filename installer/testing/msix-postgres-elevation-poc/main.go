@@ -67,15 +67,18 @@ func main() {
 		psExe = "powershell.exe" // fall back to PATH resolution if the well-known path is ever wrong
 	}
 
-	// Write a marker before attempting the launch, and capture Run()'s own error explicitly
-	// (previously discarded via `_ = cmd.Run()`) — so a launch failure that prevents the
-	// worker script from ever running leaves diagnostic evidence in resultPath instead of no
-	// file appearing at all, which is what happened on the first attempt at this poc.
+	// Write a marker before attempting the launch, and capture Run()'s own error plus the
+	// child's combined stdout/stderr explicitly (previously discarded via `_ = cmd.Run()`) —
+	// so a launch failure, or the worker script itself erroring out before reaching its own
+	// Set-Content, leaves the actual PowerShell error text in resultPath instead of either no
+	// file appearing at all, or a bare unhelpful "exit status 1" with no message.
 	writeResult(resultPath, fmt.Sprintf("STARTED: about to launch %s\n", psExe))
 	cmd := exec.Command(psExe, "-NoProfile", "-ExecutionPolicy", "Bypass",
 		"-File", scriptPath, "-PkgRoot", pkgRoot, "-PgData", pgData, "-ResultPath", resultPath)
-	if err := cmd.Run(); err != nil {
-		writeResult(resultPath, fmt.Sprintf("FAILURE: launching worker script failed: %v (psExe=%s)", err, psExe))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		writeResult(resultPath, fmt.Sprintf("FAILURE: launching worker script failed: %v (psExe=%s)\n--- COMBINED_OUTPUT ---\n%s",
+			err, psExe, string(output)))
 	}
 	// On success, the worker script itself has already overwritten resultPath with the real
 	// VERDICT — nothing left to do here.

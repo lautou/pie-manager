@@ -25,6 +25,16 @@ param(
 )
 
 $lines = @()
+
+# Flushed to $ResultPath after every major step (not just once at the very end) so a live
+# poll of result.txt from outside the package shows real-time progress instead of the stale
+# main.go "STARTED" marker for the whole run - the only way a prior hung run (stuck somewhere
+# between pg_ctl start and the Python copy step, with near-zero CPU for 8+ minutes) could be
+# externally localized was indirect process/thread inspection, which was inconclusive.
+function Flush-Lines {
+    Set-Content -Path $ResultPath -Value ($lines -join [Environment]::NewLine) -Encoding UTF8
+}
+
 $lines += "STARTED $(Get-Date -Format o)"
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -34,6 +44,7 @@ $lines += "USER: $($identity.Name)"
 $lines += "IS_ADMIN_ROLE: $isAdmin"
 $lines += "PKG_ROOT: $PkgRoot"
 $lines += "PGDATA: $PgData"
+Flush-Lines
 
 New-Item -ItemType Directory -Force -Path (Split-Path $PgData -Parent) | Out-Null
 
@@ -68,6 +79,7 @@ $pgsqlSrcQ = '"' + (Join-Path $PkgRoot "pgsql") + '"'
 $pgsqlDstQ = '"' + $localPgsql + '"'
 $pgsqlCopyProc = Start-Process -FilePath "robocopy.exe" -ArgumentList @($pgsqlSrcQ, $pgsqlDstQ, "/E", "/R:1", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/NC", "/NS", "/NP") -NoNewWindow -Wait -PassThru -RedirectStandardOutput $pgsqlCopyOut -RedirectStandardError "$pgsqlCopyOut.err"
 $lines += "COPY_PGSQL_TO_LOCALSTATE_ROBOCOPY_EXIT: $($pgsqlCopyProc.ExitCode)"
+Flush-Lines
 
 $pgBin = Join-Path $localPgsql "bin"
 $initdb = Join-Path $pgBin "initdb.exe"
@@ -75,6 +87,7 @@ $pgctl = Join-Path $pgBin "pg_ctl.exe"
 $lines += "PGBIN_SOURCE: $pgBin"
 $lines += "INITDB_EXE_EXISTS: $(Test-Path $initdb)"
 $lines += "PGCTL_EXE_EXISTS: $(Test-Path $pgctl)"
+Flush-Lines
 
 $logDir = Split-Path $ResultPath -Parent
 $initdbOut = Join-Path $logDir "msix-poc-initdb.out.log"
@@ -97,6 +110,7 @@ $initdbStderr = @(Get-Content $initdbErr -ErrorAction SilentlyContinue)
 $lines += $initdbStderr
 $adminRefusalSeen = ($initdbStderr -join [Environment]::NewLine) -match "administrative permissions is not permitted"
 $lines += "INITDB_ADMIN_REFUSAL_MESSAGE_SEEN: $adminRefusalSeen"
+Flush-Lines
 
 $startExit = $null
 if ($initdbExit -eq 0) {
@@ -115,16 +129,16 @@ if ($initdbExit -eq 0) {
     $lines += @(Get-Content $startOut -ErrorAction SilentlyContinue)
     $lines += "--- PGCTL_START_STDERR ---"
     $lines += @(Get-Content $startErr -ErrorAction SilentlyContinue)
+    Flush-Lines
 
     if ($startExit -eq 0) {
-        # No pg_ctl status check here (there was one) - purely cosmetic (pgctl start already
-        # confirms success via its own exit code), and it hung indefinitely even after adding
-        # output redirection (worker.ps1 accumulated only ~3-5s of CPU time over 8+ minutes of
-        # wall clock across two separate runs — blocked, not slow, root cause not pinned down
-        # further since dropping this non-essential call is a cleaner fix than chasing a third
-        # theory). pg_ctl start's own exit code (already captured above) and the PgQueuer
-        # connectivity check below (which needs a genuinely live, reachable Postgres to pass at
-        # all) are already sufficient evidence Postgres is actually up.
+        # A pg_ctl status check used to sit here and was removed after it hung indefinitely
+        # (near-zero CPU over 8+ minutes) even with output redirection. A later run showed the
+        # same class of hang (near-zero CPU, no forward progress) can still occur somewhere in
+        # this general area even without that call - root cause not pinned down. Flush-Lines
+        # calls throughout this block exist specifically so a live poll of $ResultPath from
+        # outside the package shows exactly which step is stuck, instead of requiring indirect
+        # process/thread inspection to guess.
 
         # PgQueuer (the Celery/Redis replacement, issue #66) — same LocalState-copy pattern as
         # pgsql above (robocopy, not Copy-Item -Recurse — see that step's comment for why): the
@@ -137,12 +151,14 @@ if ($initdbExit -eq 0) {
         $pyDstQ = '"' + $localPython + '"'
         $pyCopyProc = Start-Process -FilePath "robocopy.exe" -ArgumentList @($pySrcQ, $pyDstQ, "/E", "/R:1", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/NC", "/NS", "/NP") -NoNewWindow -Wait -PassThru -RedirectStandardOutput $pyCopyOut -RedirectStandardError "$pyCopyOut.err"
         $lines += "COPY_PYTHON_TO_LOCALSTATE_ROBOCOPY_EXIT: $($pyCopyProc.ExitCode)"
+        Flush-Lines
 
         $pythonExe = Join-Path $localPython "python.exe"
         $pgqExe = Join-Path $localPython "Scripts\pgq.exe"
         $psqlExe = Join-Path $pgBin "psql.exe"
         $lines += "PYTHON_EXE_EXISTS: $(Test-Path $pythonExe)"
         $lines += "PGQ_EXE_EXISTS: $(Test-Path $pgqExe)"
+        Flush-Lines
 
         # Minimal, self-contained mirror of the real app.tasks.pgq_app:main shape (see that
         # file's own asynccontextmanager main()) - registers one schedule against the same
@@ -192,10 +208,12 @@ async def main():
         $lines += @(Get-Content $pgqOut -ErrorAction SilentlyContinue)
         $lines += "--- PGQ_STDERR ---"
         $lines += @(Get-Content $pgqErr -ErrorAction SilentlyContinue)
+        Flush-Lines
 
         $scheduleCountRaw = & $psqlExe -U pie -d postgres -h 127.0.0.1 -t -c "SELECT count(*) FROM pgqueuer_schedules WHERE entrypoint='poc_test_entrypoint'" 2>&1
         $scheduleRegistered = ($scheduleCountRaw -join " ").Trim() -match "1"
         $lines += "PGQ_SCHEDULE_REGISTERED: $scheduleRegistered (raw: $scheduleCountRaw)"
+        Flush-Lines
 
         if ($scheduleRegistered) {
             $pgqVerdict = "SUCCESS: PgQueuer (embeddable Python) registered a real schedule against the bundled Postgres, non-elevated, from inside the MSIX package"
@@ -203,6 +221,7 @@ async def main():
             $pgqVerdict = "FAILURE: schedule was not found in pgqueuer_schedules - see PGQ_STDOUT/STDERR above"
         }
         $lines += "PGQUEUER_VERDICT: $pgqVerdict"
+        Flush-Lines
 
         $stopOut = Join-Path $logDir "msix-poc-pgctl-stop.out.log"
         $stopErr = Join-Path $logDir "msix-poc-pgctl-stop.err.log"
@@ -222,6 +241,5 @@ if ($initdbExit -eq 0 -and $startExit -eq 0) {
     $verdict = "UNEXPECTED_FAILURE: blocked while IS_ADMIN_ROLE=False (does NOT match the known admin-refusal cause - investigate separately, likely an MSIX path/permission issue unrelated to elevation)"
 }
 $lines += "VERDICT: $verdict"
-
-Set-Content -Path $ResultPath -Value ($lines -join [Environment]::NewLine) -Encoding UTF8
+Flush-Lines
 `

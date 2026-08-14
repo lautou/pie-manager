@@ -1,7 +1,7 @@
 /**
  * Tests for useSyncStatus.ts — helper functions AND the hook itself.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { makeWrapper } from '../../tests/utils/react-query-wrapper'
 import { formatSyncTime, formatSyncDateTime, useSyncStatus } from './useSyncStatus'
@@ -118,6 +118,37 @@ describe('formatSyncDateTime', () => {
     const result = formatSyncDateTime(status)
     expect(result).not.toBeNull()
     expect(result).toContain('/')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// issue #72 regression: a UTC-marked timestamp must convert to local wall-clock
+// time, not be displayed as if the UTC value were already local. Pinned against a
+// fixed timezone so the assertion is deterministic regardless of the CI runner's
+// own local timezone.
+// ---------------------------------------------------------------------------
+
+describe('formatSyncTime — UTC-to-local conversion (issue #72)', () => {
+  const originalTZ = process.env.TZ
+
+  beforeEach(() => {
+    process.env.TZ = 'Europe/Paris'
+  })
+
+  afterEach(() => {
+    process.env.TZ = originalTZ
+  })
+
+  it('converts a UTC timestamp to Paris summer time (CEST, UTC+2)', () => {
+    // 15:36 UTC in August (CEST) is 17:36 in Paris — the exact bug reported live.
+    const status = makeStatus({ finished_at: '2026-08-14T15:36:32Z' })
+    expect(formatSyncTime(status)).toBe('17:36')
+  })
+
+  it('converts a UTC timestamp to Paris winter time (CET, UTC+1)', () => {
+    // 15:36 UTC in January (CET) is 16:36 in Paris.
+    const status = makeStatus({ finished_at: '2026-01-14T15:36:32Z' })
+    expect(formatSyncTime(status)).toBe('16:36')
   })
 })
 

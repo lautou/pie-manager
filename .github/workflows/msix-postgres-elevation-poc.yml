@@ -151,8 +151,11 @@ jobs:
 
           Start-Process "shell:AppsFolder\$aumid"
 
-          # Generous deadline: initdb + pg_ctl start take longer than a simple HTTP ping.
-          $deadline = (Get-Date).AddSeconds(60)
+          # Generous deadline: copying the ~120MB pgsql folder (bin+share+lib) to LocalState,
+          # then initdb + pg_ctl start, all take longer than a simple HTTP ping. A prior run
+          # timed out at 60s with only the "STARTED" marker ever written — bumped substantially
+          # to rule out a slow copy/init being mistaken for a hang.
+          $deadline = (Get-Date).AddSeconds(180)
           $last = $null
           while ((Get-Date) -lt $deadline) {
             if (Test-Path $resultPath) {

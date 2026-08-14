@@ -81,14 +81,16 @@ class TestComposeHealthcheck:
         if isinstance(backend_deps, dict):
             assert backend_deps["postgres"].get("condition") == "service_healthy"
 
-    def test_pgq_worker_depends_on_healthy_postgres(self):
+    def test_pgq_worker_depends_on_backend(self):
         """pgq-worker (the only background-job worker since Celery's removal, issue #66)
-        must wait for postgres to be healthy before starting."""
+        depends on `backend` rather than directly on `postgres: condition: service_healthy` —
+        deliberately, to avoid 2 services concurrently polling the same health condition,
+        which hung a real podman-compose 1.6.0 / podman 4.9.3 CI run (see git history for the
+        full writeup). The postgres-health guarantee still holds transitively: backend itself
+        depends on postgres being healthy."""
         compose = _load_compose()
         worker_deps = compose["services"]["pgq-worker"]["depends_on"]
-        assert "postgres" in worker_deps
-        if isinstance(worker_deps, dict):
-            assert worker_deps["postgres"].get("condition") == "service_healthy"
+        assert "backend" in worker_deps
 
 
 # ---------------------------------------------------------------------------

@@ -35,15 +35,29 @@ $lines += "IS_ADMIN_ROLE: $isAdmin"
 $lines += "PKG_ROOT: $PkgRoot"
 $lines += "PGDATA: $PgData"
 
-$pgBin = Join-Path $PkgRoot "pgsql\bin"
+New-Item -ItemType Directory -Force -Path (Split-Path $PgData -Parent) | Out-Null
+
+# A prior run got "Access is denied" trying to Start-Process a bundled initdb.exe directly from
+# the package's own install directory (under C:\Program Files\WindowsApps\...) — distinct from
+# PostgreSQL's own admin-refusal message. Hypothesis: Windows/MSIX restricts executing arbitrary
+# bundled binaries in-place from a package's read-only, integrity-protected install directory,
+# regardless of elevation. Test it directly: copy pgsql\bin into this package's own writable
+# LocalState area first, and launch FROM there instead of from $PkgRoot.
+$localBin = Join-Path (Split-Path $PgData -Parent) "pgsql-bin"
+$copyException = $null
+try {
+    Copy-Item -Path (Join-Path $PkgRoot "pgsql\bin") -Destination $localBin -Recurse -Force
+} catch {
+    $copyException = $_.Exception.Message
+}
+$lines += "COPY_PGBIN_TO_LOCALSTATE_EXCEPTION: $copyException"
+
+$pgBin = $localBin
 $initdb = Join-Path $pgBin "initdb.exe"
 $pgctl = Join-Path $pgBin "pg_ctl.exe"
+$lines += "PGBIN_SOURCE: $pgBin"
 $lines += "INITDB_EXE_EXISTS: $(Test-Path $initdb)"
 $lines += "PGCTL_EXE_EXISTS: $(Test-Path $pgctl)"
-$lines += "PGBIN_LISTING:"
-$lines += @(Get-ChildItem $pgBin -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
-
-New-Item -ItemType Directory -Force -Path (Split-Path $PgData -Parent) | Out-Null
 
 $logDir = Split-Path $ResultPath -Parent
 $initdbOut = Join-Path $logDir "msix-poc-initdb.out.log"

@@ -81,10 +81,11 @@ class TestComposeHealthcheck:
         if isinstance(backend_deps, dict):
             assert backend_deps["postgres"].get("condition") == "service_healthy"
 
-    def test_worker_depends_on_healthy_postgres(self):
-        """Worker must wait for postgres to be healthy before starting."""
+    def test_pgq_worker_depends_on_healthy_postgres(self):
+        """pgq-worker (the only background-job worker since Celery's removal, issue #66)
+        must wait for postgres to be healthy before starting."""
         compose = _load_compose()
-        worker_deps = compose["services"]["worker"]["depends_on"]
+        worker_deps = compose["services"]["pgq-worker"]["depends_on"]
         assert "postgres" in worker_deps
         if isinstance(worker_deps, dict):
             assert worker_deps["postgres"].get("condition") == "service_healthy"

@@ -5,7 +5,7 @@ country universe CRUD and the trailing-1-year, EUR-adjusted Top-N ranking shown 
 
 Split from app/tasks/country_performance.py the same way macro_indicators_service.py is
 split from tasks/macro_indicators.py: this module owns DB reads/writes and the ranking
-computation, the task module owns the Yahoo HTTP fetching and Celery scheduling.
+computation, the task module owns the Yahoo HTTP fetching and PgQueuer scheduling.
 
 Deliberately NOT a variant of macro_indicators_service.compute_ratio_indicator — that
 function computes a continuous rebased ratio between two inner-joined series (for a line

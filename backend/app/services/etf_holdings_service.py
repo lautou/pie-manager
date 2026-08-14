@@ -4,7 +4,7 @@ holdings/sector-weightings data and aggregating it into a pool-wide sector/compa
 
 Split from app/tasks/etf_holdings.py the same way price_service.py is split from
 tasks/prices.py: this module owns DB reads/writes and business logic, the task module owns
-the Yahoo session/HTTP fetching and Celery scheduling.
+the Yahoo session/HTTP fetching and PgQueuer scheduling.
 """
 from __future__ import annotations
 

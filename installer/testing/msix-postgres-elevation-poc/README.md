@@ -6,6 +6,26 @@ methodology already proven for issue #63's `msix-loopback-poc` (same manifest sh
 ephemeral-cert packaging/sideload/AUMID-launch/result-file-poll/cleanup pattern) — see that
 directory's own README for the shared mechanics; this one only documents what's different.
 
+## Answer: YES — confirmed live on a real Windows 11 machine
+
+**A bundled portable PostgreSQL starts and accepts real connections as a plain, non-elevated
+child process launched from inside a full-trust MSIX package.** Confirmed on the project's own
+`installer/testing/` win11 libvirt VM (real Windows 11, a normal local non-admin user account
+"pie", default UAC):
+
+- `IS_ADMIN_ROLE: False` for the account actually running the packaged app — this is the real
+  target scenario, not a proxy for it.
+- `initdb` + `pg_ctl start` both succeeded (after fixing an unrelated missing-runtime problem,
+  see Phase 2 below).
+- Multiple live `postgres.exe` processes observed running (postmaster + the usual background
+  workers), and a direct TCP connection to `127.0.0.1:5432` succeeded.
+- No PostgreSQL admin-refusal message ever appeared, on this run or on any of the deeper Phase 1
+  runs that got far enough to matter.
+
+This was the single most foundational open question for issue #65's native-Windows-port
+epic — it's now empirically settled, not just researched. See Phase 2 below for the full
+narrative, including two more real (non-elevation) problems this uncovered.
+
 ## Question it answers
 
 Issue #65's native-Windows-port epic proposes bundling a portable PostgreSQL inside a full-trust
@@ -70,6 +90,61 @@ never going to give the definitive elevation answer anyway (see above), this is 
 stops: the mechanics are proven (packaging, signing, sideload, AUMID launch, LocalState
 read/write, the negative-control detection logic), and further GHA-specific copy-performance
 debugging wouldn't change the real, still-open question — that needs Phase 2's real VM.
+
+## Phase 2 (definitive answer) — real Windows 11 VM
+
+The project's own `installer/testing/` win11 libvirt/QEMU VM turned out to already exist (a
+prior "it needs to be rebuilt" note in this file was based on checking `virsh list --all`
+against the wrong libvirt connection — the domain was there all along under `qemu:///system`,
+not `qemu:///session`). Workflow used: reverted the VM to its `base-clean-tuned-2026-07-17`
+snapshot, started it, and drove everything through `qemu-guest-agent` (`virsh
+qemu-agent-command`) — no SSH/RDP set up on this VM, and none needed.
+
+**Getting the CI-built `poc.msix` onto the VM needed a different transfer than first tried.**
+The workflow's artifact (`poc.msix` + `cert.cer`) was downloaded via `gh run download`. A first
+attempt served them over HTTP from the host (`python3 -m http.server` bound to the libvirt
+bridge IP) — `firewalld` on the host silently dropped the VM's inbound connection after the very
+first byte range (one request got through, logged 200, then every retry failed to even
+connect), and fixing that needed a `sudo` password not available non-interactively. Switched to
+a completely network-free transfer instead: built a small ISO with `genisoimage` containing both
+files, attached it to the *running* VM as its existing (already-empty) CD-ROM device via `virsh
+change-media --insert ... --live`, then had the guest copy off of it — no firewall/network
+dependency at all.
+
+**`Add-AppxPackage` cannot run as the `SYSTEM` account.** `qemu-guest-agent`'s `guest-exec`
+always runs as `SYSTEM` (it's a Windows service), and the very first sideload attempt failed
+with HRESULT `0x80073CF9`: *"L'opération Add de déploiement a été rejetée... car le compte
+Système local n'est pas autorisé à effectuer cette opération"* — AppX deployment operations are
+scoped to a real interactive user session and explicitly reject `SYSTEM`, by design. Same
+applies to `Get-AppxPackage` querying afterward (it only sees the *querying* user's own
+per-user package graph — `SYSTEM` legitimately sees nothing, that's not a bug). Worked around
+by creating a Scheduled Task with `/ru <user> /it` (run as that user, using their **existing
+interactive token** — requires the user to already be logged in, confirmed via `(Get-CimInstance
+Win32_ComputerSystem).UserName`), then `schtasks /run` to fire it immediately regardless of its
+configured schedule. Every AppX-touching step (install, launch-and-poll) had to go through this;
+plain file reads/writes (checking `result.txt`, stopping `pg_ctl`) didn't need it.
+
+**One genuine environment gap, unrelated to elevation or MSIX:** the first real run got
+`INITDB_EXIT: -1073741515` (`0xC0000135`, `STATUS_DLL_NOT_FOUND`) with completely empty
+stdout/stderr — a Windows loader failure before `initdb.exe`'s own `main()` even runs. This
+VM (a plain tuned Windows 11 install, unlike `windows-latest`'s dev-tool-loaded image) was
+simply missing the Visual C++ Redistributable EDB's Postgres build links against
+(`vcruntime140.dll`/`msvcp140.dll` confirmed absent via `Test-Path`). Fixed by downloading
+Microsoft's official `https://aka.ms/vs/17/release/vc_redist.x64.exe` directly on the VM
+(confirming real outbound internet access, independent of the earlier inbound-HTTP firewall
+problem) and installing it silently (`/install /quiet /norestart`) — as `SYSTEM`, which is fine
+for a normal elevated installer, just not for AppX operations specifically. **Any real
+packaging of this architecture needs to bundle the VC++ Redistributable alongside PostgreSQL**,
+not assume it's already present.
+
+With both fixes in place, re-running the same launch script produced the result quoted at the
+top of this document: `IS_ADMIN_ROLE: False`, live `postgres.exe` processes, a successful TCP
+connection to port 5432. The very last cleanup steps inside the worker script (a `pg_ctl status`
++ `pg_ctl stop`) ran slowly enough on this VM's I/O that the outer 240-second polling deadline
+elapsed before `result.txt` got its final `Set-Content` — not a failure, just confirmed directly
+by checking for live `postgres.exe` processes and a real TCP connection instead of waiting
+longer on the file. Postgres was then stopped cleanly via `pg_ctl stop`, and the VM was shut
+down and reverted back to its `base-clean-tuned-2026-07-17` snapshot, leaving no trace.
 
 ## How it works
 

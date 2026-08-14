@@ -58,7 +58,25 @@ func main() {
 		return
 	}
 
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
+	// Absolute path, not bare "powershell.exe": a process launched via package activation
+	// (shell:AppsFolder / AUMID) may not inherit the same PATH a normal desktop-launched
+	// process would, and os/exec does not search the current directory. Resolving via
+	// %SystemRoot% sidesteps that PATH-resolution ambiguity entirely.
+	psExe := filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+	if _, err := os.Stat(psExe); err != nil {
+		psExe = "powershell.exe" // fall back to PATH resolution if the well-known path is ever wrong
+	}
+
+	// Write a marker before attempting the launch, and capture Run()'s own error explicitly
+	// (previously discarded via `_ = cmd.Run()`) — so a launch failure that prevents the
+	// worker script from ever running leaves diagnostic evidence in resultPath instead of no
+	// file appearing at all, which is what happened on the first attempt at this poc.
+	writeResult(resultPath, fmt.Sprintf("STARTED: about to launch %s\n", psExe))
+	cmd := exec.Command(psExe, "-NoProfile", "-ExecutionPolicy", "Bypass",
 		"-File", scriptPath, "-PkgRoot", pkgRoot, "-PgData", pgData, "-ResultPath", resultPath)
-	_ = cmd.Run() // the script itself writes resultPath — this process has no console to report to
+	if err := cmd.Run(); err != nil {
+		writeResult(resultPath, fmt.Sprintf("FAILURE: launching worker script failed: %v (psExe=%s)", err, psExe))
+	}
+	// On success, the worker script itself has already overwritten resultPath with the real
+	// VERDICT — nothing left to do here.
 }

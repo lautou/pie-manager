@@ -71,5 +71,5 @@ ENV PYTHONPATH=/app
 # import of this app's own code, or if the pg_dump/pg_restore
 # shared-library closure copied above is incomplete or not executable by
 # a non-root user — instead of only discovering either at container start.
-RUN python -c "from app.main import app; from app.tasks.celery_app import celery_app" \
+RUN python -c "from app.main import app; from app.tasks.celery_app import celery_app; import app.tasks.pgq_app" \
     && pg_dump --version && pg_restore --version

@@ -8,9 +8,10 @@ pattern in test_price_sync.py. Key invariants:
   3. A fund with no fundamentals data (404-style empty result) is a per-ticker failure.
   4. assetProfile.sectorKey parsing for direct stocks; missing sectorKey is a failure.
   5. _run_etf_holdings_refresh orchestrates ETF + direct-stock fetches and writes both.
-  6. refresh_etf_holdings (Celery task) writes running then final status to Redis.
 
-get_redis/write_status are tested once, generically, in test_sync_status.py.
+This module's PgQueuer entrypoint/schedule wrappers (issue #66 step 3) are tested in
+test_pgq_app.py — refresh_etf_holdings no longer exists as a separate Celery task function
+here.
 """
 
 import json
@@ -24,8 +25,6 @@ from app.tasks.etf_holdings import (
     _fetch_top_holdings,
     _fetch_asset_profile_sector,
     _run_etf_holdings_refresh,
-    refresh_etf_holdings,
-    SYNC_STATUS_KEY,
 )
 
 
@@ -402,57 +401,3 @@ async def test_run_refresh_all_fail_is_failed_status():
     assert result["status"] == "failed"
     assert result["succeeded"] == 0
     assert any("BADSTOCK.PA" in f for f in result["failed_tickers"])
-
-
-# ---------------------------------------------------------------------------
-# refresh_etf_holdings (Celery task)
-# ---------------------------------------------------------------------------
-
-def test_refresh_etf_holdings_writes_running_then_final_status():
-    mock_r = MagicMock()
-    success_result = {
-        "started_at": "2026-07-14T06:00:00+00:00",
-        "finished_at": "2026-07-14T06:00:05+00:00",
-        "status": "success",
-        "total_tickers": 3,
-        "succeeded": 3,
-        "failed_tickers": [],
-    }
-
-    def _close_and_return(coro):
-        if hasattr(coro, "close"):
-            coro.close()
-        return success_result
-
-    with patch("app.tasks.etf_holdings.get_redis", return_value=mock_r), \
-         patch("app.tasks.etf_holdings.asyncio.run", side_effect=_close_and_return):
-        result = refresh_etf_holdings()
-
-    assert result == success_result
-    assert mock_r.set.call_count == 2
-    first_payload = json.loads(mock_r.set.call_args_list[0][0][1])
-    assert first_payload["status"] == "running"
-    second_payload = json.loads(mock_r.set.call_args_list[1][0][1])
-    assert second_payload["status"] == "success"
-
-
-def test_refresh_etf_holdings_handles_exception_and_writes_failed():
-    mock_r = MagicMock()
-
-    def _raise_and_close(coro):
-        if hasattr(coro, "close"):
-            coro.close()
-        raise RuntimeError("DB down")
-
-    with patch("app.tasks.etf_holdings.get_redis", return_value=mock_r), \
-         patch("app.tasks.etf_holdings.asyncio.run", side_effect=_raise_and_close):
-        result = refresh_etf_holdings()
-
-    assert result["status"] == "failed"
-    assert mock_r.set.call_count == 2
-    final = json.loads(mock_r.set.call_args_list[1][0][1])
-    assert final["status"] == "failed"
-
-
-def test_sync_status_key_value():
-    assert SYNC_STATUS_KEY == "pie:etf_holdings:status"

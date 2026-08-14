@@ -4,23 +4,19 @@ Non-regression tests for the macro indicators refresh task (app/tasks/macro_indi
 Tested without real network calls — Yahoo Finance responses are mocked, mirroring the
 pattern in test_price_sync.py / test_etf_holdings_task.py. Key invariants:
   1. _run_macro_indicators_refresh fetches all 4 configured tickers and upserts each series.
-  2. refresh_macro_indicators (Celery task) writes running then final status to Redis.
 
 fetch_yahoo_history's own retry/backoff/parsing mechanics are tested once, generically, in
-test_yahoo_fetch.py. get_redis/write_status are tested in test_sync_status.py.
+test_yahoo_fetch.py. This module's PgQueuer entrypoint/schedule wrappers (issue #66 step 3)
+are tested in test_pgq_app.py — refresh_macro_indicators no longer exists as a separate
+Celery task function here.
 """
 
-import json
 import pytest
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.models.macro_indicator import MacroRegion
-from app.tasks.macro_indicators import (
-    _run_macro_indicators_refresh,
-    refresh_macro_indicators,
-    SYNC_STATUS_KEY,
-)
+from app.tasks.macro_indicators import _run_macro_indicators_refresh
 
 
 # ---------------------------------------------------------------------------
@@ -148,57 +144,3 @@ async def test_run_refresh_all_fail_is_failed_status():
     assert result["status"] == "failed"
     assert result["succeeded"] == 0
     assert len(result["failed_tickers"]) == 8
-
-
-# ---------------------------------------------------------------------------
-# refresh_macro_indicators (Celery task)
-# ---------------------------------------------------------------------------
-
-def test_refresh_macro_indicators_writes_running_then_final_status():
-    mock_r = MagicMock()
-    success_result = {
-        "started_at": "2026-07-14T07:00:00+00:00",
-        "finished_at": "2026-07-14T07:00:05+00:00",
-        "status": "success",
-        "total_tickers": 4,
-        "succeeded": 4,
-        "failed_tickers": [],
-    }
-
-    def _close_and_return(coro):
-        if hasattr(coro, "close"):
-            coro.close()
-        return success_result
-
-    with patch("app.tasks.macro_indicators.get_redis", return_value=mock_r), \
-         patch("app.tasks.macro_indicators.asyncio.run", side_effect=_close_and_return):
-        result = refresh_macro_indicators()
-
-    assert result == success_result
-    assert mock_r.set.call_count == 2
-    first_payload = json.loads(mock_r.set.call_args_list[0][0][1])
-    assert first_payload["status"] == "running"
-    second_payload = json.loads(mock_r.set.call_args_list[1][0][1])
-    assert second_payload["status"] == "success"
-
-
-def test_refresh_macro_indicators_handles_exception_and_writes_failed():
-    mock_r = MagicMock()
-
-    def _raise_and_close(coro):
-        if hasattr(coro, "close"):
-            coro.close()
-        raise RuntimeError("DB down")
-
-    with patch("app.tasks.macro_indicators.get_redis", return_value=mock_r), \
-         patch("app.tasks.macro_indicators.asyncio.run", side_effect=_raise_and_close):
-        result = refresh_macro_indicators()
-
-    assert result["status"] == "failed"
-    assert mock_r.set.call_count == 2
-    final = json.loads(mock_r.set.call_args_list[1][0][1])
-    assert final["status"] == "failed"
-
-
-def test_sync_status_key_value():
-    assert SYNC_STATUS_KEY == "pie:macro:status"

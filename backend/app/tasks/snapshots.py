@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from sqlalchemy import select, func
 
 from app.core.database import AsyncSessionLocal
+from app.tasks import job_runs
 from app.tasks.celery_app import celery_app
 from app.services.snapshot_service import compute_daily_snapshot, compute_monthly_snapshot
 from app.services.portfolio_service import get_all_portfolios
@@ -113,58 +114,71 @@ def recompute_snapshots_range(self, start_date: str, end_date: str):
         eng = create_async_engine(settings.database_url, echo=False, pool_size=2)
         return async_sessionmaker(eng, expire_on_commit=False, class_=AsyncSession), eng
 
-    # 1. Get trading days (exclude weekends: DOW 5=Saturday, 6=Sunday)
-    async def _get_trading_days():
-        from sqlalchemy import extract
-        Session, eng = make_session()
-        try:
-            async with Session() as db:
-                result = await db.execute(
-                    select(AssetPrice.date).where(
-                        AssetPrice.date >= date.fromisoformat(start_date),
-                        AssetPrice.date <= date.fromisoformat(end_date),
-                        extract('dow', AssetPrice.date).notin_([0, 6]),  # 0=Sunday, 6=Saturday
-                    ).distinct().order_by(AssetPrice.date)
-                )
-                return [r[0] for r in result.all()]
-        finally:
-            await eng.dispose()
+    # job_runs dual-write (issue #66 step 1) — see app/tasks/job_runs.py. "on_demand" is
+    # accurate today (this task has no schedule/startup trigger, only the admin endpoint).
+    run_id = job_runs.run_tracked(job_runs.start_run("recompute_snapshots_range", trigger="on_demand"))
 
-    trading_days = asyncio.run(_get_trading_days())
-    total = len(trading_days)
-
-    # 2. Get portfolios list
-    async def _get_portfolios():
-        Session, eng = make_session()
-        try:
-            async with Session() as db:
-                return await get_all_portfolios(db)
-        finally:
-            await eng.dispose()
-
-    portfolios_list = asyncio.run(_get_portfolios())
-
-    # 3. Process each date — update_state called synchronously between asyncio.run() calls
-    for i, snap_date in enumerate(trading_days):
-        self.update_state(
-            state="PROGRESS",
-            meta={"current": i + 1, "total": total, "date": snap_date.isoformat()},
-        )
-
-        async def _compute_one(d=snap_date):
+    try:
+        # 1. Get trading days (exclude weekends: DOW 5=Saturday, 6=Sunday)
+        async def _get_trading_days():
+            from sqlalchemy import extract
             Session, eng = make_session()
             try:
                 async with Session() as db:
-                    for portfolio in portfolios_list:
-                        try:
-                            await compute_daily_snapshot(db, portfolio_id=portfolio.id, snap_date=d)
-                        except Exception:
-                            pass
-                    await db.commit()
+                    result = await db.execute(
+                        select(AssetPrice.date).where(
+                            AssetPrice.date >= date.fromisoformat(start_date),
+                            AssetPrice.date <= date.fromisoformat(end_date),
+                            extract('dow', AssetPrice.date).notin_([0, 6]),  # 0=Sunday, 6=Saturday
+                        ).distinct().order_by(AssetPrice.date)
+                    )
+                    return [r[0] for r in result.all()]
             finally:
                 await eng.dispose()
 
-        asyncio.run(_compute_one())
+        trading_days = asyncio.run(_get_trading_days())
+        total = len(trading_days)
+
+        # 2. Get portfolios list
+        async def _get_portfolios():
+            Session, eng = make_session()
+            try:
+                async with Session() as db:
+                    return await get_all_portfolios(db)
+            finally:
+                await eng.dispose()
+
+        portfolios_list = asyncio.run(_get_portfolios())
+
+        # 3. Process each date — update_state called synchronously between asyncio.run() calls
+        for i, snap_date in enumerate(trading_days):
+            self.update_state(
+                state="PROGRESS",
+                meta={"current": i + 1, "total": total, "date": snap_date.isoformat()},
+            )
+            job_runs.run_tracked(job_runs.update_progress(run_id, i + 1, total, snap_date.isoformat()))
+
+            async def _compute_one(d=snap_date):
+                Session, eng = make_session()
+                try:
+                    async with Session() as db:
+                        for portfolio in portfolios_list:
+                            try:
+                                await compute_daily_snapshot(db, portfolio_id=portfolio.id, snap_date=d)
+                            except Exception:
+                                pass
+                        await db.commit()
+                finally:
+                    await eng.dispose()
+
+            asyncio.run(_compute_one())
+    except Exception as exc:
+        job_runs.run_tracked(job_runs.finish_run(run_id, status="failed", error=str(exc)[:200]))
+        raise
+
+    job_runs.run_tracked(job_runs.finish_run(
+        run_id, status="success", total_steps=total, succeeded_steps=total,
+    ))
 
 
 @celery_app.task(name="app.tasks.snapshots.refresh_prices_task")

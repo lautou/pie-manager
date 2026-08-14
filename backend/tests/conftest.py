@@ -82,3 +82,12 @@ async def client(db_session):
     async with AsyncClient(transport=ASGITransport(app=fastapi_app), base_url="http://test") as ac:
         yield ac
     fastapi_app.dependency_overrides.clear()
+
+
+async def fetch_latest_job_run(task_name: str):
+    """Test helper: read back the most recent job_runs row for a task — thin wrapper around
+    app/tasks/job_runs.py's own get_latest(), kept here so existing call sites don't need to
+    import job_runs directly."""
+    from app.tasks import job_runs
+
+    return await job_runs.get_latest(task_name)

@@ -20,6 +20,8 @@ from unittest.mock import AsyncMock, MagicMock, patch, call
 
 import pytest
 
+from tests.conftest import fetch_latest_job_run
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -427,11 +429,42 @@ def test_recompute_snapshots_range_no_trading_days():
     mock_snap.assert_not_called()
 
 
-def test_recompute_snapshots_range_calls_update_state_and_compute():
+def test_recompute_snapshots_range_reraises_and_records_job_runs_failure(engine):
+    """If the task fails before/during the trading-days or portfolios fetch, the exception
+    still propagates unchanged (existing behavior) — the job_runs dual-write (issue #66 step
+    1) just also records a 'failed' row alongside it, it must never swallow the real error."""
+    import app.tasks.snapshots as mod
+
+    mock_eng = _make_engine_mock()
+    mock_db_trading = AsyncMock()
+    trading_result = MagicMock()
+    trading_result.all.return_value = []
+    mock_db_trading.execute = AsyncMock(return_value=trading_result)
+    session_trading = _make_full_session(mock_db_trading)
+
+    with patch("sqlalchemy.ext.asyncio.create_async_engine", return_value=mock_eng), \
+         patch("sqlalchemy.ext.asyncio.async_sessionmaker",
+               return_value=MagicMock(side_effect=lambda *a, **kw: session_trading())), \
+         patch("app.tasks.snapshots.get_all_portfolios",
+               new_callable=AsyncMock, side_effect=RuntimeError("portfolios unavailable")):
+        with pytest.raises(RuntimeError, match="portfolios unavailable"):
+            mod.recompute_snapshots_range.run("2025-01-01", "2025-01-07")
+
+    run = asyncio.run(fetch_latest_job_run("recompute_snapshots_range"))
+    assert run.status == "failed"
+    assert run.error == "portfolios unavailable"
+
+
+def test_recompute_snapshots_range_calls_update_state_and_compute(engine):
     """
     recompute_snapshots_range with 2 trading days and 1 portfolio calls
     update_state twice and compute_daily_snapshot twice.
     We patch self.update_state to avoid Celery trying to talk to the broker.
+
+    Also exercises the job_runs dual-write (issue #66 step 1): `engine` (unused directly)
+    guarantees the schema exists when this file runs in isolation, and — since these tests
+    don't mock asyncio.run at all — the job_runs progress/finish calls execute for real
+    against the real test DB alongside the mocked update_state calls.
     """
     import app.tasks.snapshots as mod
 
@@ -473,6 +506,13 @@ def test_recompute_snapshots_range_calls_update_state_and_compute():
         mod.recompute_snapshots_range.run("2025-01-01", "2025-01-07")
 
     assert snap_mock.call_count == 2
+    run = asyncio.run(fetch_latest_job_run("recompute_snapshots_range"))
+    assert run.status == "success"
+    assert run.trigger == "on_demand"
+    assert run.current_step == 2
+    assert run.total_steps == 2
+    assert run.succeeded_steps == 2
+    assert run.finished_at is not None
 
 
 def test_recompute_snapshots_range_exception_per_portfolio_continues():

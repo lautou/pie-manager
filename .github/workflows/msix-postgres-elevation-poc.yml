@@ -46,9 +46,13 @@ jobs:
       - name: Download and stage the portable PostgreSQL distribution
         # EDB's official "binaries only" Windows x64 zip — the same distribution referenced in
         # #65's own research, explicitly intended for embedding rather than run through EDB's
-        # installer wizard. Only pgsql/bin and pgsql/share are needed (postgres.exe locates
-        # share/ via a path relative to bin/, so that relative layout must be preserved) —
-        # pgAdmin/StackBuilder/docs from the full zip are dropped, cutting ~325 MB to ~95 MB.
+        # installer wizard. bin/share/lib are all needed and their relative sibling layout must
+        # be preserved (postgres.exe/initdb.exe locate share/ and lib/ via paths relative to
+        # bin/) — a first attempt staged only bin+share and initdb failed with "could not
+        # access file $libdir/utf8_and_win" (one of Postgres's own built-in encoding-conversion
+        # shared libraries, which live in lib/, not bin/ or share/). pgAdmin/StackBuilder/doc/
+        # include from the full zip are still dropped (not needed at runtime), cutting ~325 MB
+        # to ~120 MB.
         run: |
           $ProgressPreference = 'SilentlyContinue'
           $url = "https://get.enterprisedb.com/postgresql/postgresql-16.14-1-windows-x64-binaries.zip"
@@ -57,6 +61,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path pgsql | Out-Null
           Move-Item -Path pg_extracted\pgsql\bin -Destination pgsql\bin
           Move-Item -Path pg_extracted\pgsql\share -Destination pgsql\share
+          Move-Item -Path pg_extracted\pgsql\lib -Destination pgsql\lib
           Remove-Item -Recurse -Force pg_extracted, pg.zip
           Write-Host "Staged: $((Get-ChildItem -Recurse pgsql | Measure-Object -Property Length -Sum).Sum / 1MB) MB"
 

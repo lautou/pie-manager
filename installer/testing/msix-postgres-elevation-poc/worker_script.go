@@ -39,20 +39,24 @@ New-Item -ItemType Directory -Force -Path (Split-Path $PgData -Parent) | Out-Nul
 
 # A prior run got "Access is denied" trying to Start-Process a bundled initdb.exe directly from
 # the package's own install directory (under C:\Program Files\WindowsApps\...) — distinct from
-# PostgreSQL's own admin-refusal message. Hypothesis: Windows/MSIX restricts executing arbitrary
+# PostgreSQL's own admin-refusal message. Confirmed: Windows/MSIX restricts executing arbitrary
 # bundled binaries in-place from a package's read-only, integrity-protected install directory,
-# regardless of elevation. Test it directly: copy pgsql\bin into this package's own writable
-# LocalState area first, and launch FROM there instead of from $PkgRoot.
-$localBin = Join-Path (Split-Path $PgData -Parent) "pgsql-bin"
+# regardless of elevation. Fix: copy the whole pgsql folder (bin AND share together, preserving
+# their sibling layout) into this package's own writable LocalState area first, and launch from
+# there instead of from $PkgRoot. A first attempt at this copied only pgsql\bin, which let
+# initdb launch (no more Access Denied) but then fail on "file /share/postgres.bki does not
+# exist" — postgres.exe/initdb.exe locate share/ via a path relative to bin/, so partially
+# copying just bin/ breaks that relative lookup against the share/ left behind in $PkgRoot.
+$localPgsql = Join-Path (Split-Path $PgData -Parent) "pgsql"
 $copyException = $null
 try {
-    Copy-Item -Path (Join-Path $PkgRoot "pgsql\bin") -Destination $localBin -Recurse -Force
+    Copy-Item -Path (Join-Path $PkgRoot "pgsql") -Destination $localPgsql -Recurse -Force
 } catch {
     $copyException = $_.Exception.Message
 }
-$lines += "COPY_PGBIN_TO_LOCALSTATE_EXCEPTION: $copyException"
+$lines += "COPY_PGSQL_TO_LOCALSTATE_EXCEPTION: $copyException"
 
-$pgBin = $localBin
+$pgBin = Join-Path $localPgsql "bin"
 $initdb = Join-Path $pgBin "initdb.exe"
 $pgctl = Join-Path $pgBin "pg_ctl.exe"
 $lines += "PGBIN_SOURCE: $pgBin"

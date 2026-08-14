@@ -1,5 +1,6 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pgqueuer import Queries
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func as sa_func, cast, Numeric
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
@@ -7,6 +8,7 @@ from typing import Optional
 from datetime import date as Date
 
 from app.core.database import get_db
+from app.core.pgq import get_pgq_queries
 from app.models import Transaction, Broker, PortfolioAccount
 
 
@@ -111,9 +113,10 @@ class TransactionOut(BaseModel):
         return v
 
 
-def _trigger_snapshot_recompute(portfolio_id: int, from_date: Date):
-    from app.tasks.snapshots import compute_daily_snapshots_all_users
-    compute_daily_snapshots_all_users.delay(from_date.isoformat())
+async def _trigger_snapshot_recompute(portfolio_id: int, from_date: Date, queries: Queries) -> None:
+    """portfolio_id is intentionally unused — compute_daily_snapshots_all_users recomputes
+    ALL portfolios regardless (unchanged behavior, not addressed in this step)."""
+    await queries.enqueue("compute_daily_snapshots_all_users", payload=from_date.isoformat().encode())
 
 
 def _is_forex_position(tx_type: str, ticker: str) -> bool:
@@ -427,11 +430,15 @@ async def create_transaction_core(body: TransactionCreate, db: AsyncSession) -> 
 
 
 @router.post("/", response_model=TransactionOut, status_code=201)
-async def create_transaction(body: TransactionCreate, db: AsyncSession = Depends(get_db)):
+async def create_transaction(
+    body: TransactionCreate,
+    db: AsyncSession = Depends(get_db),
+    queries: Queries = Depends(get_pgq_queries),
+):
     tx = await create_transaction_core(body, db)
     await db.commit()
     await db.refresh(tx)
-    _trigger_snapshot_recompute(tx.portfolio_id, tx.date)
+    await _trigger_snapshot_recompute(tx.portfolio_id, tx.date, queries)
     return tx
 
 
@@ -440,6 +447,7 @@ async def update_transaction(
     transaction_id: int,
     body: TransactionUpdate,
     db: AsyncSession = Depends(get_db),
+    queries: Queries = Depends(get_pgq_queries),
 ):
     result = await db.execute(select(Transaction).where(Transaction.id == transaction_id))
     tx = result.scalar_one_or_none()
@@ -672,12 +680,16 @@ async def update_transaction(
 
     await db.commit()
     await db.refresh(tx)
-    _trigger_snapshot_recompute(tx.portfolio_id, tx.date)
+    await _trigger_snapshot_recompute(tx.portfolio_id, tx.date, queries)
     return tx
 
 
 @router.delete("/{transaction_id}", status_code=204)
-async def delete_transaction(transaction_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_transaction(
+    transaction_id: int,
+    db: AsyncSession = Depends(get_db),
+    queries: Queries = Depends(get_pgq_queries),
+):
     result = await db.execute(select(Transaction).where(Transaction.id == transaction_id))
     tx = result.scalar_one_or_none()
     if not tx:
@@ -708,4 +720,4 @@ async def delete_transaction(transaction_id: int, db: AsyncSession = Depends(get
     await _update_account_cash_balance(db, account_id, portfolio_id, delta, tx_type, tx_ticker, tx_operation)
 
     await db.commit()
-    _trigger_snapshot_recompute(portfolio_id, tx_date)
+    await _trigger_snapshot_recompute(portfolio_id, tx_date, queries)

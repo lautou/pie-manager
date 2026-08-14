@@ -7,11 +7,13 @@ import asyncio
 import os
 import pytest
 from httpx import AsyncClient, ASGITransport
+from unittest.mock import AsyncMock, MagicMock
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import NullPool
 
 from app.main import app as fastapi_app
 from app.core.database import get_db, Base  # Base imported from database so all models are registered
+from app.core.pgq import get_pgq_queries
 import app.models  # noqa: F401 — side-effect import to ensure all ORM classes are in Base.metadata
 
 TEST_DB_URL = os.environ.get(
@@ -74,11 +76,24 @@ async def client(db_session):
     """
     Async HTTP client wired to the FastAPI app with the test DB session injected.
     Dependency override is cleared after every test.
+
+    Also overrides get_pgq_queries with a harmless default (queries.enqueue always
+    "succeeds", no assertions made on it) — necessary, not cosmetic: AsyncClient's
+    ASGITransport never runs FastAPI's lifespan, so app/core/pgq.py's module-level pool stays
+    None for the whole test session, and several routes (create/update/delete_transaction, the
+    bulk-import commit endpoint, and every already-PgQueuer-backed router) now hard-depend on
+    get_pgq_queries() resolving. Without this default they'd all 503. A test that wants to
+    inspect enqueue calls sets its own override afterward, inside the test body — that
+    reassignment takes precedence and is still cleared by the same .clear() below.
     """
     async def override_get_db():
         yield db_session
 
+    default_queries = MagicMock()
+    default_queries.enqueue = AsyncMock(return_value=[0])
+
     fastapi_app.dependency_overrides[get_db] = override_get_db
+    fastapi_app.dependency_overrides[get_pgq_queries] = lambda: default_queries
     async with AsyncClient(transport=ASGITransport(app=fastapi_app), base_url="http://test") as ac:
         yield ac
     fastapi_app.dependency_overrides.clear()

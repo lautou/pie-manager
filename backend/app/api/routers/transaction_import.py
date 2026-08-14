@@ -11,9 +11,11 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
+from pgqueuer import Queries
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.pgq import get_pgq_queries
 from app.api.routers.transactions import (
     TransactionCreate,
     _trigger_snapshot_recompute,
@@ -160,6 +162,7 @@ async def commit_import_file(
     file: UploadFile = File(...),
     include_rows: str = Form(...),
     db: AsyncSession = Depends(get_db),
+    queries: Queries = Depends(get_pgq_queries),
 ):
     try:
         include_row_numbers = set(json.loads(include_rows))
@@ -209,6 +212,6 @@ async def commit_import_file(
 
     if created_ids:
         await db.commit()
-        _trigger_snapshot_recompute(included[0].resolved.portfolio_id, min(created_dates))
+        await _trigger_snapshot_recompute(included[0].resolved.portfolio_id, min(created_dates), queries)
 
     return CommitResponse(status="ok", imported_count=len(created_ids), created_transaction_ids=created_ids)

@@ -213,3 +213,79 @@ async def test_to_sync_status_dict_maps_a_populated_run(db_session):
     assert mapped["failed_tickers"] == ["X(reason)"]
     assert mapped["started_at"] is not None
     assert mapped["finished_at"] is not None
+
+
+# ---------------------------------------------------------------------------
+# get_by_id / to_task_status_dict (issue #66 step 4 — recompute_snapshots_range's
+# admin progress-bar polling)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_by_id_returns_the_matching_row():
+    run_id = await job_runs.start_run("recompute_snapshots_range", trigger="on_demand")
+    run = await job_runs.get_by_id(run_id)
+    assert run is not None
+    assert run.id == run_id
+    assert run.task_name == "recompute_snapshots_range"
+
+
+@pytest.mark.asyncio
+async def test_get_by_id_returns_none_for_unknown_id():
+    run = await job_runs.get_by_id(-1)
+    assert run is None
+
+
+def test_to_task_status_dict_unknown_run_is_pending():
+    assert job_runs.to_task_status_dict(None) == {
+        "state": "PENDING", "current": 0, "total": 0, "date": None, "error": None,
+    }
+
+
+def test_to_task_status_dict_running_with_no_progress_yet_is_pending():
+    """Enqueued but not yet picked up by pgq-worker (or a slow-starting handler that hasn't
+    called update_progress yet) — total_steps==0 must map to PENDING, not PROGRESS. current_
+    step/total_steps default to 0 at the DB/INSERT level (see JobRun's mapped_column
+    defaults) — set explicitly here since this row is never actually persisted."""
+    run = JobRun(
+        task_name="recompute_snapshots_range", trigger="on_demand", status="running",
+        current_step=0, total_steps=0,
+    )
+    mapped = job_runs.to_task_status_dict(run)
+    assert mapped == {"state": "PENDING", "current": 0, "total": 0, "date": None, "error": None}
+
+
+def test_to_task_status_dict_running_with_progress():
+    run = JobRun(
+        task_name="recompute_snapshots_range", trigger="on_demand", status="running",
+        current_step=3, total_steps=10, current_label="2026-05-16",
+    )
+    mapped = job_runs.to_task_status_dict(run)
+    assert mapped == {
+        "state": "PROGRESS", "current": 3, "total": 10, "date": "2026-05-16", "error": None,
+    }
+
+
+@pytest.mark.parametrize("status", ["success", "partial"])
+def test_to_task_status_dict_success_or_partial_is_success(status):
+    """'partial' is unreachable for recompute_snapshots_range today (its own finish_run call
+    always writes 'success'), but to_task_status_dict is a general-purpose mapper like its
+    sibling to_sync_status_dict — cover the branch directly."""
+    run = JobRun(
+        task_name="recompute_snapshots_range", trigger="on_demand", status=status,
+        total_steps=8, current_label="2026-05-20",
+    )
+    mapped = job_runs.to_task_status_dict(run)
+    assert mapped == {
+        "state": "SUCCESS", "current": 8, "total": 8, "date": "2026-05-20", "error": None,
+    }
+
+
+def test_to_task_status_dict_failed():
+    run = JobRun(
+        task_name="recompute_snapshots_range", trigger="on_demand", status="failed",
+        current_step=2, total_steps=10, current_label="2026-05-17", error="boom",
+    )
+    mapped = job_runs.to_task_status_dict(run)
+    assert mapped == {
+        "state": "FAILURE", "current": 2, "total": 10, "date": "2026-05-17", "error": "boom",
+    }

@@ -793,11 +793,31 @@ interrupted attempt (no automatic orphan detection — the same gap Celery had, 
 regression).
 
 **`pgq-worker` compose service**: same image as `backend`, `command: pgq run
-app.tasks.pgq_app:main`, depends only on `postgres: service_healthy` — no Redis env vars, since
-Celery/Redis were removed entirely in issue #66's final step. Present in `compose.yaml` and
-`compose-prod.yaml`; also present in `installer/assets/compose-prod.yaml`, but that copy is
-generated at build time from the root file, not committed (see `.gitignore`) — no separate edit
-needed there.
+app.tasks.pgq_app:main`, depends on `backend` — no Redis env vars, since Celery/Redis were
+removed entirely in issue #66's final step. Present in `compose.yaml` and `compose-prod.yaml`;
+also present in `installer/assets/compose-prod.yaml`, but that copy is generated at build time
+from the root file, not committed (see `.gitignore`) — no separate edit needed there.
+
+**Neither `backend` nor `pgq-worker` uses `depends_on: postgres: condition: service_healthy`
+in either compose file — deliberately removed, not an oversight.** That condition was present
+from v1.4.0's release through a first attempted fix, and both times `build-installer.yml`'s
+`test-linux-install` job hung indefinitely (confirmed live via `gh run cancel` + `gh run view
+--job <id> --log`): the hang landed immediately after postgres's digest-pinned image finished
+pulling, with zero further output, on GitHub's `ubuntu-latest` runner's combination of podman
+4.9.3 (Ubuntu-bundled) + a freshly pip-installed podman-compose 1.6.0. The first fix attempt
+(only removing `pgq-worker`'s health condition, in case 2 services concurrently polling the
+same condition was the trigger) did **not** resolve it — the hang recurred at the identical
+point with `backend` alone still using the condition, disproving that hypothesis. The real
+cause is `condition: service_healthy` itself hanging in this specific podman-compose/podman
+version combination, regardless of which service uses it or how many do. Fix: both services
+now use a plain, unconditioned `depends_on` list; startup-ordering safety relies instead on
+`restart: unless-stopped` (a service that starts before its dependency is ready simply crashes
+and restarts, already proven resilient throughout this whole migration) plus HAProxy's own
+independent active health-check (`/api/admin/health` every 2s, see "Health check endpoint"
+below) as the real user-facing gate before traffic is routed. `installer/common.go`'s
+`forceRecreate()` also had its `up` step's stdout changed from `io.Discard` to `os.Stdout` —
+the original hang was invisible in CI logs specifically because that output was discarded,
+hiding every podman-compose message after the last image pull.
 
 **Never nest `asyncio.run()` inside a PgQueuer handler — it runs inside the worker's own
 persistent event loop already.** The Celery-era `fill_missing_snapshots`/

@@ -38,6 +38,10 @@ $lines += "PGDATA: $PgData"
 $pgBin = Join-Path $PkgRoot "pgsql\bin"
 $initdb = Join-Path $pgBin "initdb.exe"
 $pgctl = Join-Path $pgBin "pg_ctl.exe"
+$lines += "INITDB_EXE_EXISTS: $(Test-Path $initdb)"
+$lines += "PGCTL_EXE_EXISTS: $(Test-Path $pgctl)"
+$lines += "PGBIN_LISTING:"
+$lines += @(Get-ChildItem $pgBin -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
 
 New-Item -ItemType Directory -Force -Path (Split-Path $PgData -Parent) | Out-Null
 
@@ -47,8 +51,13 @@ $initdbErr = Join-Path $logDir "msix-poc-initdb.err.log"
 Remove-Item $initdbOut, $initdbErr -ErrorAction SilentlyContinue
 
 $initdbArgs = @("-D", $PgData, "-U", "pie", "--auth=trust")
-$initdbProc = Start-Process -FilePath $initdb -ArgumentList $initdbArgs -NoNewWindow -Wait -PassThru -RedirectStandardOutput $initdbOut -RedirectStandardError $initdbErr
-$initdbExit = $initdbProc.ExitCode
+$initdbExit = $null
+try {
+    $initdbProc = Start-Process -FilePath $initdb -ArgumentList $initdbArgs -NoNewWindow -Wait -PassThru -RedirectStandardOutput $initdbOut -RedirectStandardError $initdbErr
+    $initdbExit = $initdbProc.ExitCode
+} catch {
+    $lines += "INITDB_START_EXCEPTION: $($_.Exception.Message)"
+}
 $lines += "INITDB_EXIT: $initdbExit"
 $lines += "--- INITDB_STDOUT ---"
 $lines += @(Get-Content $initdbOut -ErrorAction SilentlyContinue)
@@ -64,8 +73,12 @@ if ($initdbExit -eq 0) {
     $startErr = Join-Path $logDir "msix-poc-pgctl-start.err.log"
     Remove-Item $startOut, $startErr -ErrorAction SilentlyContinue
     $startArgs = @("-D", $PgData, "-w", "start")
-    $startProc = Start-Process -FilePath $pgctl -ArgumentList $startArgs -NoNewWindow -Wait -PassThru -RedirectStandardOutput $startOut -RedirectStandardError $startErr
-    $startExit = $startProc.ExitCode
+    try {
+        $startProc = Start-Process -FilePath $pgctl -ArgumentList $startArgs -NoNewWindow -Wait -PassThru -RedirectStandardOutput $startOut -RedirectStandardError $startErr
+        $startExit = $startProc.ExitCode
+    } catch {
+        $lines += "PGCTL_START_EXCEPTION: $($_.Exception.Message)"
+    }
     $lines += "PGCTL_START_EXIT: $startExit"
     $lines += "--- PGCTL_START_STDOUT ---"
     $lines += @(Get-Content $startOut -ErrorAction SilentlyContinue)

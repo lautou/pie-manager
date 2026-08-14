@@ -133,7 +133,15 @@ jobs:
           $aumid = "$($pkg.PackageFamilyName)!App"
           Write-Host "Resolved AUMID: $aumid"
 
-          $resultPath = Join-Path $env:TEMP "msix-postgres-elevation-poc-result.txt"
+          # Poll the package's own LocalState folder directly (via the PackageFamilyName we
+          # already have), NOT %TEMP% — a first attempt used %TEMP% and the result file never
+          # appeared. %TEMP% sits under %LOCALAPPDATA%, which MSIX's filesystem virtualization
+          # silently redirects for a running full-trust package, so this outside script's view
+          # of "%TEMP%\foo" and the packaged app's own view of the same literal path are not
+          # necessarily the same physical file. LocalState is the one folder guaranteed
+          # identical from both sides.
+          $localState = Join-Path $env:LOCALAPPDATA "Packages\$($pkg.PackageFamilyName)\LocalState"
+          $resultPath = Join-Path $localState "result.txt"
           Remove-Item $resultPath -ErrorAction SilentlyContinue
 
           Start-Process "shell:AppsFolder\$aumid"
@@ -154,6 +162,14 @@ jobs:
 
           if (-not $last) {
             Write-Host "::error::poc.exe never wrote a result file at all — it may not have launched (AUMID/launch mechanism problem), or crashed before its first write."
+            Write-Host "--- Diagnostics: is poc still running? ---"
+            Get-Process -Name poc -ErrorAction SilentlyContinue | Format-List *
+            Write-Host "--- Diagnostics: LocalState folder contents ---"
+            Get-ChildItem $localState -Recurse -ErrorAction SilentlyContinue | Format-List FullName, Length, LastWriteTime
+            Write-Host "--- Diagnostics: recent Application event log entries mentioning poc.exe ---"
+            Get-WinEvent -LogName Application -MaxEvents 50 -ErrorAction SilentlyContinue |
+              Where-Object { $_.Message -match 'poc\.exe' } |
+              Format-List TimeCreated, ProviderName, Id, LevelDisplayName, Message
             exit 1
           }
           if ($last -match 'VERDICT: UNEXPECTED_FAILURE') {

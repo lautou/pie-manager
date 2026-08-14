@@ -1,7 +1,7 @@
 """
 Tests for app/tasks/pgq_app.py — schedule/entrypoint registration, the shared _run_tracked/
-_decode_trigger glue, the 4 real handlers, and main()'s connect/close lifecycle (issue #66
-step 3).
+_decode_trigger glue, all 6 real handlers, and main()'s connect/close lifecycle (issue #66
+steps 3+4).
 
 Cron-string-level fidelity/timezone checks live in test_pgq_schedules.py. main()'s real
 asyncpg connection was already verified live via a real `pgq run app.tasks.pgq_app:main`
@@ -9,6 +9,7 @@ process against a throwaway Postgres and a real windows-latest GitHub Actions ru
 asyncpg.connect is mocked purely to cover main()'s own connect/close lifecycle as a unit.
 """
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -41,6 +42,7 @@ EXPECTED_SCHEDULE_REGISTRATIONS = {
 EXPECTED_ENTRYPOINTS = {
     "refresh_prices_live", "refresh_etf_holdings",
     "refresh_macro_indicators", "refresh_country_performance",
+    "compute_daily_snapshots_all_users", "fill_missing_snapshots", "recompute_snapshots_range",
 }
 
 
@@ -55,22 +57,12 @@ def test_register_schedules_registers_all_six_entrypoint_expression_pairs():
     assert registered == EXPECTED_SCHEDULE_REGISTRATIONS
 
 
-def test_register_entrypoints_registers_exactly_the_4_cutover_tasks():
-    """The 2 snapshot tasks don't get an @pgq.entrypoint this step — still Celery-only."""
+def test_register_entrypoints_registers_exactly_7_of_the_6_tasks():
+    """compute_monthly_snapshots_all_users has no entrypoint — zero on-demand call sites exist
+    anywhere in the app (confirmed by grep), only its own cron."""
     pgq = PgQueuer.in_memory()
     _register_entrypoints(pgq)
     assert set(pgq.qm.entrypoint_registry.keys()) == EXPECTED_ENTRYPOINTS
-
-
-@pytest.mark.asyncio
-async def test_snapshot_placeholder_schedules_still_execute_without_error():
-    """The 2 snapshot tasks stay log-only placeholders this step — still safe to call."""
-    pgq = PgQueuer.in_memory()
-    _register_schedules(pgq)
-    placeholder_entrypoints = {"compute_daily_snapshots_all_users", "compute_monthly_snapshots_all_users"}
-    for key, executor in pgq.sm.registry.items():
-        if key.entrypoint in placeholder_entrypoints:
-            await executor.parameters.func(MagicMock())
 
 
 @pytest.mark.asyncio
@@ -276,3 +268,150 @@ async def test_refresh_country_performance_entrypoint_handler_failure(engine):
     assert run.status == "failed"
     assert run.error == "network down"
     assert run.trigger == "on_demand"
+
+
+# ---------------------------------------------------------------------------
+# The 4 step-4 handlers: compute_daily_snapshots_all_users (schedule + entrypoint),
+# compute_monthly_snapshots_all_users (schedule only), fill_missing_snapshots
+# (entrypoint only), recompute_snapshots_range (entrypoint only, different shape)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_compute_daily_snapshots_schedule_handler_calls_the_real_core(engine):
+    pgq = PgQueuer.in_memory()
+    _register_schedules(pgq)
+    key = next(k for k in pgq.sm.registry if k.entrypoint == "compute_daily_snapshots_all_users")
+    with patch("app.tasks.pgq_app._compute_daily_snapshots_all_users",
+               new_callable=AsyncMock) as mock_core:
+        await pgq.sm.registry[key].parameters.func(MagicMock())
+
+    mock_core.assert_awaited_once_with(None)
+    run = await job_runs.get_latest("compute_daily_snapshots_all_users")
+    assert run.status == "success"
+    assert run.trigger == "schedule"
+    assert run.pgq_job_id is None
+
+
+@pytest.mark.asyncio
+async def test_compute_monthly_snapshots_schedule_handler_calls_the_real_core(engine):
+    pgq = PgQueuer.in_memory()
+    _register_schedules(pgq)
+    key = next(k for k in pgq.sm.registry if k.entrypoint == "compute_monthly_snapshots_all_users")
+    with patch("app.tasks.pgq_app._compute_monthly_snapshots_all_users",
+               new_callable=AsyncMock) as mock_core:
+        await pgq.sm.registry[key].parameters.func(MagicMock())
+
+    mock_core.assert_awaited_once_with(None)
+    run = await job_runs.get_latest("compute_monthly_snapshots_all_users")
+    assert run.status == "success"
+    assert run.trigger == "schedule"
+
+
+@pytest.mark.asyncio
+async def test_compute_daily_snapshots_entrypoint_decodes_iso_date_payload(engine):
+    """Unlike the other entrypoints' trigger-name payload, this one carries a plain ISO date
+    string (or is absent → today) — matches _trigger_snapshot_recompute's own encoding."""
+    pgq = PgQueuer.in_memory()
+    _register_entrypoints(pgq)
+    handler = pgq.qm.entrypoint_registry["compute_daily_snapshots_all_users"].parameters.func
+    fake_job = MagicMock(id=99, payload=b"2026-01-05")
+
+    with patch("app.tasks.pgq_app._compute_daily_snapshots_all_users",
+               new_callable=AsyncMock) as mock_core:
+        await handler(fake_job)
+
+    mock_core.assert_awaited_once_with("2026-01-05")
+    run = await job_runs.get_latest("compute_daily_snapshots_all_users")
+    assert run.status == "success"
+    assert run.trigger == "on_demand"
+    assert run.pgq_job_id == 99
+
+
+@pytest.mark.asyncio
+async def test_compute_daily_snapshots_entrypoint_no_payload_defaults_to_today(engine):
+    pgq = PgQueuer.in_memory()
+    _register_entrypoints(pgq)
+    handler = pgq.qm.entrypoint_registry["compute_daily_snapshots_all_users"].parameters.func
+    fake_job = MagicMock(id=100, payload=None)
+
+    with patch("app.tasks.pgq_app._compute_daily_snapshots_all_users",
+               new_callable=AsyncMock) as mock_core:
+        await handler(fake_job)
+
+    mock_core.assert_awaited_once_with(None)
+
+
+@pytest.mark.asyncio
+async def test_fill_missing_snapshots_entrypoint_success(engine):
+    pgq = PgQueuer.in_memory()
+    _register_entrypoints(pgq)
+    handler = pgq.qm.entrypoint_registry["fill_missing_snapshots"].parameters.func
+    fake_job = MagicMock(id=42, payload=b"startup")
+
+    with patch("app.tasks.pgq_app._run_fill_missing_snapshots", new_callable=AsyncMock,
+               return_value={"status": "success", "total_tickers": 3, "succeeded": 3, "failed_tickers": []}):
+        await handler(fake_job)
+
+    run = await job_runs.get_latest("fill_missing_snapshots")
+    assert run.status == "success"
+    assert run.trigger == "startup"
+    assert run.pgq_job_id == 42
+
+
+@pytest.mark.asyncio
+async def test_fill_missing_snapshots_entrypoint_failure(engine):
+    pgq = PgQueuer.in_memory()
+    _register_entrypoints(pgq)
+    handler = pgq.qm.entrypoint_registry["fill_missing_snapshots"].parameters.func
+    fake_job = MagicMock(id=43, payload=b"on_demand")
+
+    with patch("app.tasks.pgq_app._run_fill_missing_snapshots",
+               new_callable=AsyncMock, side_effect=RuntimeError("disk full")):
+        await handler(fake_job)
+
+    run = await job_runs.get_latest("fill_missing_snapshots")
+    assert run.status == "failed"
+    assert run.error == "disk full"
+
+
+@pytest.mark.asyncio
+async def test_recompute_snapshots_range_entrypoint_reuses_given_run_id_on_success(engine):
+    """Different shape from every other entrypoint: run_id is created by the caller
+    (admin.py) before enqueue, so this handler must never call start_run — it only reports
+    onto the existing row and owns the terminal finish_run call directly."""
+    pgq = PgQueuer.in_memory()
+    _register_entrypoints(pgq)
+    handler = pgq.qm.entrypoint_registry["recompute_snapshots_range"].parameters.func
+
+    run_id = await job_runs.start_run("recompute_snapshots_range", trigger="on_demand")
+    payload = json.dumps({"start": "2026-01-01", "end": "2026-01-07", "run_id": run_id}).encode()
+    fake_job = MagicMock(id=1, payload=payload)
+
+    with patch("app.tasks.pgq_app._run_recompute_snapshots", new_callable=AsyncMock,
+               return_value={"total": 4}) as mock_core:
+        await handler(fake_job)
+
+    mock_core.assert_awaited_once_with("2026-01-01", "2026-01-07", run_id)
+    run = await job_runs.get_by_id(run_id)
+    assert run.status == "success"
+    assert run.total_steps == 4
+    assert run.succeeded_steps == 4
+
+
+@pytest.mark.asyncio
+async def test_recompute_snapshots_range_entrypoint_marks_existing_run_failed(engine):
+    pgq = PgQueuer.in_memory()
+    _register_entrypoints(pgq)
+    handler = pgq.qm.entrypoint_registry["recompute_snapshots_range"].parameters.func
+
+    run_id = await job_runs.start_run("recompute_snapshots_range", trigger="on_demand")
+    payload = json.dumps({"start": "2026-02-01", "end": "2026-02-07", "run_id": run_id}).encode()
+    fake_job = MagicMock(id=2, payload=payload)
+
+    with patch("app.tasks.pgq_app._run_recompute_snapshots",
+               new_callable=AsyncMock, side_effect=RuntimeError("db exploded")):
+        await handler(fake_job)
+
+    run = await job_runs.get_by_id(run_id)
+    assert run.status == "failed"
+    assert run.error == "db exploded"

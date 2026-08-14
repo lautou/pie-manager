@@ -84,7 +84,9 @@ func podmanImageExists(image string) bool {
 	return exec.Command("podman", "image", "exists", image).Run() == nil
 }
 
-// forceRecreate brings the compose stack down then up, discarding output.
+// forceRecreate brings the compose stack down then up. `up`'s stdout is surfaced (not
+// discarded) — a real hang was once invisible in CI logs specifically because this was
+// io.Discard, hiding every podman-compose orchestration message after the last image pull.
 func forceRecreate(composeCmd, composePath string) {
 	dir := filepath.Dir(composePath)
 	parts := strings.Fields(composeCmd)
@@ -97,7 +99,7 @@ func forceRecreate(composeCmd, composePath string) {
 
 	up := exec.Command(parts[0], append(parts[1:], "-f", composePath, "up", "-d")...)
 	up.Dir = dir
-	up.Stdout = io.Discard
+	up.Stdout = os.Stdout
 	up.Stderr = os.Stderr
 	up.Run() //nolint:errcheck
 }

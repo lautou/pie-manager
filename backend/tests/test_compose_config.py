@@ -73,24 +73,30 @@ class TestComposeHealthcheck:
         hc_str = " ".join(hc) if isinstance(hc, list) else hc
         assert "-U" in hc_str
 
-    def test_backend_depends_on_healthy_postgres(self):
-        """Backend must wait for postgres to be healthy before starting."""
+    def test_backend_depends_on_postgres_without_health_condition(self):
+        """Backend depends on postgres but deliberately without `condition:
+        service_healthy` — that condition was found to hang podman-compose 1.6.0 /
+        podman 4.9.3 in CI indefinitely right after the postgres image pull (see git
+        history for the full writeup). Startup ordering safety instead relies on the
+        app's own crash-and-restart resilience (`restart: unless-stopped`) plus
+        HAProxy's independent active health-checking (`/api/admin/health` every 2s)
+        before it ever routes real traffic to backend."""
         compose = _load_compose()
         backend_deps = compose["services"]["backend"]["depends_on"]
         assert "postgres" in backend_deps
         if isinstance(backend_deps, dict):
-            assert backend_deps["postgres"].get("condition") == "service_healthy"
+            assert "condition" not in backend_deps["postgres"]
 
-    def test_pgq_worker_depends_on_backend(self):
+    def test_pgq_worker_depends_on_backend_without_health_condition(self):
         """pgq-worker (the only background-job worker since Celery's removal, issue #66)
-        depends on `backend` rather than directly on `postgres: condition: service_healthy` —
-        deliberately, to avoid 2 services concurrently polling the same health condition,
-        which hung a real podman-compose 1.6.0 / podman 4.9.3 CI run (see git history for the
-        full writeup). The postgres-health guarantee still holds transitively: backend itself
-        depends on postgres being healthy."""
+        depends on `backend`, also without a `condition: service_healthy` — same
+        rationale as backend's own postgres dependency above: that condition is what
+        hung CI, not which service it targets or how many services poll it."""
         compose = _load_compose()
         worker_deps = compose["services"]["pgq-worker"]["depends_on"]
         assert "backend" in worker_deps
+        if isinstance(worker_deps, dict):
+            assert "condition" not in worker_deps["backend"]
 
 
 # ---------------------------------------------------------------------------

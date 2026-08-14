@@ -65,6 +65,28 @@ jobs:
           Remove-Item -Recurse -Force pg_extracted, pg.zip
           Write-Host "Staged: $((Get-ChildItem -Recurse pgsql | Measure-Object -Property Length -Sum).Sum / 1MB) MB"
 
+      - name: Bundle the VC++ Redistributable app-local (no system-wide install needed)
+        # A real Windows 11 VM test (issue #76 Phase 2) found the bundled Postgres binaries
+        # need vcruntime140.dll/vcruntime140_1.dll/msvcp140.dll, which a plain Windows 11
+        # install doesn't ship (windows-latest has them pre-installed already, hence Phase 1
+        # never caught this). Running EDB's own vc_redist.x64.exe installer isn't compatible
+        # with a Store-distributable, zero-elevation, zero-external-installer MSIX — instead,
+        # copy just the 3 runtime DLLs into pgsql/bin itself ("app-local" deployment, a
+        # Microsoft-documented, officially supported redistribution method: Windows' DLL
+        # search order checks the executable's own directory before any system path, so no
+        # installation step is needed at all). Installing the redistributable here, on the
+        # disposable CI runner, is only how these 3 files are obtained — the runner's own
+        # system-wide install is irrelevant to what ends up inside the package.
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile vc_redist.x64.exe
+          Start-Process -FilePath .\vc_redist.x64.exe -ArgumentList "/install","/quiet","/norestart" -Wait
+          Copy-Item C:\Windows\System32\vcruntime140.dll pgsql\bin\vcruntime140.dll
+          Copy-Item C:\Windows\System32\vcruntime140_1.dll pgsql\bin\vcruntime140_1.dll
+          Copy-Item C:\Windows\System32\msvcp140.dll pgsql\bin\msvcp140.dll
+          Remove-Item vc_redist.x64.exe
+          Write-Host "Bundled app-local VC++ runtime DLLs into pgsql\bin"
+
       - name: Locate Windows SDK packaging/signing tools
         run: |
           $sdkRoot = "C:\Program Files (x86)\Windows Kits\10\bin"

@@ -1,5 +1,6 @@
 """
-Country stock-market performance daily refresh — runs once a day via Celery Beat.
+Country stock-market performance daily refresh — runs once a day via PgQueuer (see
+app/tasks/pgq_app.py).
 
 Strategy:
   - Same shared Yahoo chart fetch as macro_indicators.py (app/tasks/yahoo_fetch.py).
@@ -10,7 +11,6 @@ Strategy:
     non-EUR currency (deduped — two countries sharing a currency fetch it once), using the
     same f"{CCY}EUR=X" convention already established for portfolio forex positions
     (see CLAUDE.md's "Transaction conventions" — Cash instrument_type).
-  - Result written to Redis key "pie:country_perf:status" for consistency with the other tasks.
 """
 
 import asyncio
@@ -18,14 +18,9 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from app.tasks.celery_app import celery_app
-from app.tasks.sync_status import get_redis, write_status
 from app.tasks.yahoo_fetch import fetch_yahoo_history
 from app.services.country_performance_service import list_country_configs
 from app.services.macro_series_price_service import replace_series_prices
-
-SYNC_STATUS_KEY = "pie:country_perf:status"
-SYNC_STATUS_TTL = 3600 * 24 * 7  # expire after 1 week
 
 HISTORY_WINDOW_DAYS = 450  # trailing 1 year + buffer for weekends/holidays/retry lag
 
@@ -102,41 +97,3 @@ async def _run_country_performance_refresh() -> dict:
         "succeeded": n_ok,
         "failed_tickers": failed,
     }
-
-
-# ---------------------------------------------------------------------------
-# Celery task
-# ---------------------------------------------------------------------------
-
-@celery_app.task(name="app.tasks.country_performance.refresh_country_performance")
-def refresh_country_performance():
-    """
-    Main scheduled task: refresh every configured country's index series plus each
-    distinct non-EUR currency's FX-to-EUR series once a day.
-    Writes sync status to Redis, mirroring app.tasks.prices.refresh_prices_live.
-    """
-    r = get_redis()
-    write_status(r, SYNC_STATUS_KEY, {
-        "started_at": datetime.now(timezone.utc).isoformat(),
-        "finished_at": None,
-        "status": "running",
-        "total_tickers": 0,
-        "succeeded": 0,
-        "failed_tickers": [],
-    }, ttl_seconds=SYNC_STATUS_TTL)
-
-    try:
-        result = asyncio.run(_run_country_performance_refresh())
-    except Exception as exc:
-        result = {
-            "started_at": datetime.now(timezone.utc).isoformat(),
-            "finished_at": datetime.now(timezone.utc).isoformat(),
-            "status": "failed",
-            "total_tickers": 0,
-            "succeeded": 0,
-            "failed_tickers": [],
-            "error": str(exc)[:200],
-        }
-
-    write_status(r, SYNC_STATUS_KEY, result, ttl_seconds=SYNC_STATUS_TTL)
-    return result

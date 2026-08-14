@@ -1,5 +1,4 @@
 from __future__ import annotations
-import json
 import os
 import subprocess
 import tempfile
@@ -12,14 +11,16 @@ from sqlalchemy import text
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from celery.result import AsyncResult
+from pgqueuer import Queries
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.tasks.snapshots import recompute_snapshots_range
 from app.tasks.celery_app import celery_app
-from app.tasks.prices import SYNC_STATUS_KEY
+from app.tasks import job_runs
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.pgq import get_pgq_queries
 
 router = APIRouter(tags=["admin"])
 
@@ -136,29 +137,17 @@ class TaskStatus(BaseModel):
 
 
 @router.post("/refresh-prices", response_model=dict)
-async def refresh_prices():
-    """Trigger manual price refresh via Celery worker (admin use)."""
-    from app.tasks.prices import refresh_prices_live
-    task = refresh_prices_live.delay()
-    return {"task_id": task.id, "status": "queued", "date": date.today().isoformat()}
+async def refresh_prices(queries: Queries = Depends(get_pgq_queries)):
+    """Trigger manual price refresh via PgQueuer (admin use)."""
+    job_ids = await queries.enqueue("refresh_prices_live", payload=b"on_demand")
+    return {"job_id": job_ids[0], "status": "queued", "date": date.today().isoformat()}
 
 
 @router.get("/sync-status")
 async def get_sync_status():
-    """Return last price sync status from Redis (populated by the 15-min Celery Beat task)."""
-    import redis as redis_lib
-    r = redis_lib.Redis.from_url(settings.celery_broker_url, decode_responses=True)
-    raw = r.get(SYNC_STATUS_KEY)
-    if not raw:
-        return {
-            "status": "never",
-            "started_at": None,
-            "finished_at": None,
-            "total_tickers": 0,
-            "succeeded": 0,
-            "failed_tickers": [],
-        }
-    return json.loads(raw)
+    """Return the last price sync status from job_runs (populated by PgQueuer)."""
+    run = await job_runs.get_latest("refresh_prices_live")
+    return job_runs.to_sync_status_dict(run)
 
 
 @router.post("/fill-missing-snapshots", response_model=dict)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
+from pgqueuer import Queries
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -8,6 +9,7 @@ from typing import Optional
 from datetime import date
 
 from app.core.database import get_db
+from app.core.pgq import get_pgq_queries
 from app.models import AssetPrice
 
 router = APIRouter(tags=["prices"])
@@ -68,7 +70,8 @@ async def upsert_price(body: PriceCreate, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/fetch")
-async def trigger_price_fetch():
-    from app.tasks.prices import fetch_all_prices
-    task = fetch_all_prices.delay()
-    return {"task_id": task.id, "status": "queued"}
+async def trigger_price_fetch(queries: Queries = Depends(get_pgq_queries)):
+    """Same underlying entrypoint as admin.py's /refresh-prices — fetch_all_prices was a pure
+    Python-level alias for refresh_prices_live, which no longer exists as a separate name."""
+    job_ids = await queries.enqueue("refresh_prices_live", payload=b"on_demand")
+    return {"job_id": job_ids[0], "status": "queued"}

@@ -8,25 +8,20 @@ Key invariants:
   3. LIQUIDITE.EURO is always skipped (no fetch needed).
   4. Sync status dict has correct shape on success, partial, and failure.
   5. _run_price_refresh orchestrates fetch + DB write and returns status dict.
-  6. refresh_prices_live writes running then final status to Redis.
-  7. Exception in _run_price_refresh → failed status written, no crash.
 
 _fetch_ticker's retry/backoff mechanics are tested once, generically, in
 test_yahoo_fetch.py (the shared fetch_yahoo_chart it delegates to) — this file only tests
 _fetch_ticker's own thin parsing logic (regularMarketPrice extraction/rounding).
-get_redis/write_status are tested in test_sync_status.py.
+This module's PgQueuer entrypoint/schedule wrappers (issue #66 step 3) are tested in
+test_pgq_app.py — refresh_prices_live/fetch_all_prices no longer exist as separate Celery
+task functions here.
 """
 
 import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.tasks.prices import (
-    _fetch_ticker,
-    _run_price_refresh,
-    fetch_all_prices,
-    refresh_prices_live,
-)
+from app.tasks.prices import _fetch_ticker, _run_price_refresh
 
 
 # ---------------------------------------------------------------------------
@@ -302,83 +297,6 @@ async def test_run_price_refresh_glitch_guard_allows_normal_variation():
 
     assert result["succeeded"] == 1
     assert result["failed_tickers"] == []
-
-
-# ---------------------------------------------------------------------------
-# refresh_prices_live (Celery task)
-# ---------------------------------------------------------------------------
-
-def test_refresh_prices_live_writes_running_then_final_status():
-    """refresh_prices_live writes 'running' to Redis first, then the final result."""
-    mock_r = MagicMock()
-    success_result = {
-        "started_at": "2026-05-15T14:30:00+00:00",
-        "finished_at": "2026-05-15T14:30:05+00:00",
-        "status": "success",
-        "total_tickers": 3,
-        "succeeded": 3,
-        "failed_tickers": [],
-    }
-
-    def _close_and_return(coro):
-        """Close the coroutine to avoid 'never awaited' ResourceWarning, then return result."""
-        if hasattr(coro, "close"):
-            coro.close()
-        return success_result
-
-    with patch("app.tasks.prices.get_redis", return_value=mock_r), \
-         patch("app.tasks.prices.asyncio.run", side_effect=_close_and_return):
-        result = refresh_prices_live()
-
-    assert result == success_result
-    # Two writes: "running" then final
-    assert mock_r.set.call_count == 2
-    first_payload = json.loads(mock_r.set.call_args_list[0][0][1])
-    assert first_payload["status"] == "running"
-    second_payload = json.loads(mock_r.set.call_args_list[1][0][1])
-    assert second_payload["status"] == "success"
-
-
-def test_refresh_prices_live_handles_exception_and_writes_failed():
-    """If _run_price_refresh raises, refresh_prices_live writes 'failed' and does not crash."""
-    mock_r = MagicMock()
-
-    def _raise_and_close(coro):
-        """Close the coroutine to avoid 'never awaited' ResourceWarning, then raise."""
-        if hasattr(coro, "close"):
-            coro.close()
-        raise RuntimeError("DB down")
-
-    with patch("app.tasks.prices.get_redis", return_value=mock_r), \
-         patch("app.tasks.prices.asyncio.run", side_effect=_raise_and_close):
-        result = refresh_prices_live()
-
-    assert result["status"] == "failed"
-    assert result["failed_tickers"] == []
-    # Still two writes: "running" then "failed"
-    assert mock_r.set.call_count == 2
-    final = json.loads(mock_r.set.call_args_list[1][0][1])
-    assert final["status"] == "failed"
-
-
-# ---------------------------------------------------------------------------
-# fetch_all_prices (legacy alias)
-# ---------------------------------------------------------------------------
-
-def test_fetch_all_prices_delegates_to_refresh_prices_live():
-    """fetch_all_prices() is a backward-compat alias — it calls refresh_prices_live."""
-    mock_r = MagicMock()
-    dummy_result = {"status": "success", "total_tickers": 0, "succeeded": 0, "failed_tickers": []}
-
-    def _close_and_return(coro):
-        if hasattr(coro, "close"):
-            coro.close()
-        return dummy_result
-
-    with patch("app.tasks.prices.get_redis", return_value=mock_r), \
-         patch("app.tasks.prices.asyncio.run", side_effect=_close_and_return):
-        result = fetch_all_prices()
-    assert result["status"] == "success"
 
 
 # ---------------------------------------------------------------------------

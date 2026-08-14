@@ -17,38 +17,39 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass  # Don't block startup if Celery is unavailable
 
+    from app.core.pgq import close_pgq_pool, get_pgq_queries, init_pgq_pool
+    await init_pgq_pool()  # never raises — see app/core/pgq.py
+
     # On startup: refresh live prices immediately so the UI doesn't wait up
-    # to 15 min for the next scheduled Celery Beat run (non-blocking task).
+    # to 15 min for the next scheduled PgQueuer run (non-blocking task).
     try:
-        from app.tasks.prices import refresh_prices_live
-        refresh_prices_live.delay()
+        await get_pgq_queries().enqueue("refresh_prices_live", payload=b"startup")
     except Exception:
-        pass  # Don't block startup if Celery is unavailable
+        pass  # Don't block startup if the job queue is unavailable
 
     # On startup: refresh ETF holdings too, rather than waiting up to a week for
-    # the next scheduled Celery Beat run (non-blocking task).
+    # the next scheduled PgQueuer run (non-blocking task).
     try:
-        from app.tasks.etf_holdings import refresh_etf_holdings
-        refresh_etf_holdings.delay()
+        await get_pgq_queries().enqueue("refresh_etf_holdings", payload=b"startup")
     except Exception:
-        pass  # Don't block startup if Celery is unavailable
+        pass  # Don't block startup if the job queue is unavailable
 
     # On startup: refresh macro indicators too, rather than waiting up to a day for
-    # the next scheduled Celery Beat run (non-blocking task).
+    # the next scheduled PgQueuer run (non-blocking task).
     try:
-        from app.tasks.macro_indicators import refresh_macro_indicators
-        refresh_macro_indicators.delay()
+        await get_pgq_queries().enqueue("refresh_macro_indicators", payload=b"startup")
     except Exception:
-        pass  # Don't block startup if Celery is unavailable
+        pass  # Don't block startup if the job queue is unavailable
 
     # On startup: refresh the country performance leaderboard too, rather than waiting up
-    # to a day for the next scheduled Celery Beat run (non-blocking task).
+    # to a day for the next scheduled PgQueuer run (non-blocking task).
     try:
-        from app.tasks.country_performance import refresh_country_performance
-        refresh_country_performance.delay()
+        await get_pgq_queries().enqueue("refresh_country_performance", payload=b"startup")
     except Exception:
-        pass  # Don't block startup if Celery is unavailable
+        pass  # Don't block startup if the job queue is unavailable
+
     yield
+    await close_pgq_pool()
 
 
 app = FastAPI(

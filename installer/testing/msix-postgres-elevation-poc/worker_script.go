@@ -104,7 +104,15 @@ if ($initdbExit -eq 0) {
     $lines += @(Get-Content $startErr -ErrorAction SilentlyContinue)
 
     if ($startExit -eq 0) {
-        Start-Process -FilePath $pgctl -ArgumentList @("-D", $PgData, "status") -NoNewWindow -Wait
+        # -RedirectStandardOutput/-Error here too: an earlier version left this call
+        # unredirected, and it hung indefinitely (worker.ps1 accumulated ~5s of CPU time over
+        # 8+ minutes of wall clock, i.e. blocked, not slow) — a process launched via
+        # -NoNewWindow with no console and no redirected output can deadlock on WriteFile if
+        # its stdout pipe buffer fills with nobody reading it, in this non-interactive
+        # scheduled-task-launched-with-an-interactive-token context.
+        $statusOut = Join-Path $logDir "msix-poc-pgctl-status.out.log"
+        $statusErr = Join-Path $logDir "msix-poc-pgctl-status.err.log"
+        Start-Process -FilePath $pgctl -ArgumentList @("-D", $PgData, "status") -NoNewWindow -Wait -RedirectStandardOutput $statusOut -RedirectStandardError $statusErr
 
         # PgQueuer (the Celery/Redis replacement, issue #66) — same LocalState-copy pattern as
         # pgsql above: the bundled embeddable Python/pgq.exe can't run in-place from the
@@ -184,7 +192,9 @@ async def main():
         }
         $lines += "PGQUEUER_VERDICT: $pgqVerdict"
 
-        Start-Process -FilePath $pgctl -ArgumentList @("-D", $PgData, "-w", "stop") -NoNewWindow -Wait
+        $stopOut = Join-Path $logDir "msix-poc-pgctl-stop.out.log"
+        $stopErr = Join-Path $logDir "msix-poc-pgctl-stop.err.log"
+        Start-Process -FilePath $pgctl -ArgumentList @("-D", $PgData, "-w", "stop") -NoNewWindow -Wait -RedirectStandardOutput $stopOut -RedirectStandardError $stopErr
     }
 } else {
     $lines += "PGCTL_START_EXIT: SKIPPED (initdb failed)"

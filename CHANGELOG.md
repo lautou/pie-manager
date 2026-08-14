@@ -2,6 +2,13 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.4.1] - 2026-08-14
+
+### Fixed
+
+- **compose:** Break pgq-worker's dependency on postgres:service_healthy
+- Remove condition: service_healthy entirely from compose depends_on
+
 ## [1.4.0] - 2026-08-14
 
 ### Added

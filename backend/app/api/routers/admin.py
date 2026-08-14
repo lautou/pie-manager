@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 import os
 import subprocess
 import tempfile
@@ -10,13 +11,10 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy import text
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from celery.result import AsyncResult
 from pgqueuer import Queries
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.tasks.snapshots import recompute_snapshots_range
-from app.tasks.celery_app import celery_app
 from app.tasks import job_runs
 from app.core.config import settings
 from app.core.database import get_db
@@ -151,40 +149,46 @@ async def get_sync_status():
 
 
 @router.post("/fill-missing-snapshots", response_model=dict)
-async def fill_missing_snapshots_endpoint():
+async def fill_missing_snapshots_endpoint(queries: Queries = Depends(get_pgq_queries)):
     """Trigger fill of all missing daily snapshots up to yesterday.
-    Called automatically on startup and at midnight by the frontend."""
-    from app.tasks.snapshots import fill_missing_snapshots
-    task = fill_missing_snapshots.delay()
-    return {"task_id": task.id}
+    Called automatically on startup and at midnight by the frontend — fire-and-forget, never
+    polled (see useAutoRefresh.ts), so the returned task_id only needs to exist as a string."""
+    job_ids = await queries.enqueue("fill_missing_snapshots", payload=b"on_demand")
+    return {"task_id": str(job_ids[0])}
 
 
 @router.post("/recompute-snapshots", response_model=dict)
-async def trigger_recompute(body: RecomputeRequest):
+async def trigger_recompute(body: RecomputeRequest, queries: Queries = Depends(get_pgq_queries)):
     end = body.end_date or yesterday()
     if end > yesterday():
         raise HTTPException(status_code=400, detail=f"end_date cannot exceed yesterday ({yesterday()})")
     if body.start_date > end:
         raise HTTPException(status_code=400, detail="start_date must be before end_date")
-    task = recompute_snapshots_range.delay(body.start_date.isoformat(), end.isoformat())
-    return {"task_id": task.id}
+
+    # Created here (not inside the PgQueuer entrypoint) so the client gets a pollable task_id
+    # back immediately, even before the job is picked up — see snapshots.py's
+    # _run_recompute_snapshots and pgq_app.py's entrypoint for the rest of this task's
+    # deliberately different run_id lifecycle.
+    run_id = await job_runs.start_run("recompute_snapshots_range", trigger="on_demand")
+    payload = json.dumps(
+        {"start": body.start_date.isoformat(), "end": end.isoformat(), "run_id": run_id}
+    ).encode()
+    try:
+        await queries.enqueue("recompute_snapshots_range", payload=payload)
+    except Exception as exc:
+        await job_runs.finish_run(run_id, status="failed", error=str(exc)[:200])
+        raise HTTPException(status_code=503, detail="Job queue unavailable") from exc
+    return {"task_id": str(run_id)}
 
 
 @router.get("/task/{task_id}", response_model=TaskStatus)
 async def get_task_status(task_id: str):
-    result = AsyncResult(task_id, app=celery_app)
-    if result.state == "PENDING":
-        return TaskStatus(task_id=task_id, state="PENDING")
-    if result.state == "PROGRESS":
-        meta = result.info or {}
-        return TaskStatus(task_id=task_id, state="PROGRESS",
-                          current=meta.get("current", 0), total=meta.get("total", 0),
-                          date=meta.get("date"))
-    if result.state == "SUCCESS":
-        return TaskStatus(task_id=task_id, state="SUCCESS", current=1, total=1)
-    if result.state == "FAILURE":
-        return TaskStatus(task_id=task_id, state="FAILURE", error=str(result.info))
-    return TaskStatus(task_id=task_id, state=result.state)
+    try:
+        run_id = int(task_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Task not found")
+    run = await job_runs.get_by_id(run_id)
+    return TaskStatus(task_id=task_id, **job_runs.to_task_status_dict(run))
 
 
 # ── System settings ────────────────────────────────────────────────────────

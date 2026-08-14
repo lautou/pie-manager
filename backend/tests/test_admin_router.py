@@ -7,14 +7,14 @@ All backup and restore tests mock subprocess.run so that pg_dump and psql
 are NEVER called against any real database. The production database (ude_db)
 is completely untouched by this test suite.
 
-Task-status tests mock celery.result.AsyncResult to cover all five state
-branches without requiring a live Celery broker (still Celery — only
-recompute-snapshots/fill-missing-snapshots use this endpoint, unaffected by
-issue #66 step 3). refresh-prices/sync-status now go through PgQueuer/job_runs
-instead (see test_refresh_prices_dispatches_via_pgqueuer/test_sync_status_*).
+All 6 background tasks now go through PgQueuer/job_runs (issue #66 steps 3+4) — task-status
+tests mock app.tasks.job_runs.get_by_id directly rather than celery.result.AsyncResult; the
+exhaustive 5-row state-mapping table itself is unit-tested directly in test_job_runs.py
+(to_task_status_dict), so only representative router-integration cases live here.
 """
 
 import io
+import json
 import subprocess
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -241,16 +241,15 @@ async def test_restore_temp_file_cleaned_up_on_success():
 
 
 # ---------------------------------------------------------------------------
-# Task status — all 5 Celery state branches
+# Task status — job_runs-backed (issue #66 step 4); see test_job_runs.py's
+# to_task_status_dict tests for the exhaustive 5-row mapping-table coverage.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_task_status_pending():
-    mock_result = MagicMock()
-    mock_result.state = "PENDING"
-    with patch("app.api.routers.admin.AsyncResult", return_value=mock_result):
+async def test_task_status_unknown_id_returns_pending():
+    with patch("app.tasks.job_runs.get_by_id", new_callable=AsyncMock, return_value=None):
         async with _client() as client:
-            r = await client.get("/api/admin/task/abc-123")
+            r = await client.get("/api/admin/task/123")
     assert r.status_code == 200
     body = r.json()
     assert body["state"] == "PENDING"
@@ -259,13 +258,15 @@ async def test_task_status_pending():
 
 
 @pytest.mark.asyncio
-async def test_task_status_progress_with_meta():
-    mock_result = MagicMock()
-    mock_result.state = "PROGRESS"
-    mock_result.info = {"current": 3, "total": 10, "date": "2026-05-16"}
-    with patch("app.api.routers.admin.AsyncResult", return_value=mock_result):
+async def test_task_status_progress():
+    fake_run = MagicMock()
+    fake_run.status = "running"
+    fake_run.current_step = 3
+    fake_run.total_steps = 10
+    fake_run.current_label = "2026-05-16"
+    with patch("app.tasks.job_runs.get_by_id", new_callable=AsyncMock, return_value=fake_run):
         async with _client() as client:
-            r = await client.get("/api/admin/task/xyz-456")
+            r = await client.get("/api/admin/task/456")
     body = r.json()
     assert body["state"] == "PROGRESS"
     assert body["current"] == 3
@@ -274,56 +275,43 @@ async def test_task_status_progress_with_meta():
 
 
 @pytest.mark.asyncio
-async def test_task_status_progress_no_meta():
-    mock_result = MagicMock()
-    mock_result.state = "PROGRESS"
-    mock_result.info = None
-    with patch("app.api.routers.admin.AsyncResult", return_value=mock_result):
-        async with _client() as client:
-            r = await client.get("/api/admin/task/xyz-000")
-    body = r.json()
-    assert body["state"] == "PROGRESS"
-    assert body["current"] == 0
-    assert body["date"] is None
-
-
-@pytest.mark.asyncio
 async def test_task_status_success():
-    mock_result = MagicMock()
-    mock_result.state = "SUCCESS"
-    with patch("app.api.routers.admin.AsyncResult", return_value=mock_result):
+    fake_run = MagicMock()
+    fake_run.status = "success"
+    fake_run.total_steps = 8
+    fake_run.current_label = "2026-05-20"
+    with patch("app.tasks.job_runs.get_by_id", new_callable=AsyncMock, return_value=fake_run):
         async with _client() as client:
-            r = await client.get("/api/admin/task/done-789")
+            r = await client.get("/api/admin/task/789")
     body = r.json()
     assert body["state"] == "SUCCESS"
-    assert body["current"] == 1
-    assert body["total"] == 1
+    assert body["current"] == 8
+    assert body["total"] == 8
 
 
 @pytest.mark.asyncio
 async def test_task_status_failure_with_error():
-    mock_result = MagicMock()
-    mock_result.state = "FAILURE"
-    mock_result.info = ValueError("something went wrong")
-    with patch("app.api.routers.admin.AsyncResult", return_value=mock_result):
+    fake_run = MagicMock()
+    fake_run.status = "failed"
+    fake_run.current_step = 2
+    fake_run.total_steps = 10
+    fake_run.current_label = "2026-05-17"
+    fake_run.error = "something went wrong"
+    with patch("app.tasks.job_runs.get_by_id", new_callable=AsyncMock, return_value=fake_run):
         async with _client() as client:
-            r = await client.get("/api/admin/task/fail-111")
+            r = await client.get("/api/admin/task/111")
     body = r.json()
     assert body["state"] == "FAILURE"
-    assert "something went wrong" in body["error"]
+    assert body["error"] == "something went wrong"
 
 
 @pytest.mark.asyncio
-async def test_task_status_unknown_state_passthrough():
-    mock_result = MagicMock()
-    mock_result.state = "REVOKED"
-    with patch("app.api.routers.admin.AsyncResult", return_value=mock_result):
-        async with _client() as client:
-            r = await client.get("/api/admin/task/rev-222")
-    body = r.json()
-    assert body["state"] == "REVOKED"
-    assert body["current"] == 0
-    assert body["error"] is None
+async def test_task_status_malformed_id_returns_404():
+    """task_id must parse as an int (job_runs.id) — a non-numeric id (e.g. a stale Celery
+    UUID from before this endpoint's cutover) is a clean 404, not a 500."""
+    async with _client() as client:
+        r = await client.get("/api/admin/task/not-a-number")
+    assert r.status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -350,69 +338,145 @@ async def test_refresh_prices_dispatches_via_pgqueuer():
 
 
 @pytest.mark.asyncio
-async def test_fill_missing_snapshots_dispatches_celery_task():
-    mock_task = MagicMock()
-    mock_task.id = "fill-task-xyz"
-    with patch("app.tasks.snapshots.fill_missing_snapshots") as mock_fill:
-        mock_fill.delay.return_value = mock_task
+async def test_fill_missing_snapshots_dispatches_via_pgqueuer():
+    from app.core.pgq import get_pgq_queries
+
+    mock_queries = MagicMock()
+    mock_queries.enqueue = AsyncMock(return_value=[7])
+
+    fastapi_app.dependency_overrides[get_pgq_queries] = lambda: mock_queries
+    try:
         async with _client() as client:
             r = await client.post("/api/admin/fill-missing-snapshots")
+    finally:
+        fastapi_app.dependency_overrides.pop(get_pgq_queries, None)
+
     assert r.status_code == 200
-    assert r.json()["task_id"] == "fill-task-xyz"
-    mock_fill.delay.assert_called_once()
+    assert r.json()["task_id"] == "7"
+    mock_queries.enqueue.assert_called_once_with("fill_missing_snapshots", payload=b"on_demand")
 
 
 @pytest.mark.asyncio
 async def test_recompute_snapshots_valid_range():
     from datetime import date, timedelta
+    from app.core.pgq import get_pgq_queries
+
     start = (date.today() - timedelta(days=10)).isoformat()
     end = (date.today() - timedelta(days=1)).isoformat()
-    mock_task = MagicMock()
-    mock_task.id = "recompute-task-1"
-    with patch("app.api.routers.admin.recompute_snapshots_range") as mock_rc:
-        mock_rc.delay.return_value = mock_task
+
+    mock_queries = MagicMock()
+    mock_queries.enqueue = AsyncMock(return_value=[1])
+
+    fastapi_app.dependency_overrides[get_pgq_queries] = lambda: mock_queries
+    try:
         async with _client() as client:
             r = await client.post("/api/admin/recompute-snapshots",
                                   json={"start_date": start, "end_date": end})
+    finally:
+        fastapi_app.dependency_overrides.pop(get_pgq_queries, None)
+
     assert r.status_code == 200
-    assert r.json()["task_id"] == "recompute-task-1"
-    mock_rc.delay.assert_called_once_with(start, end)
+    task_id = r.json()["task_id"]
+    assert task_id.isdigit()
+
+    mock_queries.enqueue.assert_called_once()
+    call_args = mock_queries.enqueue.call_args
+    assert call_args[0][0] == "recompute_snapshots_range"
+    payload = json.loads(call_args.kwargs["payload"])
+    assert payload == {"start": start, "end": end, "run_id": int(task_id)}
 
 
 @pytest.mark.asyncio
 async def test_recompute_snapshots_end_exceeds_yesterday_returns_400():
     from datetime import date, timedelta
+    from app.core.pgq import get_pgq_queries
+
     future = (date.today() + timedelta(days=1)).isoformat()
-    async with _client() as client:
-        r = await client.post("/api/admin/recompute-snapshots",
-                              json={"start_date": "2025-01-01", "end_date": future})
+    mock_queries = MagicMock()
+    mock_queries.enqueue = AsyncMock(return_value=[1])
+
+    fastapi_app.dependency_overrides[get_pgq_queries] = lambda: mock_queries
+    try:
+        async with _client() as client:
+            r = await client.post("/api/admin/recompute-snapshots",
+                                  json={"start_date": "2025-01-01", "end_date": future})
+    finally:
+        fastapi_app.dependency_overrides.pop(get_pgq_queries, None)
     assert r.status_code == 400
+    mock_queries.enqueue.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_recompute_snapshots_start_after_end_returns_400():
     from datetime import date, timedelta
+    from app.core.pgq import get_pgq_queries
+
     yesterday = (date.today() - timedelta(days=1)).isoformat()
-    async with _client() as client:
-        r = await client.post("/api/admin/recompute-snapshots",
-                              json={"start_date": yesterday, "end_date": "2020-01-01"})
+    mock_queries = MagicMock()
+    mock_queries.enqueue = AsyncMock(return_value=[1])
+
+    fastapi_app.dependency_overrides[get_pgq_queries] = lambda: mock_queries
+    try:
+        async with _client() as client:
+            r = await client.post("/api/admin/recompute-snapshots",
+                                  json={"start_date": yesterday, "end_date": "2020-01-01"})
+    finally:
+        fastapi_app.dependency_overrides.pop(get_pgq_queries, None)
     assert r.status_code == 400
+    mock_queries.enqueue.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_recompute_snapshots_no_end_date_defaults_to_yesterday():
     from datetime import date, timedelta
+    from app.core.pgq import get_pgq_queries
+
     start = (date.today() - timedelta(days=7)).isoformat()
     yesterday = (date.today() - timedelta(days=1)).isoformat()
-    mock_task = MagicMock()
-    mock_task.id = "recompute-default"
-    with patch("app.api.routers.admin.recompute_snapshots_range") as mock_rc:
-        mock_rc.delay.return_value = mock_task
+
+    mock_queries = MagicMock()
+    mock_queries.enqueue = AsyncMock(return_value=[2])
+
+    fastapi_app.dependency_overrides[get_pgq_queries] = lambda: mock_queries
+    try:
         async with _client() as client:
             r = await client.post("/api/admin/recompute-snapshots",
                                   json={"start_date": start})
+    finally:
+        fastapi_app.dependency_overrides.pop(get_pgq_queries, None)
+
     assert r.status_code == 200
-    mock_rc.delay.assert_called_once_with(start, yesterday)
+    payload = json.loads(mock_queries.enqueue.call_args.kwargs["payload"])
+    assert payload["start"] == start
+    assert payload["end"] == yesterday
+
+
+@pytest.mark.asyncio
+async def test_recompute_snapshots_enqueue_failure_marks_run_failed_and_503():
+    from datetime import date, timedelta
+    from app.core.pgq import get_pgq_queries
+    from app.tasks import job_runs
+
+    start = (date.today() - timedelta(days=3)).isoformat()
+    end = (date.today() - timedelta(days=1)).isoformat()
+
+    mock_queries = MagicMock()
+    mock_queries.enqueue = AsyncMock(side_effect=RuntimeError("queue unavailable"))
+
+    fastapi_app.dependency_overrides[get_pgq_queries] = lambda: mock_queries
+    try:
+        async with _client() as client:
+            r = await client.post("/api/admin/recompute-snapshots",
+                                  json={"start_date": start, "end_date": end})
+    finally:
+        fastapi_app.dependency_overrides.pop(get_pgq_queries, None)
+
+    assert r.status_code == 503
+    # The run_id created before the failed enqueue must be marked failed, not left
+    # orphaned "running" forever for a job that was never actually queued.
+    run = await job_runs.get_latest("recompute_snapshots_range")
+    assert run is not None
+    assert run.status == "failed"
 
 
 # ---------------------------------------------------------------------------

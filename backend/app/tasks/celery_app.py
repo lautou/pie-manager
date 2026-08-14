@@ -1,5 +1,4 @@
 from celery import Celery
-from celery.schedules import crontab
 
 from app.core.config import settings
 
@@ -7,7 +6,6 @@ celery_app = Celery(
     "pie",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.tasks.snapshots"],
 )
 
 celery_app.conf.update(
@@ -19,16 +17,9 @@ celery_app.conf.update(
     # Written outside /app so the non-root container user (see backend/Containerfile,
     # issue #17) never needs write access to the application source tree.
     beat_schedule_filename="/tmp/celerybeat-schedule",
-    beat_schedule={
-        # Compute daily snapshots every weekday at 19:00
-        "compute-daily-snapshots": {
-            "task": "app.tasks.snapshots.compute_daily_snapshots_all_users",
-            "schedule": crontab(hour=19, minute=0, day_of_week="1-5"),
-        },
-        # Compute monthly snapshots on the 1st of each month at 08:00
-        "compute-monthly-snapshots": {
-            "task": "app.tasks.snapshots.compute_monthly_snapshots_all_users",
-            "schedule": crontab(hour=8, minute=0, day_of_month=1),
-        },
-    },
+    # issue #66 step 4: both scheduled snapshot tasks moved to PgQueuer's own cron (see
+    # app/tasks/pgq_app.py) — app/tasks/snapshots.py no longer has any @celery_app.task at
+    # all, so there's nothing left for Celery Beat to dispatch. Celery/Redis/the `worker`
+    # container stay installed but idle; full removal is a later step.
+    beat_schedule={},
 )

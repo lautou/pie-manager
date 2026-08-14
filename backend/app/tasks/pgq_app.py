@@ -1,13 +1,34 @@
 """
-PgQueuer worker process (issue #66 step 3) — real handlers for 4 of the 6 registered tasks.
+PgQueuer worker process (issue #66 steps 3+4) — real handlers for all 6 registered tasks.
 
 `refresh_prices_live`/`refresh_etf_holdings`/`refresh_macro_indicators`/
-`refresh_country_performance` are cut over for real: each gets a `@pgq.schedule` handler (cron)
-and a `@pgq.entrypoint` handler (on-demand, from routers or main.py's startup), both delegating
-to the same unchanged `_run_X_refresh()` core and writing to `job_runs` (now the sole status
-store for these 4 — their Redis dual-write was removed in this step). `compute_daily_
-snapshots_all_users`/`compute_monthly_snapshots_all_users` stay log-only placeholders — the
-snapshot family is still Celery-only, a later step.
+`refresh_country_performance` (step 3) and `compute_daily_snapshots_all_users`/
+`compute_monthly_snapshots_all_users`/`fill_missing_snapshots`/`recompute_snapshots_range`
+(step 4) are all cut over for real. The first 4 and the 2 `compute_*_all_users` tasks each get
+a `@pgq.schedule` handler (cron) and, where an on-demand caller exists, a `@pgq.entrypoint`
+handler too — both delegating to an unchanged async core and writing to `job_runs` (the sole
+status store for all 6; Celery/Redis stay installed but idle, full removal is a later step).
+
+`compute_monthly_snapshots_all_users` has no entrypoint — zero on-demand call sites exist
+anywhere in the app (confirmed by grep), only its 19:00/08:00-family Beat-equivalent cron.
+`fill_missing_snapshots` has no schedule — it was never in Celery's own `beat_schedule` either,
+only ever triggered from `main.py`'s startup and the admin "fill missing" endpoint.
+`recompute_snapshots_range` has no schedule either (admin-triggered only) and its entrypoint
+handler has a genuinely different shape from every other task registered here: see its own
+docstring below and `app/tasks/snapshots.py`'s `_run_recompute_snapshots` for why its
+`job_runs` row is created by its caller (`app/api/routers/admin.py`), not by this handler.
+
+**`asyncio.run()`-inside-a-running-loop hazard, fixed in step 4 for the 2 snapshot cores that
+needed it (`_run_fill_missing_snapshots`/`_run_recompute_snapshots` in `snapshots.py`).** Their
+Celery-era bodies called `asyncio.run(...)` per phase/iteration — correct for a *synchronous*
+Celery task body spinning up a fresh event loop per DB interaction, but a PgQueuer entrypoint
+already runs inside the worker's own persistent event loop. Nesting `asyncio.run()` there
+raises `RuntimeError: asyncio.run() cannot be called from a running event loop` — confirmed
+live in Pass 2 of this step's resilience testing (real wall-clock schedule firing is the only
+way to catch this; no mocked unit test exercises a real running PgQueuer loop). Both cores were
+rewritten as plain `async def` using a single `create_async_engine`/`Session` for the whole
+run and `await` throughout, mirroring `app/tasks/prices.py`'s `_run_price_refresh` — the
+pattern every task registered here must follow, not the older Celery-task shape.
 
 `main()` is the factory `pgq run app.tasks.pgq_app:main` expects (an async-context-manager
 callable yielding a fully-registered `PgQueuer` instance) — confirmed live on both a real
@@ -32,6 +53,7 @@ intended Paris wall-clock time. Accepted, documented drift — not worth dynamic
 scheduling for a personal single-user app.
 """
 
+import json
 import logging
 from contextlib import asynccontextmanager
 from typing import Awaitable, Callable
@@ -46,6 +68,12 @@ from app.tasks.country_performance import _run_country_performance_refresh
 from app.tasks.etf_holdings import _run_etf_holdings_refresh
 from app.tasks.macro_indicators import _run_macro_indicators_refresh
 from app.tasks.prices import _run_price_refresh
+from app.tasks.snapshots import (
+    _compute_daily_snapshots_all_users,
+    _compute_monthly_snapshots_all_users,
+    _run_fill_missing_snapshots,
+    _run_recompute_snapshots,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,11 +128,17 @@ def _register_schedules(pgq: PgQueuer) -> None:
 
     @pgq.schedule("compute_daily_snapshots_all_users", COMPUTE_DAILY_SNAPSHOTS_CRON)
     async def _compute_daily_snapshots_schedule(schedule: Schedule) -> None:
-        logger.info("pgq schedule fired: compute_daily_snapshots_all_users")
+        async def _core() -> dict:
+            await _compute_daily_snapshots_all_users(None)
+            return {"status": "success"}
+        await _run_tracked("compute_daily_snapshots_all_users", "schedule", _core)
 
     @pgq.schedule("compute_monthly_snapshots_all_users", COMPUTE_MONTHLY_SNAPSHOTS_CRON)
     async def _compute_monthly_snapshots_schedule(schedule: Schedule) -> None:
-        logger.info("pgq schedule fired: compute_monthly_snapshots_all_users")
+        async def _core() -> dict:
+            await _compute_monthly_snapshots_all_users(None)
+            return {"status": "success"}
+        await _run_tracked("compute_monthly_snapshots_all_users", "schedule", _core)
 
     @pgq.schedule("refresh_etf_holdings", REFRESH_ETF_HOLDINGS_CRON)
     async def _refresh_etf_holdings_schedule(schedule: Schedule) -> None:
@@ -143,6 +177,51 @@ def _register_entrypoints(pgq: PgQueuer) -> None:
         await _run_tracked(
             "refresh_country_performance", _decode_trigger(job.payload), _run_country_performance_refresh, pgq_job_id=job.id,
         )
+
+    @pgq.entrypoint("compute_daily_snapshots_all_users")
+    async def _compute_daily_snapshots_entrypoint(job: Job) -> None:
+        """On-demand payload is a plain ISO date string (or absent → today), unlike the other
+        entrypoints' trigger-name payload — matches _trigger_snapshot_recompute's own encoding
+        in app/api/routers/transactions.py."""
+        target_date_str = job.payload.decode() if job.payload else None
+
+        async def _core() -> dict:
+            await _compute_daily_snapshots_all_users(target_date_str)
+            return {"status": "success"}
+        await _run_tracked(
+            "compute_daily_snapshots_all_users", "on_demand", _core, pgq_job_id=job.id,
+        )
+    # No entrypoint for compute_monthly_snapshots_all_users — zero on-demand call sites.
+
+    @pgq.entrypoint("fill_missing_snapshots")
+    async def _fill_missing_snapshots_entrypoint(job: Job) -> None:
+        await _run_tracked(
+            "fill_missing_snapshots", _decode_trigger(job.payload), _run_fill_missing_snapshots,
+            pgq_job_id=job.id,
+        )
+
+    @pgq.entrypoint("recompute_snapshots_range")
+    async def _recompute_snapshots_range_entrypoint(job: Job) -> None:
+        """Different shape from every other handler here: run_id's lifecycle is owned by the
+        caller (app/api/routers/admin.py's POST /recompute-snapshots), not this handler — the
+        client needs a pollable task_id back synchronously, before the job is even picked up,
+        so start_run() already ran before this job was enqueued. This handler only ever reports
+        progress onto that existing row (inside _run_recompute_snapshots itself) and owns the
+        terminal finish_run call — it never calls start_run, unlike every other entrypoint's
+        _run_tracked, so it can't reuse that helper."""
+        payload = json.loads(job.payload)
+        run_id = payload["run_id"]
+        try:
+            result = await _run_recompute_snapshots(payload["start"], payload["end"], run_id)
+        except Exception as exc:
+            await job_runs.finish_run(run_id, status="failed", error=str(exc)[:200])
+            logger.exception("pgq task failed: recompute_snapshots_range")
+            return
+        await job_runs.finish_run(
+            run_id, status="success", total_steps=result["total"], succeeded_steps=result["total"],
+        )
+    # No schedule for recompute_snapshots_range — admin-triggered only, never in Celery's
+    # beat_schedule either.
 
 
 @asynccontextmanager

@@ -6,7 +6,6 @@ Tests for Part 1 and Part 2 changes:
 """
 import pytest
 from datetime import date
-from unittest.mock import patch
 
 from app.models.portfolio import Portfolio
 from app.models.broker import Broker
@@ -174,18 +173,17 @@ async def test_create_transaction_rejects_wrong_account_owner(client):
     })
 
     # Try to create a transaction for portfolio 1 using account from portfolio 2 — should fail
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid1,
-            "account_id": foreign_account_id,   # wrong owner!
-            "date": "2025-06-01",
-            "type": "Actif",
-            "ticker": "XTEST.OWN1",
-            "currency": "EUR",
-            "exchange_rate": 1.0,
-            "quantity": -5.0,
-            "unit_price": 100.0,
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid1,
+        "account_id": foreign_account_id,   # wrong owner!
+        "date": "2025-06-01",
+        "type": "Actif",
+        "ticker": "XTEST.OWN1",
+        "currency": "EUR",
+        "exchange_rate": 1.0,
+        "quantity": -5.0,
+        "unit_price": 100.0,
+    })
 
     assert r.status_code == 400
     assert "portfolio_id mismatch" in r.json()["detail"].lower() or "belong" in r.json()["detail"].lower()
@@ -202,18 +200,17 @@ async def test_create_transaction_rejects_nonexistent_account(client):
         "ticker": "XTEST.NOACCT", "name": "Test", "category": "Actif", "currency": "EUR"
     })
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid,
-            "account_id": 999999,  # does not exist
-            "date": "2025-06-01",
-            "type": "Actif",
-            "ticker": "XTEST.NOACCT",
-            "currency": "EUR",
-            "exchange_rate": 1.0,
-            "quantity": -1.0,
-            "unit_price": 50.0,
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid,
+        "account_id": 999999,  # does not exist
+        "date": "2025-06-01",
+        "type": "Actif",
+        "ticker": "XTEST.NOACCT",
+        "currency": "EUR",
+        "exchange_rate": 1.0,
+        "quantity": -1.0,
+        "unit_price": 50.0,
+    })
 
     assert r.status_code == 400
 
@@ -235,17 +232,16 @@ async def test_create_transaction_accepts_correct_account_owner(client):
         "ticker": "XTEST.OKOWN", "name": "Test Product", "category": "Actif", "currency": "EUR"
     })
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid,
-            "account_id": account_id,
-            "date": "2025-07-01",
-            "type": "Actif",
-            "ticker": "XTEST.OKOWN",
-            "currency": "EUR",
-            "exchange_rate": 1.0,
-            "quantity": -3.0,
-            "unit_price": 75.0,
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid,
+        "account_id": account_id,
+        "date": "2025-07-01",
+        "type": "Actif",
+        "ticker": "XTEST.OKOWN",
+        "currency": "EUR",
+        "exchange_rate": 1.0,
+        "quantity": -3.0,
+        "unit_price": 75.0,
+    })
 
     assert r.status_code == 201

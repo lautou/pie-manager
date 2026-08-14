@@ -1,0 +1,182 @@
+name: MSIX Postgres Elevation PoC (issue #76)
+# One-off diagnostic, not part of the release pipeline. Answers a single question for issue
+# #76: can a bundled portable PostgreSQL run initdb + pg_ctl start, as a plain non-elevated
+# child process, from inside a full-trust (mediumIL) MSIX package? See
+# installer/testing/msix-postgres-elevation-poc/README.md — including why this specific run
+# (on windows-latest) is expected to hit PostgreSQL's own admin-refusal as a negative control,
+# not to prove the real target scenario (a normal desktop session) works.
+on:
+  workflow_dispatch:
+  # workflow_dispatch only works via the API/CLI once a workflow file exists on the default
+  # branch — since this is deliberately being investigated on a branch first (not pushed to
+  # main), the push trigger below (scoped to this investigation branch only) is what actually
+  # runs it. Safe to remove the push trigger once/if this is ever merged, keeping
+  # workflow_dispatch for any future manual re-verification.
+  push:
+    branches:
+      - 'investigate/issue-76-msix-postgres-elevation-poc'
+    paths:
+      - 'installer/testing/msix-postgres-elevation-poc/**'
+      - '.github/workflows/msix-postgres-elevation-poc.yml'
+
+jobs:
+  verify-postgres-elevation:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: installer/testing/msix-postgres-elevation-poc
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: '1.22'
+
+      - name: Build poc.exe and generate placeholder logo assets
+        run: |
+          go mod tidy
+          $env:CGO_ENABLED = "0"
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+          go build -ldflags "-H windowsgui" -o poc.exe .
+          New-Item -ItemType Directory -Force -Path Assets | Out-Null
+          go run ./gen-assets Assets
+
+      - name: Download and stage the portable PostgreSQL distribution
+        # EDB's official "binaries only" Windows x64 zip — the same distribution referenced in
+        # #65's own research, explicitly intended for embedding rather than run through EDB's
+        # installer wizard. Only pgsql/bin and pgsql/share are needed (postgres.exe locates
+        # share/ via a path relative to bin/, so that relative layout must be preserved) —
+        # pgAdmin/StackBuilder/docs from the full zip are dropped, cutting ~325 MB to ~95 MB.
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          $url = "https://get.enterprisedb.com/postgresql/postgresql-16.14-1-windows-x64-binaries.zip"
+          Invoke-WebRequest -Uri $url -OutFile pg.zip
+          Expand-Archive -Path pg.zip -DestinationPath pg_extracted -Force
+          New-Item -ItemType Directory -Force -Path pgsql | Out-Null
+          Move-Item -Path pg_extracted\pgsql\bin -Destination pgsql\bin
+          Move-Item -Path pg_extracted\pgsql\share -Destination pgsql\share
+          Remove-Item -Recurse -Force pg_extracted, pg.zip
+          Write-Host "Staged: $((Get-ChildItem -Recurse pgsql | Measure-Object -Property Length -Sum).Sum / 1MB) MB"
+
+      - name: Locate Windows SDK packaging/signing tools
+        run: |
+          $sdkRoot = "C:\Program Files (x86)\Windows Kits\10\bin"
+          $sdkVer = Get-ChildItem $sdkRoot -Directory |
+            Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' } |
+            Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $sdkVer) {
+            Write-Host "::error::No Windows 10 SDK bin directory found under $sdkRoot"
+            exit 1
+          }
+          $makeappx = Join-Path $sdkVer.FullName "x64\makeappx.exe"
+          $signtool = Join-Path $sdkVer.FullName "x64\signtool.exe"
+          if (-not (Test-Path $makeappx)) {
+            Write-Host "::error::makeappx.exe not found at $makeappx"
+            exit 1
+          }
+          if (-not (Test-Path $signtool)) {
+            Write-Host "::error::signtool.exe not found at $signtool"
+            exit 1
+          }
+          Write-Host "Using makeappx: $makeappx"
+          Write-Host "Using signtool: $signtool"
+          Add-Content -Path $env:GITHUB_ENV -Value "MAKEAPPX=$makeappx"
+          Add-Content -Path $env:GITHUB_ENV -Value "SIGNTOOL=$signtool"
+
+      - name: Package MSIX
+        run: |
+          & $env:MAKEAPPX pack /d . /p poc.msix /o
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::makeappx pack failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+
+      - name: Generate ephemeral signing cert, sign, and trust it
+        # Fully throwaway per-run cert — deliberately NOT the production
+        # WINDOWS_CODESIGN_PFX_* secrets (those Authenticode-sign shipped binaries; this MSIX
+        # poc never needs to chain to anything real).
+        run: |
+          $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=PieManagerPoc" `
+            -KeyUsage DigitalSignature -FriendlyName "PieManagerMsixPostgresElevationPocCert" `
+            -CertStoreLocation "Cert:\CurrentUser\My" `
+            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
+          $thumbprint = $cert.Thumbprint
+          Write-Host "Cert thumbprint: $thumbprint"
+          Add-Content -Path $env:GITHUB_ENV -Value "THUMBPRINT=$thumbprint"
+
+          Export-Certificate -Cert $cert -FilePath cert.cer | Out-Null
+          Import-Certificate -FilePath cert.cer -CertStoreLocation "Cert:\LocalMachine\TrustedPeople" | Out-Null
+          Import-Certificate -FilePath cert.cer -CertStoreLocation "Cert:\LocalMachine\Root" | Out-Null
+
+          & $env:SIGNTOOL sign /fd SHA256 /sha1 $thumbprint poc.msix
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::signtool sign failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+
+      - name: Install, launch via AUMID, and poll for the elevation-test result
+        run: |
+          try {
+            Add-AppxPackage -Path poc.msix -Verbose
+          } catch {
+            Write-Host "::error::Add-AppxPackage failed: $_"
+            exit 1
+          }
+
+          $pkg = Get-AppxPackage -Name "PieManagerMsixPostgresElevationPoc"
+          if (-not $pkg) {
+            Write-Host "::error::Package not found after Add-AppxPackage"
+            exit 1
+          }
+          $aumid = "$($pkg.PackageFamilyName)!App"
+          Write-Host "Resolved AUMID: $aumid"
+
+          $resultPath = Join-Path $env:TEMP "msix-postgres-elevation-poc-result.txt"
+          Remove-Item $resultPath -ErrorAction SilentlyContinue
+
+          Start-Process "shell:AppsFolder\$aumid"
+
+          # Generous deadline: initdb + pg_ctl start take longer than a simple HTTP ping.
+          $deadline = (Get-Date).AddSeconds(60)
+          $last = $null
+          while ((Get-Date) -lt $deadline) {
+            if (Test-Path $resultPath) {
+              $last = Get-Content $resultPath -Raw
+              if ($last -match 'VERDICT:') { break }
+            }
+            Start-Sleep -Seconds 2
+          }
+
+          Write-Host "--- msix-postgres-elevation-poc-result.txt ---"
+          Write-Host $last
+
+          if (-not $last) {
+            Write-Host "::error::poc.exe never wrote a result file at all — it may not have launched (AUMID/launch mechanism problem), or crashed before its first write."
+            exit 1
+          }
+          if ($last -match 'VERDICT: UNEXPECTED_FAILURE') {
+            Write-Host "::error::Unexpected failure not matching the known admin-refusal signature — see output above."
+            exit 1
+          }
+          if ($last -notmatch 'VERDICT:') {
+            Write-Host "::error::Result file never reached a final VERDICT line within the deadline."
+            exit 1
+          }
+          Write-Host "Test completed with an interpretable verdict (see output above) — EXPECTED_FAILURE and SUCCESS both count as this job passing; only UNEXPECTED_FAILURE or a missing/incomplete result does not."
+
+      - name: Cleanup (always, even on failure)
+        if: always()
+        run: |
+          Get-Process -Name poc -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Get-Process -Name postgres -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          $pkg = Get-AppxPackage -Name "PieManagerMsixPostgresElevationPoc"
+          if ($pkg) {
+            Remove-AppxPackage -Package $pkg.PackageFullName -ErrorAction SilentlyContinue
+          }
+          if ($env:THUMBPRINT) {
+            Remove-Item "Cert:\LocalMachine\Root\$env:THUMBPRINT" -ErrorAction SilentlyContinue
+            Remove-Item "Cert:\LocalMachine\TrustedPeople\$env:THUMBPRINT" -ErrorAction SilentlyContinue
+            Remove-Item "Cert:\CurrentUser\My\$env:THUMBPRINT" -ErrorAction SilentlyContinue
+          }

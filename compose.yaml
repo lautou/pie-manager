@@ -43,8 +43,7 @@ services:
     volumes:
       - ./backend:/app:z
     depends_on:
-      postgres:
-        condition: service_healthy
+      - backend
     command: pgq run app.tasks.pgq_app:main
 
   frontend:

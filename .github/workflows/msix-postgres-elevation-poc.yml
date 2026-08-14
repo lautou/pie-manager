@@ -121,6 +121,20 @@ jobs:
             exit 1
           }
 
+      - name: Upload signed package + cert (Phase 2 — real Windows 11 VM re-test)
+        # windows-latest can only ever be a negative control (GitHub's own docs: these runners
+        # run UAC-disabled/as-administrator, unlike a real personal PC — see README). Uploading
+        # the built artifacts lets the same poc.msix + its public cert be transferred to and
+        # sideloaded on a real Windows 11 machine for the definitive test, without needing Go
+        # or the Windows SDK installed there.
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: msix-postgres-elevation-poc
+          path: |
+            installer/testing/msix-postgres-elevation-poc/poc.msix
+            installer/testing/msix-postgres-elevation-poc/cert.cer
+          retention-days: 1
+
       - name: Install, launch via AUMID, and poll for the elevation-test result
         run: |
           try {

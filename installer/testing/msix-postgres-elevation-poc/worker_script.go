@@ -55,9 +55,18 @@ New-Item -ItemType Directory -Force -Path (Split-Path $PgData -Parent) | Out-Nul
 # effectively unlimited retries on a locked/inaccessible file, which would introduce the same
 # class of hang risk right back. Exit codes 0-7 all mean success (varying detail); only 8+ is a
 # real failure.
+#
+# Each path is wrapped in its own literal double-quotes (single-quoted PowerShell strings so
+# the quote characters need no escaping) before going into -ArgumentList: a first attempt
+# passed bare, unquoted paths in the array and Start-Process's array-to-command-line join did
+# not reliably quote the one containing a space ("C:\Program Files\..."), which robocopy then
+# silently mis-parsed as two separate positional arguments (confirmed via its own captured
+# "ParamStre non valide #3" error - i.e. garbage source/destination split apart).
 $localPgsql = Join-Path (Split-Path $PgData -Parent) "pgsql"
 $pgsqlCopyOut = Join-Path (Split-Path $PgData -Parent) "robocopy-pgsql.log"
-$pgsqlCopyProc = Start-Process -FilePath "robocopy.exe" -ArgumentList @((Join-Path $PkgRoot "pgsql"), $localPgsql, "/E", "/R:1", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/NC", "/NS", "/NP") -NoNewWindow -Wait -PassThru -RedirectStandardOutput $pgsqlCopyOut -RedirectStandardError "$pgsqlCopyOut.err"
+$pgsqlSrcQ = '"' + (Join-Path $PkgRoot "pgsql") + '"'
+$pgsqlDstQ = '"' + $localPgsql + '"'
+$pgsqlCopyProc = Start-Process -FilePath "robocopy.exe" -ArgumentList @($pgsqlSrcQ, $pgsqlDstQ, "/E", "/R:1", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/NC", "/NS", "/NP") -NoNewWindow -Wait -PassThru -RedirectStandardOutput $pgsqlCopyOut -RedirectStandardError "$pgsqlCopyOut.err"
 $lines += "COPY_PGSQL_TO_LOCALSTATE_ROBOCOPY_EXIT: $($pgsqlCopyProc.ExitCode)"
 
 $pgBin = Join-Path $localPgsql "bin"
@@ -125,7 +134,9 @@ if ($initdbExit -eq 0) {
         # Python install's site-packages tree has far more, smaller files than pgsql's).
         $localPython = Join-Path (Split-Path $PgData -Parent) "python"
         $pyCopyOut = Join-Path (Split-Path $PgData -Parent) "robocopy-python.log"
-        $pyCopyProc = Start-Process -FilePath "robocopy.exe" -ArgumentList @((Join-Path $PkgRoot "python"), $localPython, "/E", "/R:1", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/NC", "/NS", "/NP") -NoNewWindow -Wait -PassThru -RedirectStandardOutput $pyCopyOut -RedirectStandardError "$pyCopyOut.err"
+        $pySrcQ = '"' + (Join-Path $PkgRoot "python") + '"'
+        $pyDstQ = '"' + $localPython + '"'
+        $pyCopyProc = Start-Process -FilePath "robocopy.exe" -ArgumentList @($pySrcQ, $pyDstQ, "/E", "/R:1", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/NC", "/NS", "/NP") -NoNewWindow -Wait -PassThru -RedirectStandardOutput $pyCopyOut -RedirectStandardError "$pyCopyOut.err"
         $lines += "COPY_PYTHON_TO_LOCALSTATE_ROBOCOPY_EXIT: $($pyCopyProc.ExitCode)"
 
         $pythonExe = Join-Path $localPython "python.exe"

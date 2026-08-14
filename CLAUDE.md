@@ -541,12 +541,13 @@ route is now a 3-line wrapper around it. The import commit endpoint calls this c
 once per row inside a single DB transaction, and only commits/triggers-snapshot once at the
 end if every row succeeded.
 
-**`_trigger_snapshot_recompute(portfolio_id, from_date)` ignores its `portfolio_id`
-parameter** — it only calls `compute_daily_snapshots_all_users.delay(from_date.isoformat())`,
-which recomputes every portfolio from that date forward regardless of which one is passed.
-The import commit endpoint exploits this: it calls this once after the batch commit, with
-`from_date = min(date across all imported rows)`, regardless of how many portfolios/accounts
-the batch touched — no need to trigger once per portfolio.
+**`_trigger_snapshot_recompute(portfolio_id, from_date, queries)` ignores its `portfolio_id`
+parameter** — it only enqueues PgQueuer's `compute_daily_snapshots_all_users` (`payload=
+from_date.isoformat().encode()`, see "Background job processing" above), which recomputes
+every portfolio from that date forward regardless of which one is passed. The import commit
+endpoint exploits this: it calls this once after the batch commit, with `from_date = min(date
+across all imported rows)`, regardless of how many portfolios/accounts the batch touched — no
+need to trigger once per portfolio.
 
 **The "Sens" column is the whole design** — the Excel template never asks the user to type a
 signed quantity or pick an internal `type`/`operation`; a single human-friendly "Sens" column
@@ -744,21 +745,27 @@ This app is single-user; a distributed-worker model (separate broker + worker pr
 more machinery than it needs. Issue #66 tracks migrating off Celery/Redis **incrementally**, one
 small, independently live-verified step at a time, not a single big-bang rewrite.
 
-**Current state**: 4 of the 6 periodic/on-demand background tasks — `refresh_prices_live`,
-`refresh_etf_holdings`, `refresh_macro_indicators`, `refresh_country_performance` — run through
-PgQueuer, not Celery. The 2 snapshot tasks (`compute_daily_snapshots_all_users`,
-`compute_monthly_snapshots_all_users`) plus `recompute_snapshots_range`/`fill_missing_snapshots`
-remain Celery-only: `recompute_snapshots_range`'s live progress-bar UI is the main reason this
-isn't a single cutover. The `job_runs` model below was deliberately designed to generalize that
-progress-reporting need too, but converting that specific task hasn't happened yet — Celery,
-Redis, and the `worker` container all stay until it does.
+**Current state**: all 6 periodic/on-demand background tasks now run through PgQueuer, not
+Celery — `refresh_prices_live`/`refresh_etf_holdings`/`refresh_macro_indicators`/
+`refresh_country_performance` (step 3), plus `compute_daily_snapshots_all_users`/
+`compute_monthly_snapshots_all_users`/`fill_missing_snapshots`/`recompute_snapshots_range`
+(step 4). Celery/Redis/the `worker` container all stay installed but **idle** —
+`celery_app.py`'s `beat_schedule` is now `{}`, since nothing is left for Celery Beat to
+dispatch. Full removal (dropping the `redis` service, the Celery `worker` service,
+`celery_app.py` itself) is a later step, not yet done.
 
 **`job_runs` table** (`app/models/job_run.py`, `app/tasks/job_runs.py`) replaces Redis-based
-sync-status keys for the 4 migrated tasks: one row per **execution attempt**
+sync-status keys *and* Celery's `AsyncResult` for every task: one row per **execution attempt**
 (schedule/on-demand/startup-triggered), not per logical job — `pgq_job_id` is deliberately not
-unique (see below). `to_sync_status_dict()`/`get_latest()` reproduce the exact JSON shape the
-frontend already expected from the old Redis-backed `/sync-status` endpoints, so no frontend
-changes were needed for the cutover.
+unique (see below). Two mapping functions produce two different JSON shapes for two different
+consumers: `to_sync_status_dict()` (paired with `get_latest(task_name)`) reproduces what the
+old Redis-backed `/sync-status` endpoints already returned; `to_task_status_dict()` (paired with
+`get_by_id(run_id)`) reproduces Celery `AsyncResult`'s `PENDING`/`PROGRESS`/`SUCCESS`/`FAILURE`
+vocabulary for `recompute_snapshots_range`'s admin progress-bar polling
+(`GET /api/admin/task/{task_id}`) — the frontend's `TaskStatus.state` TS type is a closed union
+over exactly those 4 strings, so an unmapped state renders a blank result box. Neither cutover
+needed frontend changes — both mapping functions were built to match an existing JSON contract,
+not the other way around.
 
 **`app/core/pgq.py`** holds the web process's own asyncpg pool + `Queries` instance (FastAPI
 `Depends(get_pgq_queries)`, mirrors the existing `get_db` idiom) — routers enqueue on-demand
@@ -800,12 +807,43 @@ since this process never imports `celery_app.py`. Present in `compose.yaml` and
 generated at build time from the root file, not committed (see `.gitignore`) — no separate edit
 needed there.
 
+**Never nest `asyncio.run()` inside a PgQueuer handler — it runs inside the worker's own
+persistent event loop already.** The Celery-era `fill_missing_snapshots`/
+`recompute_snapshots_range` task bodies called `asyncio.run(...)` per phase/iteration (correct
+for a *synchronous* Celery task spinning up a fresh loop per DB interaction) — reusing that
+shape unchanged inside a `@pgq.entrypoint` raises `RuntimeError: asyncio.run() cannot be called
+from a running event loop`. Confirmed live in step 4's Pass 2 (real wall-clock schedule
+firing) — no mocked unit test exercises a real running PgQueuer loop, so this class of bug only
+surfaces there. Fixed by rewriting both cores as plain `async def` with a single
+`create_async_engine`/`Session` for the whole run and `await` throughout
+(`_run_fill_missing_snapshots`/`_run_recompute_snapshots` in `snapshots.py`), matching
+`app/tasks/prices.py`'s `_run_price_refresh` — every task registered in `pgq_app.py` must
+follow this shape, never the older Celery-task one.
+
+**`recompute_snapshots_range` has a different `job_runs` lifecycle from every other task,
+because its client needs a pollable `task_id` back synchronously, before the job is even
+picked up.** Every other task's `job_runs` row is created by its own PgQueuer handler once the
+worker actually starts processing it (via `start_run` inside `_run_tracked`) — fine, since
+nothing polls those rows by identity, only "give me the latest run for this task_name."
+`recompute_snapshots_range` is different: `admin.py`'s `POST /recompute-snapshots` calls
+`job_runs.start_run(...)` itself *before* enqueueing, embeds the resulting `run_id` in the
+PgQueuer payload (JSON: `{"start", "end", "run_id"}`), and returns `{"task_id": str(run_id)}`
+immediately — so `GET /api/admin/task/{task_id}` has something real to poll even while the job
+is still queued (mapped to `PENDING` via `to_task_status_dict`'s `total_steps==0` branch). The
+entrypoint handler in `pgq_app.py` never calls `start_run` for this task — it only reports
+progress onto the given row and owns the terminal `finish_run` call directly, so it can't reuse
+the shared `_run_tracked` helper. Confirmed live: killing `pgq-worker` mid-run leaves the row
+`PENDING`/`running` (not an error), and after PgQueuer's own heartbeat-staleness window elapses
+and redelivers the job to the same `job.id`, the handler correctly resumes against the *same*
+`run_id` rather than creating a duplicate row.
+
 Tracking: #66 (main migration), #67 (considering `concurrency_limit=1` to prevent overlapping
 runs of the same sync task — not yet implemented).
 
 ## Daily snapshot logic
 
-- Auto-generated at **app startup** (via Celery task `fill_missing_snapshots`)
+- Auto-generated at **app startup** (via PgQueuer entrypoint `fill_missing_snapshots` — see
+  "Background job processing" above)
 - Triggered at **midnight** when the app is open (frontend detection, `useAutoRefresh`)
 - Excludes **weekends** (filter `EXTRACT(DOW) NOT IN (0, 6)`)
 - Based on prices from `asset_prices` (yfinance + manual)
@@ -815,10 +853,10 @@ runs of the same sync task — not yet implemented).
 
 - Every 15 min via PgQueuer's own cron scheduler (`pgq-worker`, `refresh_prices_live`), plus
   once at **backend startup** (`main.py` lifespan does
-  `await get_pgq_queries().enqueue("refresh_prices_live", payload=b"startup")` alongside
-  `fill_missing_snapshots.delay()`, each in its own independent try/except so one failing
-  doesn't block the other) — see "Background job processing" above for the full migration
-  context
+  `await get_pgq_queries().enqueue("refresh_prices_live", payload=b"startup")` alongside 4
+  other startup enqueues including `fill_missing_snapshots`, each in its own independent
+  try/except so one failing doesn't block the others) — see "Background job processing" above
+  for the full migration context
 - Source: `query1.finance.yahoo.com/v8/finance/chart/{ticker}` — returns `regularMarketPrice`
 - **Glitch guard**: if the new price deviates by more than ×10 from the previous day, it is rejected
   and the ticker is added to `failed_tickers`. Protects against Yahoo scale errors (e.g. JPYEUR=X

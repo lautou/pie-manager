@@ -4,10 +4,7 @@ Integration tests for the fiscal carry-forward router.
 Covers CRUD operations and the unique constraint (portfolio + year).
 """
 import pytest
-from unittest.mock import patch
 from tests.helpers import create_portfolio
-
-_MOCK_DELAY = "app.tasks.snapshots.compute_daily_snapshots_all_users.delay"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -189,40 +186,39 @@ async def test_current_year_pv_with_cto_account_and_transactions(client, db_sess
     from datetime import date
     current_year = date.today().year
 
-    with patch(_MOCK_DELAY):
-        # Create a buy transaction (negative quantity = buy)
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": pid,
-            "account_id": acc_id,
-            "date": "2024-01-15",
-            "type": "Actif",
-            "ticker": "TST.DE",
-            "currency": "EUR",
-            "exchange_rate": 1.0,
-            "quantity": -10,
-            "unit_price": 100.0,
-            "unit_price_eur": 100.0,
-            "total_amount": -1000.0,
-            "total_amount_eur": -1000.0,
-        })
-        assert r.status_code == 201, r.text
+    # Create a buy transaction (negative quantity = buy)
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": pid,
+        "account_id": acc_id,
+        "date": "2024-01-15",
+        "type": "Actif",
+        "ticker": "TST.DE",
+        "currency": "EUR",
+        "exchange_rate": 1.0,
+        "quantity": -10,
+        "unit_price": 100.0,
+        "unit_price_eur": 100.0,
+        "total_amount": -1000.0,
+        "total_amount_eur": -1000.0,
+    })
+    assert r.status_code == 201, r.text
 
-        # Create a sell transaction (positive quantity = sell) in current year
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": pid,
-            "account_id": acc_id,
-            "date": f"{current_year}-03-01",
-            "type": "Actif",
-            "ticker": "TST.DE",
-            "currency": "EUR",
-            "exchange_rate": 1.0,
-            "quantity": 5,
-            "unit_price": 120.0,
-            "unit_price_eur": 120.0,
-            "total_amount": 600.0,
-            "total_amount_eur": 600.0,
-        })
-        assert r.status_code == 201, r.text
+    # Create a sell transaction (positive quantity = sell) in current year
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": pid,
+        "account_id": acc_id,
+        "date": f"{current_year}-03-01",
+        "type": "Actif",
+        "ticker": "TST.DE",
+        "currency": "EUR",
+        "exchange_rate": 1.0,
+        "quantity": 5,
+        "unit_price": 120.0,
+        "unit_price_eur": 120.0,
+        "total_amount": 600.0,
+        "total_amount_eur": 600.0,
+    })
+    assert r.status_code == 201, r.text
 
     # Check current-year PV
     r = await client.get("/api/fiscal/current-year-pv/", params={"portfolio_id": pid})
@@ -260,24 +256,23 @@ async def test_current_year_pv_excludes_jpyeur(client, db_session):
     current_year = date.today().year
 
     # Buy and sell JPYEUR (forex — excluded from fiscal)
-    with patch(_MOCK_DELAY):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": pid, "account_id": acc_id,
-            "date": "2024-01-01", "type": "Actif", "ticker": "JPYEUR=X",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": 100000, "unit_price": 0.006, "unit_price_eur": 0.006,
-            "total_amount": 600.0, "total_amount_eur": 600.0,
-        })
-        assert r.status_code == 201
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": pid, "account_id": acc_id,
+        "date": "2024-01-01", "type": "Actif", "ticker": "JPYEUR=X",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": 100000, "unit_price": 0.006, "unit_price_eur": 0.006,
+        "total_amount": 600.0, "total_amount_eur": 600.0,
+    })
+    assert r.status_code == 201
 
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": pid, "account_id": acc_id,
-            "date": f"{current_year}-04-01", "type": "Actif", "ticker": "JPYEUR=X",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": -50000, "unit_price": 0.0055, "unit_price_eur": 0.0055,
-            "total_amount": -275.0, "total_amount_eur": -275.0,
-        })
-        assert r.status_code == 201
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": pid, "account_id": acc_id,
+        "date": f"{current_year}-04-01", "type": "Actif", "ticker": "JPYEUR=X",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -50000, "unit_price": 0.0055, "unit_price_eur": 0.0055,
+        "total_amount": -275.0, "total_amount_eur": -275.0,
+    })
+    assert r.status_code == 201
 
     r = await client.get("/api/fiscal/current-year-pv/", params={"portfolio_id": pid})
     assert r.status_code == 200

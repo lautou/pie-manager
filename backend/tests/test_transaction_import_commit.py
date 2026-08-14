@@ -7,12 +7,14 @@ and the single snapshot-recompute trigger per commit.
 import io
 import json
 from datetime import date
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from openpyxl import Workbook
 from sqlalchemy import select
 
+from app.core.pgq import get_pgq_queries
+from app.main import app as fastapi_app
 from app.models import Broker, Portfolio, PortfolioAccount, Product, Transaction
 from app.services.import_service import TRANSACTION_COLUMNS
 
@@ -69,12 +71,17 @@ async def test_commit_creates_transaction_and_triggers_snapshot_once(client, db_
     content = _make_xlsx([_row(portfolio, broker, product)])
     files, data = _upload(content, [2])
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay") as mock_delay:
+    mock_queries = MagicMock()
+    mock_queries.enqueue = AsyncMock(return_value=[0])
+    fastapi_app.dependency_overrides[get_pgq_queries] = lambda: mock_queries
+    try:
         r = await client.post("/api/transactions/import/commit", files=files, data=data)
+    finally:
+        fastapi_app.dependency_overrides.pop(get_pgq_queries, None)
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["imported_count"] == 1
-    mock_delay.assert_called_once()
+    mock_queries.enqueue.assert_called_once()
 
     tx = (await db_session.execute(
         select(Transaction).where(Transaction.id == body["created_transaction_ids"][0])
@@ -93,11 +100,18 @@ async def test_commit_multiple_rows_triggers_snapshot_exactly_once_with_min_date
     ])
     files, data = _upload(content, [2, 3])
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay") as mock_delay:
+    mock_queries = MagicMock()
+    mock_queries.enqueue = AsyncMock(return_value=[0])
+    fastapi_app.dependency_overrides[get_pgq_queries] = lambda: mock_queries
+    try:
         r = await client.post("/api/transactions/import/commit", files=files, data=data)
+    finally:
+        fastapi_app.dependency_overrides.pop(get_pgq_queries, None)
     assert r.status_code == 200, r.text
     assert r.json()["imported_count"] == 2
-    mock_delay.assert_called_once_with("2026-01-05")
+    mock_queries.enqueue.assert_called_once_with(
+        "compute_daily_snapshots_all_users", payload=b"2026-01-05",
+    )
 
 
 @pytest.mark.asyncio
@@ -116,8 +130,7 @@ async def test_commit_default_excludes_duplicate_unless_forced(client, db_sessio
     content = _make_xlsx([_row(portfolio, broker, product)])
     files, data = _upload(content, [])  # nothing included -> duplicate stays excluded
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/import/commit", files=files, data=data)
+    r = await client.post("/api/transactions/import/commit", files=files, data=data)
     assert r.status_code == 200
     assert r.json()["imported_count"] == 0
 
@@ -138,8 +151,7 @@ async def test_commit_forces_include_of_flagged_duplicate(client, db_session):
     content = _make_xlsx([_row(portfolio, broker, product)])
     files, data = _upload(content, [2])  # explicitly force the duplicate row
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/import/commit", files=files, data=data)
+    r = await client.post("/api/transactions/import/commit", files=files, data=data)
     assert r.status_code == 200, r.text
     assert r.json()["imported_count"] == 1
 
@@ -334,8 +346,7 @@ async def test_commit_reorders_unsorted_rows_chronologically(client, db_session)
     ])
     files, data = _upload(content, [2, 3])
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/import/commit", files=files, data=data)
+    r = await client.post("/api/transactions/import/commit", files=files, data=data)
     assert r.status_code == 200, r.text
 
     txs = (await db_session.execute(
@@ -361,8 +372,7 @@ async def test_commit_achat_with_courtage_and_ttf_creates_linked_frais(client, d
     content = _make_xlsx([_row(portfolio, broker, product, **{"Courtage (EUR)": 2.5, "TTF (EUR)": 1.8})])
     files, data = _upload(content, [2])
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/import/commit", files=files, data=data)
+    r = await client.post("/api/transactions/import/commit", files=files, data=data)
     assert r.status_code == 200, r.text
     parent_id = r.json()["created_transaction_ids"][0]
 
@@ -380,8 +390,7 @@ async def test_commit_updates_cash_balance(client, db_session):
     content = _make_xlsx([_row(portfolio, broker, product)])
     files, data = _upload(content, [2])
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/import/commit", files=files, data=data)
+    r = await client.post("/api/transactions/import/commit", files=files, data=data)
     assert r.status_code == 200
 
     pa = (await db_session.execute(
@@ -396,8 +405,13 @@ async def test_commit_updates_cash_balance(client, db_session):
 async def test_commit_zero_rows_does_not_trigger_snapshot(client, db_session):
     content = _make_xlsx([])
     files, data = _upload(content, [])
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay") as mock_delay:
+    mock_queries = MagicMock()
+    mock_queries.enqueue = AsyncMock(return_value=[0])
+    fastapi_app.dependency_overrides[get_pgq_queries] = lambda: mock_queries
+    try:
         r = await client.post("/api/transactions/import/commit", files=files, data=data)
+    finally:
+        fastapi_app.dependency_overrides.pop(get_pgq_queries, None)
     assert r.status_code == 200
     assert r.json()["imported_count"] == 0
-    mock_delay.assert_not_called()
+    mock_queries.enqueue.assert_not_called()

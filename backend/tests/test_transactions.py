@@ -2,12 +2,12 @@
 Non-regression tests for transaction CRUD endpoints.
 
 Each test creates its own Portfolio + Account + Product so fixtures are
-fully isolated. The Celery snapshot task triggered after mutations is
-patched out so tests don't require Redis/Celery.
+fully isolated. The snapshot-recompute task triggered after mutations is enqueued via
+PgQueuer; conftest.py's `client` fixture provides a default no-op get_pgq_queries override
+so tests don't need to mock it individually.
 """
 import pytest
 from datetime import date, timedelta
-from unittest.mock import patch
 from sqlalchemy import select
 
 from tests.helpers import create_portfolio, create_broker_id, create_product
@@ -63,8 +63,7 @@ async def test_create_transaction_computes_derived_fields(client):
         "unit_price": 200.0,
     }
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json=payload)
+    r = await client.post("/api/transactions/", json=payload)
 
     assert r.status_code == 201, r.text
     data = r.json()
@@ -93,8 +92,7 @@ async def test_create_transaction_eur_defaults(client):
         "unit_price": 50.0,
     }
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json=payload)
+    r = await client.post("/api/transactions/", json=payload)
 
     assert r.status_code == 201
     data = r.json()
@@ -117,9 +115,8 @@ async def test_list_transactions_filtered_by_user(client):
     await _create_product(client, "ETF.LIST1")
     await _create_product(client, "ETF.LIST2")
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        await client.post("/api/transactions/", json={**_tx_payload(uid1, aid1, "ETF.LIST1"), "date": "2025-01-05"})
-        await client.post("/api/transactions/", json={**_tx_payload(uid2, aid2, "ETF.LIST2"), "date": "2025-01-06"})
+    await client.post("/api/transactions/", json={**_tx_payload(uid1, aid1, "ETF.LIST1"), "date": "2025-01-05"})
+    await client.post("/api/transactions/", json={**_tx_payload(uid2, aid2, "ETF.LIST2"), "date": "2025-01-06"})
 
     r = await client.get(f"/api/transactions/?portfolio_id={uid1}")
     assert r.status_code == 200
@@ -144,9 +141,8 @@ async def test_list_transactions_date_filter(client):
     await _create_product(client, "ETF.DATE1")
     await _create_product(client, "ETF.DATE2")
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        await client.post("/api/transactions/", json={**_tx_payload(uid, aid, "ETF.DATE1"), "date": "2024-12-01"})
-        await client.post("/api/transactions/", json={**_tx_payload(uid, aid, "ETF.DATE2"), "date": "2025-06-15"})
+    await client.post("/api/transactions/", json={**_tx_payload(uid, aid, "ETF.DATE1"), "date": "2024-12-01"})
+    await client.post("/api/transactions/", json={**_tx_payload(uid, aid, "ETF.DATE2"), "date": "2025-06-15"})
 
     r = await client.get(f"/api/transactions/?portfolio_id={uid}&date_from=2025-01-01")
     assert r.status_code == 200
@@ -168,16 +164,15 @@ async def test_update_transaction_recalculates_derived_fields(client):
     aid = await _create_account(client, uid)
     await _create_product(client, "SAN.UPD1")
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        tx_id = (await client.post(
-            "/api/transactions/",
-            json={**_tx_payload(uid, aid, "SAN.UPD1"), "unit_price": 10.0, "quantity": -5.0},
-        )).json()["id"]
+    tx_id = (await client.post(
+        "/api/transactions/",
+        json={**_tx_payload(uid, aid, "SAN.UPD1"), "unit_price": 10.0, "quantity": -5.0},
+    )).json()["id"]
 
-        r = await client.put(
-            f"/api/transactions/{tx_id}",
-            json={"quantity": -10.0, "unit_price": 20.0},
-        )
+    r = await client.put(
+        f"/api/transactions/{tx_id}",
+        json={"quantity": -10.0, "unit_price": 20.0},
+    )
 
     assert r.status_code == 200
     data = r.json()
@@ -201,13 +196,12 @@ async def test_delete_transaction(client):
     aid = await _create_account(client, uid)
     await _create_product(client, "MC.DEL1")
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        tx_id = (await client.post(
-            "/api/transactions/",
-            json=_tx_payload(uid, aid, "MC.DEL1"),
-        )).json()["id"]
+    tx_id = (await client.post(
+        "/api/transactions/",
+        json=_tx_payload(uid, aid, "MC.DEL1"),
+    )).json()["id"]
 
-        r = await client.delete(f"/api/transactions/{tx_id}")
+    r = await client.delete(f"/api/transactions/{tx_id}")
 
     assert r.status_code == 204
 
@@ -219,8 +213,7 @@ async def test_delete_transaction(client):
 
 @pytest.mark.asyncio
 async def test_delete_transaction_not_found(client):
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.delete("/api/transactions/999999")
+    r = await client.delete("/api/transactions/999999")
     assert r.status_code == 404
 
 
@@ -237,9 +230,8 @@ async def test_list_transactions_filter_by_account_id(client):
     await _create_product(client, "ETF.ACC1")
     await _create_product(client, "ETF.ACC2")
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        await client.post("/api/transactions/", json={**_tx_payload(uid, aid1, "ETF.ACC1")})
-        await client.post("/api/transactions/", json={**_tx_payload(uid, aid2, "ETF.ACC2")})
+    await client.post("/api/transactions/", json={**_tx_payload(uid, aid1, "ETF.ACC1")})
+    await client.post("/api/transactions/", json={**_tx_payload(uid, aid2, "ETF.ACC2")})
 
     r = await client.get(f"/api/transactions/?portfolio_id={uid}&account_id={aid1}")
     assert r.status_code == 200
@@ -255,9 +247,8 @@ async def test_list_transactions_filter_by_ticker(client):
     await _create_product(client, "AAA.TICK")
     await _create_product(client, "BBB.TICK")
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        await client.post("/api/transactions/", json={**_tx_payload(uid, aid, "AAA.TICK")})
-        await client.post("/api/transactions/", json={**_tx_payload(uid, aid, "BBB.TICK")})
+    await client.post("/api/transactions/", json={**_tx_payload(uid, aid, "AAA.TICK")})
+    await client.post("/api/transactions/", json={**_tx_payload(uid, aid, "BBB.TICK")})
 
     # Exact match still works
     r = await client.get(f"/api/transactions/?portfolio_id={uid}&ticker=AAA.TICK")
@@ -287,16 +278,15 @@ async def test_list_transactions_filter_by_currency(client):
     await _create_product(client, "ETF.EUR.CURR")
     await _create_product(client, "ETF.USD.CURR")
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        await client.post("/api/transactions/", json={
-            **_tx_payload(uid, aid, "ETF.EUR.CURR"),
-            "currency": "EUR",
-        })
-        await client.post("/api/transactions/", json={
-            **_tx_payload(uid, aid, "ETF.USD.CURR"),
-            "currency": "USD",
-            "exchange_rate": 0.92,
-        })
+    await client.post("/api/transactions/", json={
+        **_tx_payload(uid, aid, "ETF.EUR.CURR"),
+        "currency": "EUR",
+    })
+    await client.post("/api/transactions/", json={
+        **_tx_payload(uid, aid, "ETF.USD.CURR"),
+        "currency": "USD",
+        "exchange_rate": 0.92,
+    })
 
     # Exact match
     r = await client.get(f"/api/transactions/?portfolio_id={uid}&currency=EUR")
@@ -330,9 +320,8 @@ async def test_list_transactions_filter_date_to(client):
     await _create_product(client, "ETF.DT1")
     await _create_product(client, "ETF.DT2")
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        await client.post("/api/transactions/", json={**_tx_payload(uid, aid, "ETF.DT1"), "date": "2024-03-01"})
-        await client.post("/api/transactions/", json={**_tx_payload(uid, aid, "ETF.DT2"), "date": "2025-09-15"})
+    await client.post("/api/transactions/", json={**_tx_payload(uid, aid, "ETF.DT1"), "date": "2024-03-01"})
+    await client.post("/api/transactions/", json={**_tx_payload(uid, aid, "ETF.DT2"), "date": "2025-09-15"})
 
     r = await client.get(f"/api/transactions/?portfolio_id={uid}&date_to=2024-12-31")
     assert r.status_code == 200
@@ -407,18 +396,17 @@ async def test_update_transaction_only_non_price_fields(client):
     await _create_product(client, "ETF.NONPRICE")
     await _create_product(client, "ETF.NONPRICE2")
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        tx = (await client.post("/api/transactions/", json={
-            **_tx_payload(uid, aid, "ETF.NONPRICE"),
-            "quantity": -2.0,
-            "unit_price": 30.0,
-            "exchange_rate": 1.0,
-        })).json()
-        tx_id = tx["id"]
-        original_total = tx["total_amount"]
+    tx = (await client.post("/api/transactions/", json={
+        **_tx_payload(uid, aid, "ETF.NONPRICE"),
+        "quantity": -2.0,
+        "unit_price": 30.0,
+        "exchange_rate": 1.0,
+    })).json()
+    tx_id = tx["id"]
+    original_total = tx["total_amount"]
 
-        # Update only the ticker (no price/qty/rate change) → else branch, no recompute
-        r = await client.put(f"/api/transactions/{tx_id}", json={"ticker": "ETF.NONPRICE2"})
+    # Update only the ticker (no price/qty/rate change) → else branch, no recompute
+    r = await client.put(f"/api/transactions/{tx_id}", json={"ticker": "ETF.NONPRICE2"})
 
     assert r.status_code == 200
     data = r.json()
@@ -434,12 +422,11 @@ async def test_list_transactions_skip_and_limit(client):
     aid = await _create_account(client, uid)
     await _create_product(client, "ETF.PAGE")
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        for i in range(5):
-            await client.post("/api/transactions/", json={
-                **_tx_payload(uid, aid, "ETF.PAGE"),
-                "date": f"2025-0{i+1}-15",
-            })
+    for i in range(5):
+        await client.post("/api/transactions/", json={
+            **_tx_payload(uid, aid, "ETF.PAGE"),
+            "date": f"2025-0{i+1}-15",
+        })
 
     r_all = await client.get(f"/api/transactions/?portfolio_id={uid}")
     assert len(r_all.json()) == 5
@@ -482,13 +469,12 @@ async def test_create_transaction_updates_cash_balance(client, db_session):
     db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "LIQUIDITE.EURO",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": 40.0, "unit_price": 1.0,
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "LIQUIDITE.EURO",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": 40.0, "unit_price": 1.0,
+    })
     assert r.status_code == 201
 
     await db_session.refresh(pa)
@@ -518,20 +504,18 @@ async def test_delete_transaction_restores_cash_balance(client, db_session):
     db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r_create = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "LIQUIDITE.EURO",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": 100.0, "unit_price": 1.0,
-        })
+    r_create = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "LIQUIDITE.EURO",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": 100.0, "unit_price": 1.0,
+    })
     assert r_create.status_code == 201
     tx_id = r_create.json()["id"]
     await db_session.refresh(pa)
     assert pa.cash_balance_eur == pytest.approx(300.0, abs=0.01)
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r_del = await client.delete(f"/api/transactions/{tx_id}")
+    r_del = await client.delete(f"/api/transactions/{tx_id}")
     assert r_del.status_code == 204
 
     await db_session.refresh(pa)
@@ -561,13 +545,12 @@ async def test_stock_buy_decreases_cash_balance(client, db_session):
     db_session.add(Product(ticker="AAPL.LIQ", name="Apple", category="Actif", currency="USD"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "AAPL.LIQ",
-            "currency": "USD", "exchange_rate": 0.92,
-            "quantity": -5.0, "unit_price": 150.0,
-        })
+    await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "AAPL.LIQ",
+        "currency": "USD", "exchange_rate": 0.92,
+        "quantity": -5.0, "unit_price": 150.0,
+    })
 
     # total_amount_eur = -5 × 150 × 0.92 = -690 EUR → cash decreases
     await db_session.refresh(pa)
@@ -600,17 +583,16 @@ async def test_multiple_same_day_liquidite_transactions_cumulate(client, db_sess
     db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid, "date": _TODAY,
-            "type": "Actif", "ticker": "LIQUIDITE.EURO",
-            "currency": "EUR", "exchange_rate": 1.0, "quantity": 40.0, "unit_price": 1.0,
-        })
-        await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid, "date": _TODAY,
-            "type": "Actif", "ticker": "LIQUIDITE.EURO",
-            "currency": "EUR", "exchange_rate": 1.0, "quantity": 160.0, "unit_price": 1.0,
-        })
+    await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid, "date": _TODAY,
+        "type": "Actif", "ticker": "LIQUIDITE.EURO",
+        "currency": "EUR", "exchange_rate": 1.0, "quantity": 40.0, "unit_price": 1.0,
+    })
+    await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid, "date": _TODAY,
+        "type": "Actif", "ticker": "LIQUIDITE.EURO",
+        "currency": "EUR", "exchange_rate": 1.0, "quantity": 160.0, "unit_price": 1.0,
+    })
 
     await db_session.refresh(pa)
     assert pa.cash_balance_eur == pytest.approx(300.0, abs=0.01)
@@ -647,13 +629,12 @@ async def test_create_forex_position_buy_does_not_change_cash_balance(client, db
     db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Actif", instrument_type="Cash", currency="JPY"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
-            "currency": "JPY", "exchange_rate": 0.006102,
-            "quantity": 117333.0, "unit_price": 1.0,
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
+        "currency": "JPY", "exchange_rate": 0.006102,
+        "quantity": 117333.0, "unit_price": 1.0,
+    })
     assert r.status_code == 201
 
     await db_session.refresh(pa)
@@ -683,13 +664,12 @@ async def test_create_forex_position_sell_does_not_change_cash_balance(client, d
     db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Actif", instrument_type="Cash", currency="JPY"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
-            "currency": "JPY", "exchange_rate": 0.005387,
-            "quantity": -10145.0, "unit_price": 1.0,
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
+        "currency": "JPY", "exchange_rate": 0.005387,
+        "quantity": -10145.0, "unit_price": 1.0,
+    })
     assert r.status_code == 201
 
     await db_session.refresh(pa)
@@ -719,16 +699,15 @@ async def test_fractional_sibling_forex_position_does_not_change_cash_balance(cl
     db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Actif", instrument_type="Cash", currency="JPY"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
-            "currency": "JPY", "exchange_rate": 0.006102,
-            "quantity": 50000.0, "unit_price": 1.0,
-            "additional_executions": [
-                {"date": _TODAY, "quantity": 67333.0, "unit_price": 1.0, "exchange_rate": 0.006105},
-            ],
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
+        "currency": "JPY", "exchange_rate": 0.006102,
+        "quantity": 50000.0, "unit_price": 1.0,
+        "additional_executions": [
+            {"date": _TODAY, "quantity": 67333.0, "unit_price": 1.0, "exchange_rate": 0.006105},
+        ],
+    })
     assert r.status_code == 201
 
     await db_session.refresh(pa)
@@ -765,14 +744,13 @@ async def test_fee_linked_to_forex_position_still_changes_cash_balance(client, d
     db_session.add(Product(ticker="FRAIS.COURTAGE.EUR", name="Frais courtage", category="Frais", currency="EUR", fee_type="Courtage"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
-            "currency": "JPY", "exchange_rate": 0.006102,
-            "quantity": 117333.0, "unit_price": 1.0,
-            "courtage_eur": 5.0,
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
+        "currency": "JPY", "exchange_rate": 0.006102,
+        "quantity": 117333.0, "unit_price": 1.0,
+        "courtage_eur": 5.0,
+    })
     assert r.status_code == 201
     parent_id = r.json()["id"]
 
@@ -812,20 +790,18 @@ async def test_delete_forex_position_transaction_is_noop_on_cash_balance(client,
     db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Actif", instrument_type="Cash", currency="JPY"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r_create = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
-            "currency": "JPY", "exchange_rate": 0.006102,
-            "quantity": 117333.0, "unit_price": 1.0,
-        })
+    r_create = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
+        "currency": "JPY", "exchange_rate": 0.006102,
+        "quantity": 117333.0, "unit_price": 1.0,
+    })
     assert r_create.status_code == 201
     tx_id = r_create.json()["id"]
     await db_session.refresh(pa)
     assert pa.cash_balance_eur == pytest.approx(0.0, abs=0.01)
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r_del = await client.delete(f"/api/transactions/{tx_id}")
+    r_del = await client.delete(f"/api/transactions/{tx_id}")
     assert r_del.status_code == 204
 
     await db_session.refresh(pa)
@@ -855,25 +831,23 @@ async def test_update_forex_position_transaction_does_not_change_cash_balance(cl
     db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Actif", instrument_type="Cash", currency="JPY"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r_create = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
-            "currency": "JPY", "exchange_rate": 0.006102,
-            "quantity": 100000.0, "unit_price": 1.0,
-        })
+    r_create = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
+        "currency": "JPY", "exchange_rate": 0.006102,
+        "quantity": 100000.0, "unit_price": 1.0,
+    })
     assert r_create.status_code == 201
     tx_id = r_create.json()["id"]
     await db_session.refresh(pa)
     assert pa.cash_balance_eur == pytest.approx(17.5, abs=0.01)
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r_update = await client.put(f"/api/transactions/{tx_id}", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
-            "currency": "JPY", "exchange_rate": 0.006200,
-            "quantity": 150000.0, "unit_price": 1.0,
-        })
+    r_update = await client.put(f"/api/transactions/{tx_id}", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
+        "currency": "JPY", "exchange_rate": 0.006200,
+        "quantity": 150000.0, "unit_price": 1.0,
+    })
     assert r_update.status_code == 200
 
     await db_session.refresh(pa)
@@ -908,14 +882,13 @@ async def test_create_attribution_does_not_change_cash_balance_or_get_a_running_
     db_session.add(Product(ticker="MC.ATTRIB", name="LVMH", category="Actif", instrument_type="Action", currency="EUR"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "MC.ATTRIB",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": -3.0, "unit_price": 500.0,
-            "operation": "Attribution",
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "MC.ATTRIB",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -3.0, "unit_price": 500.0,
+        "operation": "Attribution",
+    })
     assert r.status_code == 201
     body = r.json()
     assert body["balance_eur"] is None
@@ -950,17 +923,16 @@ async def test_fractional_sibling_attribution_does_not_get_a_running_balance(cli
     db_session.add(Product(ticker="AI.ATTRIB", name="Air Liquide", category="Actif", instrument_type="Action", currency="EUR"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "AI.ATTRIB",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": -2.0, "unit_price": 170.0,
-            "operation": "Attribution",
-            "additional_executions": [
-                {"date": _TODAY, "quantity": -1.0, "unit_price": 170.0},
-            ],
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "AI.ATTRIB",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -2.0, "unit_price": 170.0,
+        "operation": "Attribution",
+        "additional_executions": [
+            {"date": _TODAY, "quantity": -1.0, "unit_price": 170.0},
+        ],
+    })
     assert r.status_code == 201
     parent_id = r.json()["id"]
 
@@ -999,19 +971,17 @@ async def test_delete_attribution_transaction_is_noop_on_cash_balance(client, db
     db_session.add(Product(ticker="SU.ATTRIB", name="Schneider", category="Actif", instrument_type="Action", currency="EUR"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "SU.ATTRIB",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": -5.0, "unit_price": 270.0,
-            "operation": "Attribution",
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "SU.ATTRIB",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -5.0, "unit_price": 270.0,
+        "operation": "Attribution",
+    })
     assert r.status_code == 201
     tx_id = r.json()["id"]
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r_del = await client.delete(f"/api/transactions/{tx_id}")
+    r_del = await client.delete(f"/api/transactions/{tx_id}")
     assert r_del.status_code == 204
 
     await db_session.refresh(pa)
@@ -1042,19 +1012,17 @@ async def test_update_attribution_amount_does_not_change_cash_balance(client, db
     db_session.add(Product(ticker="TTE.ATTRIB", name="TotalEnergies", category="Actif", instrument_type="Action", currency="EUR"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r_create = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "TTE.ATTRIB",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": -4.0, "unit_price": 60.0,
-            "operation": "Attribution",
-        })
+    r_create = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "TTE.ATTRIB",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -4.0, "unit_price": 60.0,
+        "operation": "Attribution",
+    })
     assert r_create.status_code == 201
     tx_id = r_create.json()["id"]
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r_update = await client.put(f"/api/transactions/{tx_id}", json={"unit_price": 65.0})
+    r_update = await client.put(f"/api/transactions/{tx_id}", json={"unit_price": 65.0})
     assert r_update.status_code == 200
     assert r_update.json()["balance_eur"] is None
 
@@ -1098,19 +1066,17 @@ async def test_update_attribution_date_does_not_recompute_or_propagate_balance(c
     db_session.add(later_cash)
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r_create = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": "2026-01-01", "type": "Actif", "ticker": "MC.ATTRIBDATE",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": -2.0, "unit_price": 500.0,
-            "operation": "Attribution",
-        })
+    r_create = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": "2026-01-01", "type": "Actif", "ticker": "MC.ATTRIBDATE",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -2.0, "unit_price": 500.0,
+        "operation": "Attribution",
+    })
     assert r_create.status_code == 201
     tx_id = r_create.json()["id"]
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r_update = await client.put(f"/api/transactions/{tx_id}", json={"date": "2026-06-15"})
+    r_update = await client.put(f"/api/transactions/{tx_id}", json={"date": "2026-06-15"})
     assert r_update.status_code == 200
     assert r_update.json()["balance_eur"] is None
 
@@ -1149,25 +1115,23 @@ async def test_create_transaction_auto_calculates_balance_eur(client, db_session
     db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        # First transaction: a Revenu with known balance_eur
-        r1 = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _LAST_WEEK, "type": "Revenu", "ticker": "SU.PA.BAL",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": 27.0, "unit_price": 4.2,
-            "balance_currency": 507.83, "balance_eur": 507.83,
-        })
+    # First transaction: a Revenu with known balance_eur
+    r1 = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _LAST_WEEK, "type": "Revenu", "ticker": "SU.PA.BAL",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": 27.0, "unit_price": 4.2,
+        "balance_currency": 507.83, "balance_eur": 507.83,
+    })
     assert r1.status_code == 201
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        # New transaction: balance_eur not provided → must be auto-calculated
-        r2 = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "LIQUIDITE.EURO",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": 40.0, "unit_price": 1.0,
-        })
+    # New transaction: balance_eur not provided → must be auto-calculated
+    r2 = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "LIQUIDITE.EURO",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": 40.0, "unit_price": 1.0,
+    })
     assert r2.status_code == 201
     data = r2.json()
 
@@ -1233,13 +1197,12 @@ async def test_create_transaction_balance_eur_scoped_per_portfolio_shared_broker
     ))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": pid_b, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "LIQUIDITE.EURO",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": 2210.0, "unit_price": 1.0,
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": pid_b, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "LIQUIDITE.EURO",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": 2210.0, "unit_price": 1.0,
+    })
     assert r.status_code == 201
     data = r.json()
 
@@ -1276,13 +1239,12 @@ async def test_create_transaction_no_prev_balance_leaves_balance_eur_none(client
     db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "LIQUIDITE.EURO",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": 100.0, "unit_price": 1.0,
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "LIQUIDITE.EURO",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": 100.0, "unit_price": 1.0,
+    })
     assert r.status_code == 201
     # No previous balance known → balance_eur stays null (shown as '—')
     assert r.json()["balance_eur"] is None
@@ -1315,21 +1277,20 @@ async def test_update_transaction_auto_calculates_balance_eur_when_null(client, 
     db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        # Previous transaction with known balance_eur (imported from Sheets)
-        await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _LAST_WEEK, "type": "Revenu", "ticker": "SU.PA.UPD",
-            "currency": "EUR", "exchange_rate": 1.0, "quantity": 27.0, "unit_price": 4.2,
-            "balance_eur": 507.83, "balance_currency": 507.83,
-        })
+    # Previous transaction with known balance_eur (imported from Sheets)
+    await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _LAST_WEEK, "type": "Revenu", "ticker": "SU.PA.UPD",
+        "currency": "EUR", "exchange_rate": 1.0, "quantity": 27.0, "unit_price": 4.2,
+        "balance_eur": 507.83, "balance_currency": 507.83,
+    })
 
-        # Transaction created with balance_eur=null (before the auto-calc fix)
-        r_old = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "LIQUIDITE.EURO",
-            "currency": "EUR", "exchange_rate": 1.0, "quantity": 40.0, "unit_price": 1.0,
-        })
+    # Transaction created with balance_eur=null (before the auto-calc fix)
+    r_old = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "LIQUIDITE.EURO",
+        "currency": "EUR", "exchange_rate": 1.0, "quantity": 40.0, "unit_price": 1.0,
+    })
     assert r_old.status_code == 201
     tx_id = r_old.json()["id"]
 
@@ -1345,8 +1306,7 @@ async def test_update_transaction_auto_calculates_balance_eur_when_null(client, 
     await db_session.flush()
 
     # User clicks pencil + save without changes → PUT triggers auto-calc
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r_update = await client.put(f"/api/transactions/{tx_id}", json={})
+    r_update = await client.put(f"/api/transactions/{tx_id}", json={})
     assert r_update.status_code == 200
     data = r_update.json()
 
@@ -1409,13 +1369,12 @@ async def test_update_non_eur_transaction_auto_calculates_balance_currency(clien
     tx_id = withdrawal.id
 
     # User clicks pencil → save without changes → PUT with same values
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.put(f"/api/transactions/{tx_id}", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": "2026-05-25", "type": "Actif", "ticker": "JPYEUR=X",
-            "currency": "JPY", "exchange_rate": 0.005387,
-            "quantity": -10145.0, "unit_price": 1.0,
-        })
+    r = await client.put(f"/api/transactions/{tx_id}", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": "2026-05-25", "type": "Actif", "ticker": "JPYEUR=X",
+        "currency": "JPY", "exchange_rate": 0.005387,
+        "quantity": -10145.0, "unit_price": 1.0,
+    })
     assert r.status_code == 200
 
     # balance_currency = 5716779 + (-10145) = 5706634 JPY
@@ -1475,8 +1434,7 @@ async def test_update_transaction_propagates_balance_eur_to_subsequent(client, d
     await db_session.flush()
 
     # Change T1 from qty=100 to qty=150 (delta = +50)
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.put(f"/api/transactions/{t1.id}", json={"quantity": 150.0})
+    r = await client.put(f"/api/transactions/{t1.id}", json={"quantity": 150.0})
     assert r.status_code == 200
     assert r.json()["balance_eur"] == pytest.approx(150.0, abs=0.01)
 
@@ -1532,13 +1490,12 @@ async def test_create_transaction_propagates_balance_eur_to_subsequent(client, d
     db_session.add(existing)
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": "2024-12-01", "type": "Frais", "ticker": "FRAIS.TEST",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": -1.0, "unit_price": 50.0,
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": "2024-12-01", "type": "Frais", "ticker": "FRAIS.TEST",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -1.0, "unit_price": 50.0,
+    })
     assert r.status_code == 201, r.text
 
     # Reload existing tx — balance_eur must have decreased by 50
@@ -1601,13 +1558,12 @@ async def test_create_transaction_uses_prior_balance_not_future(client, db_sessi
     db_session.add_all([t1, t2])
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": "2025-02-01", "type": "Frais", "ticker": "FRAIS.TEST.B",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": -1.0, "unit_price": 50.0,
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": "2025-02-01", "type": "Frais", "ticker": "FRAIS.TEST.B",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -1.0, "unit_price": 50.0,
+    })
     assert r.status_code == 201, r.text
     data = r.json()
 
@@ -1683,8 +1639,7 @@ async def test_update_transaction_date_change_recalculates_balance_eur(client, d
     #   Apply at new pos: T1 += 50 → 150; T3 += 50 → 350
     # Final: T2.balance_eur=None, T1=150, T3=350
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.put(f"/api/transactions/{t2.id}", json={"date": "2024-12-01"})
+    r = await client.put(f"/api/transactions/{t2.id}", json={"date": "2024-12-01"})
     assert r.status_code == 200, r.text
     data = r.json()
 
@@ -1762,8 +1717,7 @@ async def test_balance_eur_no_negative_zero_after_date_move(client, db_session):
 
     # Move t_sell to Jan-01: undo subtracts 6290.09 from t_liq (0.0 → -6290.09),
     # apply adds 6290.09 back (-6290.09 + 6290.09 → ±0.0 — must not be -0.0)
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.put(f"/api/transactions/{t_sell.id}", json={"date": "2026-01-01"})
+    r = await client.put(f"/api/transactions/{t_sell.id}", json={"date": "2026-01-01"})
     assert r.status_code == 200
 
     # Re-fetch t_liq via list endpoint
@@ -1817,13 +1771,12 @@ async def test_balance_eur_never_negative_zero(client, db_session):
     await db_session.flush()
 
     # A deposit that nearly exactly cancels the buy → balance should be 0.0, not -0.0
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": "2024-01-01", "type": "Actif", "ticker": "LIQUIDITE.EURO",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": 45285.63, "unit_price": 1.0,
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": "2024-01-01", "type": "Actif", "ticker": "LIQUIDITE.EURO",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": 45285.63, "unit_price": 1.0,
+    })
     assert r.status_code == 201
     bal = r.json()["balance_eur"]
     # Must not be negative zero (import math; math.copysign(1, -0.0) == -1)
@@ -1905,8 +1858,7 @@ async def test_update_transaction_date_change_backward_propagates_to_lower_id(cl
     assert t_import.id < t_manual.id, "t_import must have lower id than t_manual"
 
     # Move T_MANUAL from Feb-01 → Jan-01 (before T_IMPORT)
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.put(f"/api/transactions/{t_manual.id}", json={"date": "2025-01-01"})
+    r = await client.put(f"/api/transactions/{t_manual.id}", json={"date": "2025-01-01"})
     assert r.status_code == 200, r.text
 
     # T_MANUAL at Jan: no prior tx before Jan → balance_eur = None
@@ -1977,8 +1929,7 @@ async def test_update_transaction_date_change_forward_recalculates(client, db_se
     await db_session.flush()
 
     # Move T1 → 2025-04-01 (after T3)
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.put(f"/api/transactions/{t1.id}", json={"date": "2025-04-01"})
+    r = await client.put(f"/api/transactions/{t1.id}", json={"date": "2025-04-01"})
     assert r.status_code == 200, r.text
     data = r.json()
 
@@ -2073,14 +2024,13 @@ async def test_create_transaction_non_eur_balance_currency_not_auto_set(client, 
     db_session.add(prev_tx)
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "AAPL.NONEUR",
-            "currency": "USD",   # NOT EUR → branch 178 false
-            "exchange_rate": 0.92,
-            "quantity": -5.0, "unit_price": 150.0,
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "AAPL.NONEUR",
+        "currency": "USD",   # NOT EUR → branch 178 false
+        "exchange_rate": 0.92,
+        "quantity": -5.0, "unit_price": 150.0,
+    })
     assert r.status_code == 201
     data = r.json()
     # balance_eur was auto-calculated (prev + amount)
@@ -2135,13 +2085,12 @@ async def test_create_non_eur_transaction_auto_calculates_balance_currency(clien
     db_session.add(prev_tx)
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
-            "currency": "JPY", "exchange_rate": 0.005387,
-            "quantity": -10145.0, "unit_price": 1.0,
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
+        "currency": "JPY", "exchange_rate": 0.005387,
+        "quantity": -10145.0, "unit_price": 1.0,
+    })
     assert r.status_code == 201
     data = r.json()
 
@@ -2177,13 +2126,12 @@ async def test_create_non_eur_transaction_no_prev_currency_balance_leaves_none(c
     db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Actif", instrument_type="Cash", currency="JPY"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
-            "currency": "JPY", "exchange_rate": 0.006102,
-            "quantity": 117333.0, "unit_price": 1.0,
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
+        "currency": "JPY", "exchange_rate": 0.006102,
+        "quantity": 117333.0, "unit_price": 1.0,
+    })
     assert r.status_code == 201
     # No prior JPY balance → balance_currency stays null
     assert r.json()["balance_currency"] is None
@@ -2232,15 +2180,14 @@ async def test_create_non_eur_retroactive_balance_currency_propagation(client, d
     later_id = later_tx.id
 
     # Insert an earlier transaction — should shift the later balance by -1000
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _LAST_WEEK, "type": "Actif", "ticker": "JPYEUR=X",
-            "currency": "JPY", "exchange_rate": 0.005400,
-            "quantity": -1000.0, "unit_price": 1.0,
-            # Provide balance_currency explicitly so retroactive propagation is triggered
-            "balance_currency": 5707634.0,
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _LAST_WEEK, "type": "Actif", "ticker": "JPYEUR=X",
+        "currency": "JPY", "exchange_rate": 0.005400,
+        "quantity": -1000.0, "unit_price": 1.0,
+        # Provide balance_currency explicitly so retroactive propagation is triggered
+        "balance_currency": 5707634.0,
+    })
     assert r.status_code == 201
 
     # Verify the later transaction's balance_currency was shifted by -1000
@@ -2291,15 +2238,14 @@ async def test_create_non_eur_with_explicit_balance_currency_skips_elif(client, 
     db_session.add(prev_tx)
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
-            "currency": "JPY", "exchange_rate": 0.005387,
-            "quantity": -10145.0, "unit_price": 1.0,
-            # Caller explicitly provides balance_currency → elif is skipped
-            "balance_currency": 5706634.0,
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
+        "currency": "JPY", "exchange_rate": 0.005387,
+        "quantity": -10145.0, "unit_price": 1.0,
+        # Caller explicitly provides balance_currency → elif is skipped
+        "balance_currency": 5706634.0,
+    })
     assert r.status_code == 201
     data = r.json()
     # balance_currency is the explicit value, not auto-computed
@@ -2349,16 +2295,15 @@ async def test_create_non_eur_fractional_sibling_auto_calculates_balance_currenc
     db_session.add(anchor_tx)
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
-            "currency": "JPY", "exchange_rate": 0.005387,
-            "quantity": -10000.0, "unit_price": 1.0,
-            "additional_executions": [
-                {"date": _TODAY, "quantity": -1000.0, "unit_price": 1.0, "exchange_rate": 0.005387},
-            ],
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "JPYEUR=X",
+        "currency": "JPY", "exchange_rate": 0.005387,
+        "quantity": -10000.0, "unit_price": 1.0,
+        "additional_executions": [
+            {"date": _TODAY, "quantity": -1000.0, "unit_price": 1.0, "exchange_rate": 0.005387},
+        ],
+    })
     assert r.status_code == 201
     parent_id = r.json()["id"]
     # Parent: balance_currency = 5716779 + (-10000) = 5706779
@@ -2418,13 +2363,12 @@ async def test_create_transaction_zero_amount_skips_retroactive_update(client, d
     await db_session.flush()
 
     # Create a tx with total_amount_eur = 0 (quantity=0) → branch 185 false
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": "2025-01-01", "type": "Actif", "ticker": "ETF.ZERO",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": 0.0, "unit_price": 50.0,  # total_amount_eur = 0
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": "2025-01-01", "type": "Actif", "ticker": "ETF.ZERO",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": 0.0, "unit_price": 50.0,  # total_amount_eur = 0
+    })
     assert r.status_code == 201
 
     # future_tx balance_eur must be unchanged (no retroactive update)
@@ -2486,8 +2430,7 @@ async def test_update_transaction_date_changed_zero_old_amount_skips_undo(client
     await db_session.flush()
 
     # Move tx to a new date → date_changed=True, old_total_eur=0 → branch 243 false
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.put(f"/api/transactions/{tx.id}", json={"date": "2025-01-01"})
+    r = await client.put(f"/api/transactions/{tx.id}", json={"date": "2025-01-01"})
     assert r.status_code == 200
 
     # subsequent balance must remain unchanged (no undo propagation)
@@ -2523,13 +2466,12 @@ async def test_update_transaction_date_change_with_amount_change_updates_cash_ba
     db_session.add(Product(ticker="ETF.DATEAMT", name="Date+Amount ETF", category="Actif", currency="EUR"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r_create = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": "2025-02-03", "type": "Actif", "ticker": "ETF.DATEAMT",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": -5.0, "unit_price": 50.0,
-        })
+    r_create = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": "2025-02-03", "type": "Actif", "ticker": "ETF.DATEAMT",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -5.0, "unit_price": 50.0,
+    })
     assert r_create.status_code == 201
     tx_id = r_create.json()["id"]
 
@@ -2538,10 +2480,9 @@ async def test_update_transaction_date_change_with_amount_change_updates_cash_ba
     assert pa.cash_balance_eur == pytest.approx(250.0, abs=0.01)
 
     # Change both the date AND the quantity in the same PUT
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r_update = await client.put(f"/api/transactions/{tx_id}", json={
-            "date": "2025-03-10", "quantity": -8.0,
-        })
+    r_update = await client.put(f"/api/transactions/{tx_id}", json={
+        "date": "2025-03-10", "quantity": -8.0,
+    })
     assert r_update.status_code == 200
 
     # New total_amount_eur = -8*50 = -400; delta = -400 - (-250) = -150
@@ -2606,8 +2547,7 @@ async def test_update_transaction_date_changed_eur_currency_sets_balance_currenc
     # Move T2 to Feb (between T1 and original Mar position)
     # After move: T2 at Feb, prior = T1 (bal=100), so T2.balance_eur = 100+200=300
     # And currency="EUR" → balance_currency also set to 300
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.put(f"/api/transactions/{t2.id}", json={"date": "2025-02-01"})
+    r = await client.put(f"/api/transactions/{t2.id}", json={"date": "2025-02-01"})
     assert r.status_code == 200
     data = r.json()
 
@@ -2669,8 +2609,7 @@ async def test_update_transaction_date_changed_zero_new_amount_skips_apply(clien
     await db_session.flush()
 
     # Move tx to new date (date_changed=True), total_amount_eur still 0
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.put(f"/api/transactions/{tx.id}", json={"date": "2025-01-01"})
+    r = await client.put(f"/api/transactions/{tx.id}", json={"date": "2025-01-01"})
     assert r.status_code == 200
 
     # future_tx balance must be unchanged (no apply propagation when total=0)
@@ -2731,8 +2670,7 @@ async def test_update_transaction_no_date_change_eur_auto_calc_sets_balance_curr
     await db_session.flush()
 
     # Edit without changing date (no date_changed → else branch) → triggers auto-calc
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.put(f"/api/transactions/{curr_tx.id}", json={})
+    r = await client.put(f"/api/transactions/{curr_tx.id}", json={})
     assert r.status_code == 200
     data = r.json()
 
@@ -2784,8 +2722,7 @@ async def test_update_transaction_no_date_change_delta_eur_sets_balance_currency
     await db_session.flush()
 
     # Change quantity (no date change) → delta != 0, currency=EUR → branch 322 true
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.put(f"/api/transactions/{tx.id}", json={"quantity": 150.0})
+    r = await client.put(f"/api/transactions/{tx.id}", json={"quantity": 150.0})
     assert r.status_code == 200
     data = r.json()
 
@@ -2856,8 +2793,7 @@ async def test_update_transaction_date_changed_non_eur_balance_currency_not_set(
     # Move tx from Mar to Feb (between anchor at Jan and old position at Mar)
     # date_changed=True; after move, prior balance = anchor's balance_eur (500.0)
     # currency = "USD" (non-EUR) → branch 273->282 false → balance_currency NOT set
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.put(f"/api/transactions/{tx.id}", json={"date": "2025-02-01"})
+    r = await client.put(f"/api/transactions/{tx.id}", json={"date": "2025-02-01"})
     assert r.status_code == 200
     data = r.json()
 
@@ -2924,8 +2860,7 @@ async def test_update_transaction_no_date_change_non_eur_auto_calc_no_balance_cu
     await db_session.flush()
 
     # Edit without changing date → else branch, balance_eur=None, currency=USD → 313->316 false
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.put(f"/api/transactions/{curr_tx.id}", json={})
+    r = await client.put(f"/api/transactions/{curr_tx.id}", json={})
     assert r.status_code == 200
     data = r.json()
 
@@ -2977,8 +2912,7 @@ async def test_update_transaction_no_date_change_delta_non_eur_no_balance_curren
     await db_session.flush()
 
     # Change quantity (no date change) → delta != 0, currency=USD → branch 322 false
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.put(f"/api/transactions/{tx.id}", json={"quantity": -150.0})
+    r = await client.put(f"/api/transactions/{tx.id}", json={"quantity": -150.0})
     assert r.status_code == 200
     data = r.json()
 
@@ -3021,14 +2955,13 @@ async def test_create_actif_with_courtage_creates_linked_frais(client, db_sessio
     db_session.add(Product(ticker="FRAIS.COURTAGE.EUR", name="Frais courtage", category="Frais", currency="EUR", fee_type="Courtage"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "TTE.CTST",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": -9.0, "unit_price": 77.42,
-            "courtage_eur": 0.99,
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "TTE.CTST",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -9.0, "unit_price": 77.42,
+        "courtage_eur": 0.99,
+    })
     assert r.status_code == 201
     parent_id = r.json()["id"]
 
@@ -3077,14 +3010,13 @@ async def test_create_actif_with_courtage_and_ttf(client, db_session):
     db_session.add(Product(ticker="FRAIS.TTF.EUR", name="Taxe sur les Transactions Financières", category="Frais", currency="EUR", fee_type="TTF"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "AI.CTST",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": -5.0, "unit_price": 180.0,
-            "courtage_eur": 1.90, "ttf_eur": 3.60,
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "AI.CTST",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -5.0, "unit_price": 180.0,
+        "courtage_eur": 1.90, "ttf_eur": 3.60,
+    })
     assert r.status_code == 201
     parent_id = r.json()["id"]
 
@@ -3132,14 +3064,13 @@ async def test_delete_actif_also_deletes_linked_frais(client, db_session):
     db_session.add(Product(ticker="FRAIS.TTF.EUR", name="Taxe sur les Transactions Financières", category="Frais", currency="EUR", fee_type="TTF"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "SU.CTST",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": -10.0, "unit_price": 270.0,
-            "courtage_eur": 2.90, "ttf_eur": 10.80,
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "SU.CTST",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -10.0, "unit_price": 270.0,
+        "courtage_eur": 2.90, "ttf_eur": 10.80,
+    })
     assert r.status_code == 201
     parent_id = r.json()["id"]
 
@@ -3149,8 +3080,7 @@ async def test_delete_actif_also_deletes_linked_frais(client, db_session):
     )
     assert len(res.scalars().all()) == 2
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r_del = await client.delete(f"/api/transactions/{parent_id}")
+    r_del = await client.delete(f"/api/transactions/{parent_id}")
     assert r_del.status_code == 204
 
     # Parent should be gone
@@ -3192,14 +3122,13 @@ async def test_create_non_actif_with_courtage_ignored(client, db_session):
     db_session.add(Product(ticker="FRAIS.CTST", name="Frais Test", category="Frais", currency="EUR"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Frais", "ticker": "FRAIS.CTST",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": -1.0, "unit_price": 5.0,
-            "courtage_eur": 9.99,  # should be ignored for non-Actif
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Frais", "ticker": "FRAIS.CTST",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -1.0, "unit_price": 5.0,
+        "courtage_eur": 9.99,  # should be ignored for non-Actif
+    })
     assert r.status_code == 201
     parent_id = r.json()["id"]
 
@@ -3238,15 +3167,14 @@ async def test_update_actif_replaces_linked_frais(client, db_session):
     db_session.add(Product(ticker="FRAIS.TTF.EUR", name="Taxe sur les Transactions Financières", category="Frais", currency="EUR", fee_type="TTF"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        # Create with courtage 1.90€ + TTF 3.20€
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "MC.UPDATE",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": -2.0, "unit_price": 400.0,
-            "courtage_eur": 1.90, "ttf_eur": 3.20,
-        })
+    # Create with courtage 1.90€ + TTF 3.20€
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "MC.UPDATE",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -2.0, "unit_price": 400.0,
+        "courtage_eur": 1.90, "ttf_eur": 3.20,
+    })
     assert r.status_code == 201
     parent_id = r.json()["id"]
 
@@ -3259,10 +3187,9 @@ async def test_update_actif_replaces_linked_frais(client, db_session):
     balance_after_create = pa.cash_balance_eur
 
     # Now update: change courtage to 2.50€, remove TTF (0€)
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r2 = await client.put(f"/api/transactions/{parent_id}", json={
-            "courtage_eur": 2.50, "ttf_eur": 0.0,
-        })
+    r2 = await client.put(f"/api/transactions/{parent_id}", json={
+        "courtage_eur": 2.50, "ttf_eur": 0.0,
+    })
     assert r2.status_code == 200
 
     # Only 1 Frais should remain (courtage 2.50€, TTF removed)
@@ -3324,24 +3251,22 @@ async def test_update_actif_recreated_frais_get_balance_eur(client, db_session):
     db_session.add(anchor)
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        # Create with a wrong unit_price (typo: 66.67 instead of 67.66)
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "TTE.BALFIX",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": -3.0, "unit_price": 66.67,
-            "courtage_eur": 0.80, "ttf_eur": 0.99,
-        })
+    # Create with a wrong unit_price (typo: 66.67 instead of 67.66)
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "TTE.BALFIX",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -3.0, "unit_price": 66.67,
+        "courtage_eur": 0.80, "ttf_eur": 0.99,
+    })
     assert r.status_code == 201
     parent_id = r.json()["id"]
 
     # Correct the unit_price, leaving courtage/ttf unchanged (frontend always sends them)
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r2 = await client.put(f"/api/transactions/{parent_id}", json={
-            "unit_price": 67.66,
-            "courtage_eur": 0.80, "ttf_eur": 0.99,
-        })
+    r2 = await client.put(f"/api/transactions/{parent_id}", json={
+        "unit_price": 67.66,
+        "courtage_eur": 0.80, "ttf_eur": 0.99,
+    })
     assert r2.status_code == 200
     # Parent balance_eur = 206.25 - 3*67.66 = 3.27
     assert r2.json()["balance_eur"] == pytest.approx(3.27, abs=0.01)
@@ -3384,20 +3309,18 @@ async def test_update_without_frais_fields_leaves_linked_frais_unchanged(client,
     db_session.add(Product(ticker="FRAIS.COURTAGE.EUR", name="Frais courtage", category="Frais", currency="EUR", fee_type="Courtage"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "SU.UPDATE",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": -3.0, "unit_price": 270.0,
-            "courtage_eur": 1.90,
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "SU.UPDATE",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -3.0, "unit_price": 270.0,
+        "courtage_eur": 1.90,
+    })
     assert r.status_code == 201
     parent_id = r.json()["id"]
 
     # Update price only — no courtage_eur/ttf_eur → linked Frais must stay
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        await client.put(f"/api/transactions/{parent_id}", json={"unit_price": 275.0})
+    await client.put(f"/api/transactions/{parent_id}", json={"unit_price": 275.0})
 
     res = await db_session.execute(
         select(TxModel).where(TxModel.linked_transaction_id == parent_id)
@@ -3437,18 +3360,17 @@ async def test_create_fractional_order_creates_siblings(client, db_session):
     db_session.add(Product(ticker="FRAIS.COURTAGE.EUR", name="Frais courtage", category="Frais", currency="EUR", fee_type="Courtage"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "H411.FRAC",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": -84.0, "unit_price": 66.62,
-            "courtage_eur": 3.0,
-            "additional_executions": [
-                {"date": _TODAY, "quantity": -7.0, "unit_price": 66.62},
-                {"date": _TODAY, "quantity": -7.0, "unit_price": 66.64},
-            ],
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "H411.FRAC",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -84.0, "unit_price": 66.62,
+        "courtage_eur": 3.0,
+        "additional_executions": [
+            {"date": _TODAY, "quantity": -7.0, "unit_price": 66.62},
+            {"date": _TODAY, "quantity": -7.0, "unit_price": 66.64},
+        ],
+    })
     assert r.status_code == 201
     parent_id = r.json()["id"]
 
@@ -3495,16 +3417,15 @@ async def test_delete_parent_deletes_siblings(client, db_session):
     db_session.add(Product(ticker="QDVF.FRAC", name="QDVF Frac Test", category="Actif", currency="EUR"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "QDVF.FRAC",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": -550.0, "unit_price": 10.74,
-            "additional_executions": [
-                {"date": _TODAY, "quantity": -276.0, "unit_price": 10.74},
-            ],
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "QDVF.FRAC",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -550.0, "unit_price": 10.74,
+        "additional_executions": [
+            {"date": _TODAY, "quantity": -276.0, "unit_price": 10.74},
+        ],
+    })
     assert r.status_code == 201
     parent_id = r.json()["id"]
 
@@ -3514,8 +3435,7 @@ async def test_delete_parent_deletes_siblings(client, db_session):
     )
     assert len(res.scalars().all()) == 1
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r_del = await client.delete(f"/api/transactions/{parent_id}")
+    r_del = await client.delete(f"/api/transactions/{parent_id}")
     assert r_del.status_code == 204
 
     # Parent gone
@@ -3558,17 +3478,16 @@ async def test_delete_sibling_leaves_parent(client, db_session):
     db_session.add(Product(ticker="XJSE.FRAC", name="XJSE Frac Test", category="Actif", currency="EUR"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "XJSE.FRAC",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": -352.0, "unit_price": 6.11,
-            "additional_executions": [
-                {"date": _TODAY, "quantity": -227.0, "unit_price": 6.11},
-                {"date": _TODAY, "quantity": -700.0, "unit_price": 6.11},
-            ],
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "XJSE.FRAC",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -352.0, "unit_price": 6.11,
+        "additional_executions": [
+            {"date": _TODAY, "quantity": -227.0, "unit_price": 6.11},
+            {"date": _TODAY, "quantity": -700.0, "unit_price": 6.11},
+        ],
+    })
     assert r.status_code == 201
     parent_id = r.json()["id"]
 
@@ -3582,8 +3501,7 @@ async def test_delete_sibling_leaves_parent(client, db_session):
     await db_session.refresh(pa)
     balance_before = pa.cash_balance_eur
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r_del = await client.delete(f"/api/transactions/{sibling_id}")
+    r_del = await client.delete(f"/api/transactions/{sibling_id}")
     assert r_del.status_code == 204
 
     # Parent still exists
@@ -3626,17 +3544,16 @@ async def test_fractional_with_courtage_links_to_parent(client, db_session):
     db_session.add(Product(ticker="FRAIS.COURTAGE.EUR", name="Frais courtage", category="Frais", currency="EUR", fee_type="Courtage"))
     await db_session.flush()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "IS0D.FRAC",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": -79.0, "unit_price": 20.28,
-            "courtage_eur": 1.0,
-            "additional_executions": [
-                {"date": _TODAY, "quantity": -246.0, "unit_price": 20.31},
-            ],
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "IS0D.FRAC",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -79.0, "unit_price": 20.28,
+        "courtage_eur": 1.0,
+        "additional_executions": [
+            {"date": _TODAY, "quantity": -246.0, "unit_price": 20.31},
+        ],
+    })
     assert r.status_code == 201
     parent_id = r.json()["id"]
 
@@ -3690,25 +3607,23 @@ async def test_fractional_siblings_get_balance_eur(client, db_session):
     await db_session.flush()
 
     # Create an initial deposit so subsequent transactions get balance_eur
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": "2026-01-01", "type": "Actif", "ticker": "LIQUIDITE.FBRAC",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": 5000.0, "unit_price": 1.0,
-            "balance_eur": 5000.0,  # explicit initial balance
-        })
+    await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": "2026-01-01", "type": "Actif", "ticker": "LIQUIDITE.FBRAC",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": 5000.0, "unit_price": 1.0,
+        "balance_eur": 5000.0,  # explicit initial balance
+    })
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "DBX5.FRAC2",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": -28.0, "unit_price": 127.90,
-            "additional_executions": [
-                {"date": _TODAY, "quantity": -22.0, "unit_price": 128.18, "exchange_rate": 1.0},
-            ],
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "DBX5.FRAC2",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -28.0, "unit_price": 127.90,
+        "additional_executions": [
+            {"date": _TODAY, "quantity": -22.0, "unit_price": 128.18, "exchange_rate": 1.0},
+        ],
+    })
     assert r.status_code == 201
     parent_id = r.json()["id"]
 
@@ -3753,24 +3668,22 @@ async def test_fractional_sibling_non_eur_no_balance_currency(client, db_session
     await db_session.flush()
 
     # Seed an initial EUR balance
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": "2026-01-01", "type": "Actif", "ticker": "LIQUIDITE.FRAC2",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": 10000.0, "unit_price": 1.0, "balance_eur": 10000.0,
-        })
+    await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": "2026-01-01", "type": "Actif", "ticker": "LIQUIDITE.FRAC2",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": 10000.0, "unit_price": 1.0, "balance_eur": 10000.0,
+    })
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "XJSE.FRACTEST",
-            "currency": "JPY", "exchange_rate": 0.006,
-            "quantity": -1000.0, "unit_price": 1500.0,
-            "additional_executions": [
-                {"date": _TODAY, "quantity": -500.0, "unit_price": 1510.0, "exchange_rate": 0.006},
-            ],
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "XJSE.FRACTEST",
+        "currency": "JPY", "exchange_rate": 0.006,
+        "quantity": -1000.0, "unit_price": 1500.0,
+        "additional_executions": [
+            {"date": _TODAY, "quantity": -500.0, "unit_price": 1510.0, "exchange_rate": 0.006},
+        ],
+    })
     assert r.status_code == 201
     parent_id = r.json()["id"]
 
@@ -3810,22 +3723,20 @@ async def test_auto_frais_get_balance_eur(client, db_session):
     await db_session.flush()
 
     # Seed initial balance
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": "2026-01-01", "type": "Actif", "ticker": "LIQUIDITE.BTEST",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": 5000.0, "unit_price": 1.0, "balance_eur": 5000.0,
-        })
+    await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": "2026-01-01", "type": "Actif", "ticker": "LIQUIDITE.BTEST",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": 5000.0, "unit_price": 1.0, "balance_eur": 5000.0,
+    })
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.post("/api/transactions/", json={
-            "portfolio_id": uid, "account_id": aid,
-            "date": _TODAY, "type": "Actif", "ticker": "QDVF.BTEST",
-            "currency": "EUR", "exchange_rate": 1.0,
-            "quantity": -100.0, "unit_price": 10.0,
-            "courtage_eur": 3.0,
-        })
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _TODAY, "type": "Actif", "ticker": "QDVF.BTEST",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -100.0, "unit_price": 10.0,
+        "courtage_eur": 3.0,
+    })
     assert r.status_code == 201
     parent_id = r.json()["id"]
 

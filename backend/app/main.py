@@ -10,15 +10,14 @@ from app.api.routers import country_performance
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # On startup: fill any missing daily snapshots (non-blocking Celery task)
-    try:
-        from app.tasks.snapshots import fill_missing_snapshots
-        fill_missing_snapshots.delay()
-    except Exception:
-        pass  # Don't block startup if Celery is unavailable
-
     from app.core.pgq import close_pgq_pool, get_pgq_queries, init_pgq_pool
     await init_pgq_pool()  # never raises — see app/core/pgq.py
+
+    # On startup: fill any missing daily snapshots (non-blocking task).
+    try:
+        await get_pgq_queries().enqueue("fill_missing_snapshots", payload=b"startup")
+    except Exception:
+        pass  # Don't block startup if the job queue is unavailable
 
     # On startup: refresh live prices immediately so the UI doesn't wait up
     # to 15 min for the next scheduled PgQueuer run (non-blocking task).

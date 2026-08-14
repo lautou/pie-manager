@@ -145,7 +145,6 @@ async def test_delete_portfolio_cascades_all_relations(client, db_session):
       daily_snapshots, monthly_snapshots, transactions, pool_products, pools, accounts.
     Lines 82-95.
     """
-    from unittest.mock import patch
     from datetime import date as date_cls
     from app.models.portfolio import Portfolio
     from app.models.broker import Broker
@@ -199,8 +198,7 @@ async def test_delete_portfolio_cascades_all_relations(client, db_session):
     # Commit so the delete endpoint can see the rows (rollback will undo at end)
     await db_session.commit()
 
-    with patch("app.tasks.snapshots.compute_daily_snapshots_all_users.delay"):
-        r = await client.delete(f"/api/portfolios/{uid}")
+    r = await client.delete(f"/api/portfolios/{uid}")
 
     assert r.status_code == 204
     # Portfolio is gone

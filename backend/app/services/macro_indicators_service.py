@@ -5,7 +5,7 @@ indicators, per region (US / France / Monde).
 
 Split from app/tasks/macro_indicators.py the same way price_service.py is split from
 tasks/prices.py: this module owns DB reads/writes and business logic, the task module owns
-the Yahoo HTTP fetching and Celery scheduling.
+the Yahoo HTTP fetching and PgQueuer scheduling.
 """
 from __future__ import annotations
 

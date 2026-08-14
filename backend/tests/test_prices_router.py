@@ -230,13 +230,6 @@ async def test_upsert_price_returns_full_object(client, db_session):
     assert data["source"] == "yfinance"
 
 
-# ---------------------------------------------------------------------------
-# POST /api/prices/fetch is mocked/celery — skipping the actual Celery call
-# But we can test the router line 70-74 by hitting the endpoint with a mock
-# We will test it exists and returns 200 (even if celery is not running,
-# since the test might fail at task.delay() — so we skip this)
-# ---------------------------------------------------------------------------
-
 @pytest.mark.asyncio
 async def test_list_prices_empty_returns_list(client, db_session):
     """Sanity check: endpoint returns 200 with empty list for unknown ticker."""

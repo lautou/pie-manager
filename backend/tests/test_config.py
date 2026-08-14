@@ -35,21 +35,6 @@ def test_default_database_url_is_postgresql(monkeypatch):
     assert "pie_db" in s.database_url
 
 
-def test_default_redis_url():
-    s = Settings()
-    assert s.redis_url.startswith("redis://")
-
-
-def test_default_celery_broker_url():
-    s = Settings()
-    assert s.celery_broker_url.startswith("redis://")
-
-
-def test_default_celery_result_backend():
-    s = Settings()
-    assert s.celery_result_backend.startswith("redis://")
-
-
 def test_default_debug_is_false():
     s = Settings()
     assert s.debug is False

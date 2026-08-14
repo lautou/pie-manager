@@ -28,8 +28,7 @@ services:
     volumes:
       - ./backend:/app:z
     depends_on:
-      postgres:
-        condition: service_healthy
+      - postgres
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   pgq-worker:
@@ -43,8 +42,7 @@ services:
     volumes:
       - ./backend:/app:z
     depends_on:
-      postgres:
-        condition: service_healthy
+      - backend
     command: pgq run app.tasks.pgq_app:main
 
   frontend:

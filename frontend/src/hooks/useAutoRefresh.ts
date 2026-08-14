@@ -17,7 +17,7 @@ export function useAutoRefresh(portfolioId: string | undefined) {
   useEffect(() => {
     if (!portfolioId) return;
 
-    // 15-min UI refresh (fallback safety net): Celery Beat handles the price
+    // 15-min UI refresh (fallback safety net): PgQueuer handles the price
     // sync on its own schedule; this ensures data doesn't go too stale even
     // if the sync-status-driven refresh below ever misses an update.
     const refreshId = setInterval(() => {
@@ -47,7 +47,7 @@ export function useAutoRefresh(portfolioId: string | undefined) {
   // Precise refresh: as soon as a new price sync completes (detected via
   // sync-status polling), invalidate immediately instead of waiting for the
   // blind 15-min timer above — which runs on its own clock, unrelated to
-  // when Celery Beat's sync actually finishes.
+  // when PgQueuer's sync actually finishes.
   useEffect(() => {
     if (!portfolioId) return;
     const finishedAt = syncStatus?.finished_at ?? null;

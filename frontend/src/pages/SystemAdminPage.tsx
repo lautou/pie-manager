@@ -156,7 +156,7 @@ export default function SystemAdminPage() {
         <CardBody>
           <TextContent style={{ marginBottom: '1rem' }}>
             <Text component={TextVariants.p}>
-              Les prix sont automatiquement récupérés toutes les 15 minutes via une tâche Celery.
+              Les prix sont automatiquement récupérés toutes les 15 minutes via PgQueuer.
               Utilisez ce bouton uniquement pour forcer une synchronisation immédiate.
             </Text>
             {syncStatus && syncStatus.status !== 'never' && (

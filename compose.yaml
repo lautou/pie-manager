@@ -15,18 +15,6 @@ services:
       timeout: 5s
       retries: 5
 
-  redis:
-    image: docker.io/library/redis:8-alpine@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
-    volumes:
-      - redis_data:/data
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
   backend:
     build:
       context: ./backend
@@ -34,7 +22,6 @@ services:
     env_file: .env
     environment:
       POSTGRES_HOST: postgres
-      REDIS_URL: redis://redis:6379/0
       PYTHONPATH: /app
     ports:
       - "8000:8000"
@@ -43,27 +30,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
-  worker:
-    build:
-      context: ./backend
-      dockerfile: Containerfile
-    env_file: .env
-    environment:
-      POSTGRES_HOST: postgres
-      REDIS_URL: redis://redis:6379/0
-      PYTHONPATH: /app
-    volumes:
-      - ./backend:/app:z
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    command: celery -A app.tasks.celery_app worker --loglevel=info -B
 
   pgq-worker:
     build:
@@ -98,5 +65,4 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:
   frontend_node_modules:

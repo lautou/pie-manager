@@ -80,7 +80,6 @@ func runInstall() {
 		"quay.io/ltourreau/pie-manager-backend:" + Version,
 		"quay.io/ltourreau/pie-manager-frontend:" + Version,
 		"docker.io/library/postgres:16-alpine",
-		"docker.io/library/redis:7-alpine",
 		"docker.io/library/haproxy:alpine",
 	}
 	for _, img := range images {

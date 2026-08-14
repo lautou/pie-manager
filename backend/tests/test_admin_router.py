@@ -315,7 +315,7 @@ async def test_task_status_malformed_id_returns_404():
 
 
 # ---------------------------------------------------------------------------
-# Celery dispatch endpoints
+# PgQueuer dispatch endpoints
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio

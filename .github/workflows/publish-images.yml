@@ -82,22 +82,12 @@ jobs:
           --health-retries 10
         ports:
           - 5432:5432
-      redis:
-        image: redis:8-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 5
-        ports:
-          - 6379:6379
 
     steps:
       - name: Run backend image
         run: |
           podman run -d --name backend-smoke --network host \
             -e DATABASE_URL="postgresql+asyncpg://pie:pie_password@localhost:5432/pie_db" \
-            -e REDIS_URL="redis://localhost:6379/0" \
             -e PYTHONPATH=/app \
             "quay.io/ltourreau/pie-manager-backend:${{ needs.publish.outputs.version }}" \
             sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"

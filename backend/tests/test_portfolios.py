@@ -21,6 +21,9 @@ async def test_create_portfolio(client):
     assert data["name"] == "Test Portfolio"
     assert "id" in data
     assert "created_at" in data
+    # issue #72: must carry an explicit UTC offset, not a naive/ambiguous string —
+    # otherwise the frontend parses it as local time instead of UTC.
+    assert data["created_at"].endswith("+00:00")
 
 
 @pytest.mark.asyncio

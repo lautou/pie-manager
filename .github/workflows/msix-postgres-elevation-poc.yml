@@ -87,6 +87,41 @@ jobs:
           Remove-Item vc_redist.x64.exe
           Write-Host "Bundled app-local VC++ runtime DLLs into pgsql\bin"
 
+      - name: Bundle an embeddable Python + PgQueuer (the Celery/Redis replacement, issue #66)
+        # Extends this poc to also answer: can PgQueuer (which replaced Celery+Redis, #66) be
+        # bundled the same way as Postgres? PgQueuer already runs fine as a plain native
+        # Windows process (proven live, no fork()-based limitation like Celery — see the
+        # project's own git history, `pgqueuer-windows-poc.yml`, 2026-08-13) — but that test
+        # used a system-wide Python install, not an embeddable one inside a full-trust MSIX.
+        # python.org officially publishes an "embeddable package" .zip for exactly this
+        # embed-in-another-app use case — same version (3.14.0) the real backend runs, and the
+        # same pgqueuer/asyncpg versions pinned in backend/requirements.txt, for maximum
+        # fidelity to the real app. Everything (interpreter + all packages) is pre-installed
+        # here at build time, so nothing needs pip/network access at runtime on the target
+        # machine — matching the "everything bundled, nothing downloaded" epic requirement.
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest -Uri "https://www.python.org/ftp/python/3.14.0/python-3.14.0-embed-amd64.zip" -OutFile python-embed.zip
+          Expand-Archive -Path python-embed.zip -DestinationPath python -Force
+          Remove-Item python-embed.zip
+
+          # Embeddable distributions ship with "import site" commented out in their own ._pth
+          # file, which disables site-packages entirely — must be re-enabled before pip-installed
+          # packages are importable at all.
+          $pthFile = Get-ChildItem python\python*._pth | Select-Object -First 1
+          (Get-Content $pthFile.FullName) -replace '#import site', 'import site' | Set-Content $pthFile.FullName
+
+          Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile get-pip.py
+          & python\python.exe get-pip.py --no-warn-script-location
+          Remove-Item get-pip.py
+
+          & python\python.exe -m pip install --no-warn-script-location pgqueuer==1.3.2 asyncpg==0.31.0
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::pip install failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+          Write-Host "Bundled: $((Get-ChildItem -Recurse python | Measure-Object -Property Length -Sum).Sum / 1MB) MB"
+
       - name: Locate Windows SDK packaging/signing tools
         run: |
           $sdkRoot = "C:\Program Files (x86)\Windows Kits\10\bin"

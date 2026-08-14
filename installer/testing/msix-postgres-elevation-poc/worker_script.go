@@ -105,6 +105,85 @@ if ($initdbExit -eq 0) {
 
     if ($startExit -eq 0) {
         Start-Process -FilePath $pgctl -ArgumentList @("-D", $PgData, "status") -NoNewWindow -Wait
+
+        # PgQueuer (the Celery/Redis replacement, issue #66) — same LocalState-copy pattern as
+        # pgsql above: the bundled embeddable Python/pgq.exe can't run in-place from the
+        # package's own read-only install directory either.
+        $localPython = Join-Path (Split-Path $PgData -Parent) "python"
+        $pyCopyException = $null
+        try {
+            Copy-Item -Path (Join-Path $PkgRoot "python") -Destination $localPython -Recurse -Force
+        } catch {
+            $pyCopyException = $_.Exception.Message
+        }
+        $lines += "COPY_PYTHON_TO_LOCALSTATE_EXCEPTION: $pyCopyException"
+
+        $pythonExe = Join-Path $localPython "python.exe"
+        $pgqExe = Join-Path $localPython "Scripts\pgq.exe"
+        $psqlExe = Join-Path $pgBin "psql.exe"
+        $lines += "PYTHON_EXE_EXISTS: $(Test-Path $pythonExe)"
+        $lines += "PGQ_EXE_EXISTS: $(Test-Path $pgqExe)"
+
+        # Minimal, self-contained mirror of the real app.tasks.pgq_app:main shape (see that
+        # file's own asynccontextmanager main()) - registers one schedule against the same
+        # Postgres instance just started above, without needing the whole backend bundled.
+        $pgqTestScript = @'
+from contextlib import asynccontextmanager
+import asyncpg
+from pgqueuer import PgQueuer
+from pgqueuer.domain.models import Schedule
+
+@asynccontextmanager
+async def main():
+    conn = await asyncpg.connect(dsn="postgresql://pie@127.0.0.1:5432/postgres")
+    try:
+        pgq = PgQueuer.from_asyncpg_connection(conn)
+
+        @pgq.schedule("poc_test_entrypoint", "* * * * *")
+        async def _test_schedule(schedule: Schedule) -> None:
+            pass
+
+        yield pgq
+    finally:
+        await conn.close()
+'@
+        $pgqTestPath = Join-Path $logDir "pgq_test.py"
+        Set-Content -Path $pgqTestPath -Value $pgqTestScript
+
+        $pgqOut = Join-Path $logDir "msix-poc-pgq.out.log"
+        $pgqErr = Join-Path $logDir "msix-poc-pgq.err.log"
+        Remove-Item $pgqOut, $pgqErr -ErrorAction SilentlyContinue
+
+        $pgqInstallExit = $null
+        try {
+            $pgqInstallProc = Start-Process -FilePath $pgqExe -ArgumentList @("run", "pgq_test:main", "--log-level=INFO") -NoNewWindow -PassThru -WorkingDirectory $logDir -RedirectStandardOutput $pgqOut -RedirectStandardError $pgqErr
+            Start-Sleep -Seconds 8
+            if (-not $pgqInstallProc.HasExited) {
+                Stop-Process -Id $pgqInstallProc.Id -Force -ErrorAction SilentlyContinue
+                $pgqInstallExit = "RUNNING_THEN_STOPPED"
+            } else {
+                $pgqInstallExit = $pgqInstallProc.ExitCode
+            }
+        } catch {
+            $lines += "PGQ_RUN_EXCEPTION: $($_.Exception.Message)"
+        }
+        $lines += "PGQ_RUN_RESULT: $pgqInstallExit"
+        $lines += "--- PGQ_STDOUT ---"
+        $lines += @(Get-Content $pgqOut -ErrorAction SilentlyContinue)
+        $lines += "--- PGQ_STDERR ---"
+        $lines += @(Get-Content $pgqErr -ErrorAction SilentlyContinue)
+
+        $scheduleCountRaw = & $psqlExe -U pie -d postgres -h 127.0.0.1 -t -c "SELECT count(*) FROM pgqueuer_schedules WHERE entrypoint='poc_test_entrypoint'" 2>&1
+        $scheduleRegistered = ($scheduleCountRaw -join " ").Trim() -match "1"
+        $lines += "PGQ_SCHEDULE_REGISTERED: $scheduleRegistered (raw: $scheduleCountRaw)"
+
+        if ($scheduleRegistered) {
+            $pgqVerdict = "SUCCESS: PgQueuer (embeddable Python) registered a real schedule against the bundled Postgres, non-elevated, from inside the MSIX package"
+        } else {
+            $pgqVerdict = "FAILURE: schedule was not found in pgqueuer_schedules - see PGQ_STDOUT/STDERR above"
+        }
+        $lines += "PGQUEUER_VERDICT: $pgqVerdict"
+
         Start-Process -FilePath $pgctl -ArgumentList @("-D", $PgData, "-w", "stop") -NoNewWindow -Wait
     }
 } else {

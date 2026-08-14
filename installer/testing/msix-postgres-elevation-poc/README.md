@@ -6,6 +6,11 @@ methodology already proven for issue #63's `msix-loopback-poc` (same manifest sh
 ephemeral-cert packaging/sideload/AUMID-launch/result-file-poll/cleanup pattern) — see that
 directory's own README for the shared mechanics; this one only documents what's different.
 
+**Scope extended beyond #76's original question**: after confirming Postgres works, this poc
+also bundles an embeddable Python + PgQueuer (the Celery/Redis replacement from #66) inside the
+same package, to answer a natural follow-up — can the background-job side of #65's proposed
+architecture be bundled too, not just the database? See "PgQueuer extension" below.
+
 ## Answer: YES — confirmed live on a real Windows 11 machine
 
 **A bundled portable PostgreSQL starts and accepts real connections as a plain, non-elevated

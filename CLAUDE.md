@@ -64,7 +64,27 @@ acceptable for a system-interaction binary.
 - `main_windows.go` — Windows full installer (`//go:build windows`)
 - `install.go`, `start.go`, `install_test.go` — Linux only (`//go:build linux`)
 - `main_darwin.go`, `install_darwin.go`, `start_darwin.go` — macOS full installer (`//go:build darwin`)
-- `launcher/` — separate Go module, builds `launcher.exe` (Windows WebView2 native launcher)
+- `launcher/` — separate Go module, builds `launcher.exe` (Windows WebView2 native launcher,
+  Podman-based product — waits for Podman Machine + containers, no process orchestration of
+  its own)
+- `launcher-native/` — separate Go module, issue #82's native-Windows-port MVP launcher (no
+  Podman/containers at all — orchestrates a bundled Postgres + bundled Python backend directly).
+  Own coverage policy, mirroring the pattern above: **fully testable (100% covered)** —
+  `paths.go` (data-directory resolution under `%USERPROFILE%\PieManager\`, deliberately never
+  under `AppData`/`LocalAppData` — confirmed live in #76/#82 that MSIX transparently redirects
+  any write under `AppData`, even a fully hardcoded path, to a location wiped on uninstall),
+  `ports.go` (dynamic port selection, never the #76 poc's hardcoded 5432/8123), all arg-builder
+  functions in `postgres.go`/`backend.go` (`buildInitdbArgs`, `buildPgCtlStartArgs`,
+  `buildPgCtlStopArgs`, `buildCreateDbArgs`, `databaseURL`, `buildUvicornArgs`, `healthURL`),
+  `runCapturedCommand`, `stopBackend`, `waitForHealth` (fully exercised via `httptest.Server` and
+  real short-lived subprocesses, not just argument-building), and `readPostmasterPid`.
+  **Intentionally untestable** (real process spawns/OS liveness checks, same class as the
+  Podman-based installer's own untestable bucket) — `runInitdb`, `startPostgres`, `stopPostgres`,
+  `createAppDatabase`, `startBackend`, `isPidRunning`, `recoverFromPreviousSession`,
+  `startupSequence` (the top-level orchestrator — every decision it makes is already covered by
+  testing the pure functions it calls; the function itself is thin sequencing glue), and all of
+  `main.go` (WebView2/window glue). Covered instead by the CI install+launch smoke test planned
+  for issue #82 (not yet built — tracked in that issue's own sequencing).
 - `testing/` — reproducible scripts to recreate the win11 libvirt/QEMU test VM from scratch on
   a fresh Fedora host (not part of the shipped product; see its own `README.md`)
 - `testing/msix-loopback-poc/` — throwaway diagnostic confirming (live, on a real `windows-latest`

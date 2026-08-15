@@ -286,6 +286,91 @@ async def main():
         $lines += "PGQUEUER_VERDICT: $pgqVerdict"
         Flush-Lines
 
+        # The real backend (FastAPI/uvicorn) itself, plus serving a pre-built frontend via
+        # StaticFiles - issue #65's target architecture, neither of which the Postgres/PgQueuer
+        # checks above exercise at all. Bundled Python above already has the REAL backend's
+        # full requirements.txt installed (not just pgqueuer/asyncpg), so this also proves the
+        # whole dependency tree (uvicorn[standard]'s optional extras included) installs and
+        # imports cleanly in an embeddable, relocated Python. No DB access in the test app
+        # itself - Postgres connectivity is already proven above, this is scoped to the
+        # web-serving path alone.
+        $staticDir = Join-Path $logDir "static_test"
+        New-Item -ItemType Directory -Force -Path $staticDir | Out-Null
+        Set-Content -Path (Join-Path $staticDir "index.html") -Value "MSIX_POC_STATIC_OK"
+
+        $fastapiTestScript = @'
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+import pathlib
+
+app = FastAPI()
+
+@app.get("/api/health")
+async def health():
+    return {"status": "ok"}
+
+_static_dir = pathlib.Path(__file__).parent / "static_test"
+app.mount("/", StaticFiles(directory=str(_static_dir), html=True), name="static")
+'@
+        $fastapiTestPath = Join-Path $logDir "fastapi_test.py"
+        Set-Content -Path $fastapiTestPath -Value $fastapiTestScript
+
+        $uvicornOut = Join-Path $logDir "msix-poc-uvicorn.out.log"
+        $uvicornErr = Join-Path $logDir "msix-poc-uvicorn.err.log"
+        Remove-Item $uvicornOut, $uvicornErr -ErrorAction SilentlyContinue
+
+        $healthOk = $false
+        $healthRaw = $null
+        $staticOk = $false
+        $staticRaw = $null
+        $uvicornExit = $null
+        try {
+            $uvicornProc = Start-Process -FilePath $pythonExe -ArgumentList @("-m", "uvicorn", "fastapi_test:app", "--host", "127.0.0.1", "--port", "8123", "--log-level", "info") -NoNewWindow -PassThru -WorkingDirectory $logDir -RedirectStandardOutput $uvicornOut -RedirectStandardError $uvicornErr
+            Start-Sleep -Seconds 6
+
+            try {
+                $healthResp = Invoke-WebRequest -Uri "http://127.0.0.1:8123/api/health" -UseBasicParsing -TimeoutSec 10
+                $healthRaw = $healthResp.Content
+                $healthOk = ($healthResp.StatusCode -eq 200) -and ($healthRaw -match '"status"\s*:\s*"ok"')
+            } catch {
+                $lines += "WEBSERVER_HEALTH_EXCEPTION: $($_.Exception.Message)"
+            }
+            $lines += "WEBSERVER_HEALTH_OK: $healthOk (raw: $healthRaw)"
+
+            try {
+                $staticResp = Invoke-WebRequest -Uri "http://127.0.0.1:8123/" -UseBasicParsing -TimeoutSec 10
+                $staticRaw = $staticResp.Content
+                $staticOk = ($staticResp.StatusCode -eq 200) -and ($staticRaw -match "MSIX_POC_STATIC_OK")
+            } catch {
+                $lines += "WEBSERVER_STATIC_EXCEPTION: $($_.Exception.Message)"
+            }
+            $lines += "WEBSERVER_STATIC_OK: $staticOk (raw: $staticRaw)"
+
+            if (-not $uvicornProc.HasExited) {
+                $uvicornExit = "RUNNING_THEN_STOPPED"
+                Stop-Process -Id $uvicornProc.Id -Force -ErrorAction SilentlyContinue
+            } else {
+                $uvicornProc.Refresh()
+                $uvicornExit = $uvicornProc.ExitCode
+            }
+        } catch {
+            $lines += "WEBSERVER_LAUNCH_EXCEPTION: $($_.Exception.Message)"
+        }
+        $lines += "UVICORN_RUN_RESULT: $uvicornExit"
+        $lines += "--- UVICORN_STDOUT ---"
+        $lines += @(Get-Content $uvicornOut -ErrorAction SilentlyContinue)
+        $lines += "--- UVICORN_STDERR ---"
+        $lines += @(Get-Content $uvicornErr -ErrorAction SilentlyContinue)
+        Flush-Lines
+
+        if ($healthOk -and $staticOk) {
+            $webserverVerdict = "SUCCESS: FastAPI/uvicorn served both a real API endpoint and a static file, non-elevated, from inside the MSIX package"
+        } else {
+            $webserverVerdict = "FAILURE: health=$healthOk static=$staticOk - see UVICORN_STDOUT/STDERR above"
+        }
+        $lines += "WEBSERVER_VERDICT: $webserverVerdict"
+        Flush-Lines
+
         $stopOut = Join-Path $logDir "msix-poc-pgctl-stop.out.log"
         $stopErr = Join-Path $logDir "msix-poc-pgctl-stop.err.log"
         # Same -PassThru + timed WaitForExit as pg_ctl start above, not -Wait - stop's own

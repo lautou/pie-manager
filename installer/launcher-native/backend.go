@@ -40,6 +40,22 @@ func healthURL(backendPort int) string {
 	return fmt.Sprintf("http://127.0.0.1:%d/api/admin/version", backendPort)
 }
 
+func buildAlembicArgs() []string {
+	return []string{"-m", "alembic", "upgrade", "head"}
+}
+
+// runMigrations applies pending Alembic migrations - run on EVERY launch, not just first run,
+// so an app update carrying new migrations gets them applied automatically the next time the
+// user opens the app (mirrors compose-prod.yaml's own "alembic upgrade head && uvicorn" startup
+// sequence, which runs unconditionally on every container start). alembic.ini's
+// script_location ("alembic", a relative path) requires the working directory to be
+// backendAppDir, where both alembic.ini and the alembic/ scripts folder are staged alongside
+// the app package.
+func runMigrations(home string, pgPort int) error {
+	return runCapturedCommandIn(backendAppDir(home), []string{"DATABASE_URL=" + databaseURL(pgPort)},
+		pythonExePath(home), filepath.Join(logDir(home), "alembic.log"), buildAlembicArgs()...)
+}
+
 // startBackend spawns the bundled uvicorn as a long-lived child process (unlike postgres.go's
 // run-to-completion commands) with DATABASE_URL pointing at the given Postgres port. Not
 // unit-testable - a real external process spawn, same documented policy as postgres.go's

@@ -44,4 +44,23 @@ gh run watch --repo lautou/pie-manager
 
 Then transfer `poc.msix`/`cert.cer` to the win11 VM the same way as #76's poc (ISO-based, see
 that poc's README's Phase 2 section) — sideload, launch via its AUMID
-(`PieManagerNativeLauncherPoc_<hash>!App`), then inspect the log files above and a screenshot.
+(`PIEManager.PIEManager_<hash>!App` — the real Partner Center identity from #63/PR #64, reused
+here; see the manifest's own comment for why), then inspect the log files above and a
+screenshot.
+
+## Real Partner Center identity, reused from #63
+
+This manifest uses the actual reserved "PIE Manager" identity (`Name="PIEManager.PIEManager"`,
+`Publisher="CN=2654AE3A-D473-41CE-8C17-0C2734C3B4A3"`), not a throwaway poc identity — confirmed
+still active in the Partner Center dashboard (Store ID `9PM8GPSMJG0N`), including a
+**previously-drafted privacy policy already on file** that remains accurate for this
+architecture ("PIE Manager est une application auto-hébergée qui s'exécute entièrement sur
+l'ordinateur de l'utilisateur. Aucune donnée personnelle ou financière n'est collectée,
+transmise ou stockée par l'éditeur. Les seules communications réseau sortantes concernent la
+récupération de cours de bourse publics (Yahoo Finance) ; aucune information sur le portefeuille
+de l'utilisateur n'est envoyée à un tiers. Toutes les données saisies restent stockées localement
+dans la base de données de l'utilisateur.") and a support URL already set
+(`https://github.com/lautou/pie-manager`). Category: Finances personnelles > Banque +
+investissements. The signing certificate used here must have a `Subject` matching the
+manifest's `Identity/Publisher` exactly (a real MSIX signing requirement, not just a trust
+nicety) — see the CI workflow's own comment.

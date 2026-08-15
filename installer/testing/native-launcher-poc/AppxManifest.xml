@@ -6,15 +6,24 @@
     xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
     IgnorableNamespaces="uap uap10 rescap">
 
+  <!--
+    Real Microsoft Store identity for "PIE Manager", assigned by Partner Center when the app
+    name was reserved during issue #63 (see PR #64, never merged since that approach — Store-
+    distributing only launcher.exe with local elevation fallback — was rejected twice by real
+    certification under policies 10.2.5/10.1.5/10.1.2, documented in CLAUDE.md). The reservation
+    itself is still valid and reusable for issue #82's different, bundle-everything architecture
+    - these are not placeholders, do not change them without updating the reservation in
+    Partner Center to match.
+  -->
   <Identity
-      Name="PieManagerNativeLauncherPoc"
-      Publisher="CN=PieManagerPoc"
+      Name="PIEManager.PIEManager"
+      Publisher="CN=2654AE3A-D473-41CE-8C17-0C2734C3B4A3"
       Version="1.0.0.0"
       ProcessorArchitecture="x64" />
 
   <Properties>
-    <DisplayName>PIE Manager Native Launcher PoC</DisplayName>
-    <PublisherDisplayName>PIE Manager (throwaway diagnostic build)</PublisherDisplayName>
+    <DisplayName>PIE Manager</DisplayName>
+    <PublisherDisplayName>PIE Manager</PublisherDisplayName>
     <Logo>Assets\Square150x150Logo.png</Logo>
   </Properties>
 

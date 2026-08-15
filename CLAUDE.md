@@ -1372,6 +1372,48 @@ certificate for local sideload testing must have a `Subject` matching this exact
 AppxManifest.xml` and `build-installer.yml`'s `package-native-launcher-msix` job for the real
 packaging pipeline using this identity.
 
+### Windows Firewall first-launch prompt (issue #82) — expected, not a bug to fix
+
+On a fresh install, first launch shows a "Windows Security Alert" dialog ("Voulez-vous
+autoriser les réseaux publics et privés à accéder à cette application ?") for the bundled
+`postgres.exe`/`python.exe` (uvicorn) — both bind `127.0.0.1` only, yet the prompt still
+appears. **"Loopback binds are exempt from this prompt" is folklore, not fact** — confirmed
+against Microsoft's own Windows Firewall docs: the interactive notification fires on *any*
+new, unrecognized executable path calling `listen()`, with no bind-address qualifier at all.
+The genuinely-real loopback exemption is a separate mechanism (WFP's loopback packet
+classification) that governs whether *traffic* passes the resulting rule, not whether the
+*dialog* appears — which is exactly why the app is fully functional (health checks, log
+files) whether or not anyone ever dismisses the dialog, confirmed live in CI where nothing is
+present to click it.
+
+**No elevation-free fix exists.** Both `netsh advfirewall`/Group Policy pre-provisioning and
+the `INetFwPolicy2`/`INetFwRule` COM API are admin-gated for inbound rules with no per-user
+exception — confirmed directly against Microsoft's docs, which state plainly that a
+non-admin's response to the dialog only ever creates a *block* rule regardless of which
+option is clicked, and that the whole automatic-rule-creation mechanism "require[s] user
+interaction and administrative privilege." Adding a rule from this app's own first-run code
+would either silently fail (standard user) or trigger the exact UAC-style elevation prompt
+this app's whole design exists to avoid (see the #63 section above) — not an acceptable
+trade to suppress a cosmetic dialog. A structural workaround (Unix-domain sockets instead of
+TCP loopback) is also a dead end: `asyncpg` explicitly refuses Unix sockets on Windows
+regardless of OS/Postgres support, and even if it worked for Postgres, uvicorn still needs a
+real TCP listener for WebView2's `Navigate()` call — browsers don't navigate to Unix sockets
+without a custom scheme handler, a much bigger redesign for zero net benefit (it would still
+leave uvicorn's own listener triggering the same prompt).
+
+**Decision: accept it as a one-time, first-run UX cost**, matching every comparable
+bundled-local-server desktop app (XAMPP, local dev-server tooling, etc.) — this is
+industry-standard friction, not a PIE Manager-specific defect. One meaningfully good property
+worth noting: unlike WebView2's own well-documented "prompts on every update" problem (caused
+by its Evergreen runtime's version-numbered install path — see WebView2Feedback #2252/#3604),
+this app's bundled `postgres.exe`/`python.exe` sit at stable, non-versioned paths
+(`%USERPROFILE%\PieManager\pgsql\bin\postgres.exe`, `...\python\python.exe` — see
+`paths.go`), and Windows Firewall rules are keyed on full executable path with no wildcard
+support — so this should be a true one-time-per-machine event on first install, not a
+recurring one on every app update. `main.go`'s `loadingHTMLTpl` (the WebView2 loading screen
+shown while `startupSequence` runs) includes a one-line hint that this is expected and safe
+to dismiss either way, so a real user isn't left wondering if something's wrong.
+
 ### Installed files (Linux)
 ```
 ~/.local/share/pie-manager/   compose-prod.yaml, haproxy.cfg, .env, pie-manager (binary), VERSION

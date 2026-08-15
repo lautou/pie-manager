@@ -83,8 +83,15 @@ acceptable for a system-interaction binary.
   `createAppDatabase`, `startBackend`, `isPidRunning`, `recoverFromPreviousSession`,
   `startupSequence` (the top-level orchestrator — every decision it makes is already covered by
   testing the pure functions it calls; the function itself is thin sequencing glue), and all of
-  `main.go` (WebView2/window glue). Covered instead by the CI install+launch smoke test planned
-  for issue #82 (not yet built — tracked in that issue's own sequencing).
+  `main.go` (WebView2/window glue). Covered instead by the CI install+launch smoke test in
+  `native-launcher-poc.yml` (issue #82) — `Add-AppxPackage` + launch via `shell:AppsFolder`,
+  then poll `/api/admin/version` — confirmed live: the full first-run bootstrap (stage bundled
+  files, `initdb`, `pg_ctl start`, `createdb`, Alembic migrations, spawn `uvicorn`) runs inside
+  a real installed MSIX package on a real GitHub-hosted Windows runner, and the backend answers
+  its health check. This also confirms `main.go`'s WebView2 window itself initializes there
+  (the backend-spawning goroutine only runs once `webview2.NewWithOptions` succeeds) — this
+  poc's own throwaway pipeline still needs to become the permanent, shipped packaging pipeline
+  before release, but the underlying orchestration is proven.
 - `testing/` — reproducible scripts to recreate the win11 libvirt/QEMU test VM from scratch on
   a fresh Fedora host (not part of the shipped product; see its own `README.md`)
 - `testing/msix-loopback-poc/` — throwaway diagnostic confirming (live, on a real `windows-latest`

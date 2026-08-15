@@ -156,12 +156,14 @@ jobs:
             exit 1
           }
 
-      - name: Generate ephemeral signing cert matching the real Publisher CN, and sign
+      - name: Generate ephemeral signing cert matching the real Publisher CN, sign, and trust it
         # The cert's Subject must match AppxManifest.xml's Identity/Publisher exactly - MSIX
         # signing validation requires this (Add-AppxPackage rejects a mismatch), it isn't just a
         # trust nicety. Still a fully throwaway, per-run cert though (same as PR #64's own
         # approach for this exact identity): local sideload trust doesn't check this CN against
-        # a real Partner Center-issued certificate, only a real Store submission does.
+        # a real Partner Center-issued certificate, only a real Store submission does. Trusting
+        # it into LocalMachine\TrustedPeople + Root (mirrors #76's msix-postgres-elevation-poc)
+        # is what lets Add-AppxPackage below install it without a "certificate not trusted" error.
         run: |
           $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=2654AE3A-D473-41CE-8C17-0C2734C3B4A3" `
             -KeyUsage DigitalSignature -FriendlyName "PieManagerNativeLauncherPocCert" `
@@ -171,6 +173,8 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "THUMBPRINT=$thumbprint"
 
           Export-Certificate -Cert $cert -FilePath cert.cer | Out-Null
+          Import-Certificate -FilePath cert.cer -CertStoreLocation "Cert:\LocalMachine\TrustedPeople" | Out-Null
+          Import-Certificate -FilePath cert.cer -CertStoreLocation "Cert:\LocalMachine\Root" | Out-Null
 
           & $env:SIGNTOOL sign /fd SHA256 /sha1 $thumbprint poc.msix
           if ($LASTEXITCODE -ne 0) {
@@ -181,8 +185,9 @@ jobs:
       - name: Upload signed package + cert (for real win11 VM testing)
         # windows-latest runs as Administrator with UAC disabled (GitHub's own documented
         # runner config) — not representative of a real personal PC, same reasoning as #76's
-        # poc. This job only proves the package builds/signs; the definitive test is the win11
-        # VM.
+        # poc. The steps below prove the package installs and actually starts services on a
+        # real Windows machine; the win11 VM remains the definitive test for anything
+        # UAC/user-context-sensitive (there is none here — full-trust MSIX apps don't elevate).
         uses: actions/upload-artifact@v7.0.1
         with:
           name: native-launcher-poc
@@ -191,9 +196,85 @@ jobs:
             installer/testing/native-launcher-poc/cert.cer
           retention-days: 1
 
+      - name: Install the package and launch it via its AUMID
+        # Mirrors #76's msix-postgres-elevation-poc install/launch mechanism (Add-AppxPackage,
+        # resolve AUMID from the installed package, Start-Process "shell:AppsFolder\<aumid>" -
+        # the same route a real user takes double-clicking the Start Menu tile). Unlike that
+        # poc's headless console exe, launcher-native.exe is a real WebView2 GUI app
+        # (-H windowsgui) - this is the first real test of whether a WebView2 window can even
+        # come up on a GitHub-hosted Windows runner, not just whether the backend starts.
+        run: |
+          try {
+            Add-AppxPackage -Path poc.msix -Verbose
+          } catch {
+            Write-Host "::error::Add-AppxPackage failed: $_"
+            exit 1
+          }
+
+          $pkg = Get-AppxPackage -Name "PIEManager.PIEManager"
+          if (-not $pkg) {
+            Write-Host "::error::Package not found after Add-AppxPackage"
+            exit 1
+          }
+          $aumid = "$($pkg.PackageFamilyName)!App"
+          Write-Host "Resolved AUMID: $aumid"
+
+          Start-Process "shell:AppsFolder\$aumid"
+
+      - name: Wait for the backend to become healthy, then dump logs
+        # startupSequence's own healthTimeout only bounds waiting on uvicorn once it's spawned
+        # (orchestrator.go) - this deadline is deliberately much larger, since it also covers
+        # everything before that: MSIX activation, WebView2 startup, staging ~150+MB of
+        # pgsql/python/frontend_dist out of the package's read-only install directory
+        # (stageBundledFiles), initdb, pg_ctl start, createdb, and alembic migrations - all
+        # first-run-only work a warm second launch wouldn't repeat.
+        run: |
+          $dataDir = Join-Path $env:USERPROFILE "PieManager"
+          $logDir = Join-Path $dataDir "logs"
+          $healthUrl = "http://127.0.0.1:14943/api/admin/version"
+
+          $deadline = (Get-Date).AddSeconds(300)
+          $healthy = $false
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $response = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 5
+              if ($response.StatusCode -eq 200) { $healthy = $true; break }
+            } catch {}
+            Start-Sleep -Seconds 5
+          }
+
+          Write-Host "--- $dataDir contents ---"
+          Get-ChildItem $dataDir -Recurse -ErrorAction SilentlyContinue | Format-List FullName, Length, LastWriteTime
+          foreach ($log in @("initdb.log", "pgctl-start.log", "createdb.log", "alembic.log", "backend.log")) {
+            $path = Join-Path $logDir $log
+            if (Test-Path $path) {
+              Write-Host "--- $log ---"
+              Get-Content $path
+            } else {
+              Write-Host "--- $log : not written ---"
+            }
+          }
+
+          if (-not $healthy) {
+            Write-Host "::error::Backend never became healthy within the deadline"
+            Write-Host "--- Is launcher-native.exe / postgres.exe / python.exe running? ---"
+            Get-Process -Name launcher-native, postgres, python -ErrorAction SilentlyContinue | Format-List *
+            exit 1
+          }
+          Write-Host "Health check passed"
+
       - name: Cleanup
         if: always()
         run: |
+          Get-Process -Name launcher-native -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Get-Process -Name postgres -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Get-Process -Name python -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          $pkg = Get-AppxPackage -Name "PIEManager.PIEManager"
+          if ($pkg) {
+            Remove-AppxPackage -Package $pkg.PackageFullName -ErrorAction SilentlyContinue
+          }
           if ($env:THUMBPRINT) {
+            Remove-Item "Cert:\LocalMachine\Root\$env:THUMBPRINT" -ErrorAction SilentlyContinue
+            Remove-Item "Cert:\LocalMachine\TrustedPeople\$env:THUMBPRINT" -ErrorAction SilentlyContinue
             Remove-Item "Cert:\CurrentUser\My\$env:THUMBPRINT" -ErrorAction SilentlyContinue
           }

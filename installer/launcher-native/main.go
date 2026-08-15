@@ -49,6 +49,7 @@ const loadingHTMLTpl = `<!DOCTYPE html>
     animation: spin 1s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
+  .firewall-hint { font-size: 0.75rem; color: #666; margin-top: 32px; max-width: 420px; text-align: center; }
 </style>
 </head>
 <body>
@@ -56,6 +57,7 @@ const loadingHTMLTpl = `<!DOCTYPE html>
   <div class="version">{{VERSION}}</div>
   <p id="status">Starting services, please wait…</p>
   <div class="spinner"></div>
+  <p class="firewall-hint">Windows may show a firewall alert on first launch — this is expected, the app only ever communicates locally (127.0.0.1) regardless of your answer.</p>
 </body>
 </html>`
 

@@ -205,18 +205,57 @@ async def main():
         $pgqTestPath = Join-Path $logDir "pgq_test.py"
         Set-Content -Path $pgqTestPath -Value $pgqTestScript
 
+        # Standard libpq env vars, not a --pg-dsn/--pg-host CLI flag: pgqueuer's CLI flags for
+        # this have changed across versions (recent releases dropped --pg-host/--pg-user in
+        # favor of env vars entirely), so env vars are the version-stable way to point both
+        # install and run at the bundled Postgres.
+        $env:PGHOST = "127.0.0.1"
+        $env:PGPORT = "5432"
+        $env:PGUSER = "pie"
+        $env:PGDATABASE = "postgres"
+
+        # pgq install (schema/table creation, including pgqueuer_schedules) must run before
+        # pgq run - the real backend gets this via its own Alembic migrations, which this
+        # throwaway script has none of. Invoked as python -m pgqueuer, not the pip-generated
+        # pgq.exe launcher, for both this and the run step below: console-script .exe
+        # launchers can embed an absolute build-time interpreter path that breaks once the
+        # whole python/ folder is relocated (CI build path -> LocalState at runtime) - python
+        # -m pgqueuer is documented as fully equivalent and always uses the actual relocated
+        # interpreter it's invoked through.
+        $pgqInstallOut = Join-Path $logDir "msix-poc-pgq-install.out.log"
+        $pgqInstallErr = Join-Path $logDir "msix-poc-pgq-install.err.log"
+        $installExit = $null
+        try {
+            $installProc = Start-Process -FilePath $pythonExe -ArgumentList @("-m", "pgqueuer", "install") -NoNewWindow -PassThru -RedirectStandardOutput $pgqInstallOut -RedirectStandardError $pgqInstallErr
+            if ($installProc.WaitForExit(30000)) {
+                $installProc.Refresh()
+                $installExit = $installProc.ExitCode
+            } else {
+                $lines += "PGQ_INSTALL_WAIT_TIMEOUT: still running after 30s"
+            }
+        } catch {
+            $lines += "PGQ_INSTALL_EXCEPTION: $($_.Exception.Message)"
+        }
+        $lines += "PGQ_INSTALL_EXIT: $installExit"
+        $lines += "--- PGQ_INSTALL_STDOUT ---"
+        $lines += @(Get-Content $pgqInstallOut -ErrorAction SilentlyContinue)
+        $lines += "--- PGQ_INSTALL_STDERR ---"
+        $lines += @(Get-Content $pgqInstallErr -ErrorAction SilentlyContinue)
+        Flush-Lines
+
         $pgqOut = Join-Path $logDir "msix-poc-pgq.out.log"
         $pgqErr = Join-Path $logDir "msix-poc-pgq.err.log"
         Remove-Item $pgqOut, $pgqErr -ErrorAction SilentlyContinue
 
         $pgqInstallExit = $null
         try {
-            $pgqInstallProc = Start-Process -FilePath $pgqExe -ArgumentList @("run", "pgq_test:main", "--log-level=INFO") -NoNewWindow -PassThru -WorkingDirectory $logDir -RedirectStandardOutput $pgqOut -RedirectStandardError $pgqErr
+            $pgqInstallProc = Start-Process -FilePath $pythonExe -ArgumentList @("-m", "pgqueuer", "run", "pgq_test:main", "--log-level=INFO") -NoNewWindow -PassThru -WorkingDirectory $logDir -RedirectStandardOutput $pgqOut -RedirectStandardError $pgqErr
             Start-Sleep -Seconds 8
             if (-not $pgqInstallProc.HasExited) {
                 Stop-Process -Id $pgqInstallProc.Id -Force -ErrorAction SilentlyContinue
                 $pgqInstallExit = "RUNNING_THEN_STOPPED"
             } else {
+                $pgqInstallProc.Refresh()
                 $pgqInstallExit = $pgqInstallProc.ExitCode
             }
         } catch {
@@ -230,7 +269,12 @@ async def main():
         Flush-Lines
 
         $scheduleCountRaw = & $psqlExe -U pie -d postgres -h 127.0.0.1 -t -c "SELECT count(*) FROM pgqueuer_schedules WHERE entrypoint='poc_test_entrypoint'" 2>&1
-        $scheduleRegistered = ($scheduleCountRaw -join " ").Trim() -match "1"
+        $scheduleCountTrimmed = ($scheduleCountRaw -join " ").Trim()
+        # -eq, not -match: a -match "1" false-matched the digit inside an unrelated "LIGNE 1"
+        # substring of a real Postgres error message on a run where the schedules table didn't
+        # exist yet (before this install step was added) - confirmed live, a real bug that
+        # made a genuine failure report as PGQ_SCHEDULE_REGISTERED: True.
+        $scheduleRegistered = $scheduleCountTrimmed -eq "1"
         $lines += "PGQ_SCHEDULE_REGISTERED: $scheduleRegistered (raw: $scheduleCountRaw)"
         Flush-Lines
 

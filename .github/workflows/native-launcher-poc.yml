@@ -46,7 +46,11 @@ jobs:
           cd ..\installer\testing\native-launcher-poc
           Copy-Item -Recurse ..\..\..\frontend\dist frontend_dist
 
-      - name: Build launcher-native.exe and generate placeholder logo assets
+      - name: Build launcher-native.exe and render the real brand icon into MSIX logo assets
+        # gen-assets renders installer/256x256.png (the same source already embedded in
+        # launcher.exe/pie-manager.exe via winres, and used for the Linux .desktop icon) down
+        # to the sizes AppxManifest.xml requires — real branding, not the earlier solid-color
+        # placeholders (issue #82).
         run: |
           cd ..\..\launcher-native
           go mod tidy
@@ -57,7 +61,7 @@ jobs:
           cd ..\testing\native-launcher-poc
           go mod tidy
           New-Item -ItemType Directory -Force -Path Assets | Out-Null
-          go run ./gen-assets Assets
+          go run ./gen-assets ..\..\256x256.png Assets
 
       - name: Download and stage the portable PostgreSQL distribution
         # Identical to #76's msix-postgres-elevation-poc — see that poc's own workflow comment

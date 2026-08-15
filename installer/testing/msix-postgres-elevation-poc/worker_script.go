@@ -119,8 +119,21 @@ if ($initdbExit -eq 0) {
     Remove-Item $startOut, $startErr -ErrorAction SilentlyContinue
     $startArgs = @("-D", $PgData, "-w", "start")
     try {
-        $startProc = Start-Process -FilePath $pgctl -ArgumentList $startArgs -NoNewWindow -Wait -PassThru -RedirectStandardOutput $startOut -RedirectStandardError $startErr
-        $startExit = $startProc.ExitCode
+        # -Wait (not -PassThru's own timed WaitForExit) hung indefinitely here on a real run:
+        # confirmed live via process inspection that pg_ctl.exe itself had already exited (gone
+        # from Get-Process) while Start-Process never returned. Root cause: pg_ctl start spawns
+        # postgres.exe, which inherits pg_ctl's redirected stdout/stderr handles and keeps them
+        # open for as long as postgres (and its background workers) keep running - .NET's
+        # parameterless Process.WaitForExit(), which -Wait uses internally, waits for the
+        # redirected stream to reach EOF, not just for the process handle to signal, so it
+        # blocks forever as long as any handle-inheriting descendant is still alive. The timed
+        # overload, WaitForExit(ms), only waits on the process handle and has no such hazard.
+        $startProc = Start-Process -FilePath $pgctl -ArgumentList $startArgs -NoNewWindow -PassThru -RedirectStandardOutput $startOut -RedirectStandardError $startErr
+        if ($startProc.WaitForExit(60000)) {
+            $startExit = $startProc.ExitCode
+        } else {
+            $lines += "PGCTL_START_WAIT_TIMEOUT: pg_ctl.exe still running after 60s"
+        }
     } catch {
         $lines += "PGCTL_START_EXCEPTION: $($_.Exception.Message)"
     }
@@ -225,7 +238,15 @@ async def main():
 
         $stopOut = Join-Path $logDir "msix-poc-pgctl-stop.out.log"
         $stopErr = Join-Path $logDir "msix-poc-pgctl-stop.err.log"
-        Start-Process -FilePath $pgctl -ArgumentList @("-D", $PgData, "-w", "stop") -NoNewWindow -Wait -RedirectStandardOutput $stopOut -RedirectStandardError $stopErr
+        # Same -PassThru + timed WaitForExit as pg_ctl start above, not -Wait - stop's own
+        # target processes normally die before pg_ctl itself exits (closing the inherited
+        # handle for real), but there's no reason to keep the hazard around when the fix is
+        # this cheap.
+        $stopProc = Start-Process -FilePath $pgctl -ArgumentList @("-D", $PgData, "-w", "stop") -NoNewWindow -PassThru -RedirectStandardOutput $stopOut -RedirectStandardError $stopErr
+        if (-not $stopProc.WaitForExit(60000)) {
+            $lines += "PGCTL_STOP_WAIT_TIMEOUT: pg_ctl.exe still running after 60s"
+        }
+        Flush-Lines
     }
 } else {
     $lines += "PGCTL_START_EXIT: SKIPPED (initdb failed)"

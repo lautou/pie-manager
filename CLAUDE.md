@@ -71,6 +71,11 @@ acceptable for a system-interaction binary.
   GitHub Actions runner) that a full-trust MSIX-packaged WebView2 control can reach `localhost` —
   the gating question for issue #63 (Store-distributing `launcher.exe` as a free fix for #60's
   Smart App Control block); not part of the shipped product, see its own `README.md`
+- `testing/msix-postgres-elevation-poc/` — throwaway diagnostic confirming, live on the project's
+  own win11 libvirt VM (real non-admin account, default UAC), that a bundled portable PostgreSQL
+  *and* an embeddable Python + PgQueuer (the Celery/Redis replacement, #66) both run as plain
+  non-elevated processes from inside a full-trust MSIX package — the gating question for #65's
+  native-Windows-port epic; not part of the shipped product, see its own `README.md`
 
 ## Absolute rule: refactor after every change
 

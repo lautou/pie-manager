@@ -41,6 +41,67 @@ This was the single most foundational open question for issue #65's native-Windo
 epic — it's now empirically settled, not just researched. See Phase 2 below for the full
 narrative, including two more real (non-elevation) problems this uncovered.
 
+## PgQueuer extension — Answer: YES, also confirmed live
+
+**An embeddable Python distribution + PgQueuer (the Celery/Redis replacement from #66) also
+runs as a plain, non-elevated process from inside the same full-trust MSIX package, against the
+bundled Postgres started above.** Confirmed on the same win11 VM, same non-admin "pie" account:
+
+- python.org's official "embeddable package" .zip (matching the real backend's exact Python
+  3.14.0, with `pgqueuer==1.3.2`/`asyncpg==0.31.0` — the real backend's exact pins — pip-installed
+  into it at CI build time) was bundled inside the package (~64 MB) and staged into LocalState
+  the same way `pgsql/` is.
+- `python -m pgqueuer install` created the real PgQueuer schema against the bundled, already
+  non-elevated Postgres (`Installed PgQueuer schema (durability=durable).` — genuine PgQueuer
+  output, not a canned test message).
+- `python -m pgqueuer run <module>:main` started a real worker (`Async signal handlers are not
+  supported on this platform; KeyboardInterrupt will still stop the worker.` — a genuine
+  PgQueuer runtime warning, proof the actual library code executed, not just that the process
+  launched) and registered a real cron schedule, confirmed independently via `psql -c "SELECT
+  count(*) FROM pgqueuer_schedules WHERE entrypoint=...'"` returning exactly `1`.
+- Both Postgres and the PgQueuer worker shut down cleanly on their own at the end of the test —
+  no orphaned processes.
+
+**Three real, non-elevation bugs were found and fixed reaching this result** — each is a general
+Windows/PowerShell packaging lesson worth keeping in mind for #65's real architecture, not just
+poc debugging noise:
+
+1. **`Start-Process -Wait` hangs indefinitely when the target process spawns long-lived
+   descendants that inherit its redirected output handles.** `pg_ctl start` spawns `postgres.exe`
+   (plus its background workers), which inherit `pg_ctl`'s redirected stdout/stderr handles and
+   keep them open for as long as postgres keeps running. `-Wait` uses .NET's parameterless
+   `Process.WaitForExit()` internally, which waits for the redirected stream to reach EOF, not
+   just for the process handle to signal — so it blocks forever while any handle-inheriting
+   descendant is alive, even though the direct child (`pg_ctl.exe`) has already exited. Confirmed
+   live via process inspection: `pg_ctl.exe` gone from `Get-Process` while `Start-Process` never
+   returned, `postgres.exe` fully up. Fixed by using `-PassThru` and the *timed*
+   `$proc.WaitForExit(ms)` overload instead, which only waits on the process handle. **Any
+   Start-Process call whose target spawns a background daemon (not just queries one, as
+   `pg_ctl status` would) needs this pattern, not the plain `-Wait` switch.**
+2. **A .NET `Process` object obtained via `Start-Process -PassThru` doesn't always reliably
+   expose `.ExitCode` after the timed `WaitForExit(ms)` overload**, even when it returns `true`
+   and the process's own captured stdout clearly shows success. Worked around with a
+   locale-independent fallback: `pg_ctl` only ever writes `postmaster.pid` on a genuinely
+   successful start, so its presence overrides an unreadable exit code.
+3. **`pip`'s generated console-script `.exe` launchers (`Scripts\pgq.exe`) can embed an absolute
+   build-time interpreter path that breaks once the whole `python/` folder is relocated** — CI
+   builds Python into a build-time path, but the poc must copy it into the package's LocalState
+   folder at runtime (the same "install directory is read-only" constraint as `pgsql/`, see
+   finding #1 in "Findings so far" below). Fixed by invoking `python.exe -m pgqueuer ...`
+   directly instead of the generated launcher — [PgQueuer's own docs](https://pgqueuer.readthedocs.io/en/latest/cli.html)
+   confirm this is fully equivalent, and it always resolves through the actual interpreter it's
+   invoked with rather than a baked-in path.
+
+Also worth noting, not a bug but an easy trap for a real port: **the real backend's PgQueuer
+schema comes from Alembic migrations**, which this throwaway script has none of — `python -m
+pgqueuer install` had to be called explicitly before `run`, or every `pgqueuer_*` table lookup
+fails with "relation does not exist." A first pass at this test also had a **verification bug**
+of its own: checking schedule registration with `-match "1"` false-matched the digit inside an
+unrelated `LIGNE 1` (French "LINE 1") substring of that exact "relation does not exist" error,
+making a real failure report as `PGQ_SCHEDULE_REGISTERED: True`. Fixed with an exact `-eq "1"`
+match — a reminder that a poc's own verification logic needs the same scrutiny as the thing it's
+testing.
+
 ## Question it answers
 
 Issue #65's native-Windows-port epic proposes bundling a portable PostgreSQL inside a full-trust

@@ -84,14 +84,17 @@ acceptable for a system-interaction binary.
   `startupSequence` (the top-level orchestrator — every decision it makes is already covered by
   testing the pure functions it calls; the function itself is thin sequencing glue), and all of
   `main.go` (WebView2/window glue). Covered instead by the CI install+launch smoke test in
-  `native-launcher-poc.yml` (issue #82) — `Add-AppxPackage` + launch via `shell:AppsFolder`,
-  then poll `/api/admin/version` — confirmed live: the full first-run bootstrap (stage bundled
-  files, `initdb`, `pg_ctl start`, `createdb`, Alembic migrations, spawn `uvicorn`) runs inside
-  a real installed MSIX package on a real GitHub-hosted Windows runner, and the backend answers
-  its health check. This also confirms `main.go`'s WebView2 window itself initializes there
-  (the backend-spawning goroutine only runs once `webview2.NewWithOptions` succeeds) — this
-  poc's own throwaway pipeline still needs to become the permanent, shipped packaging pipeline
-  before release, but the underlying orchestration is proven.
+  `build-installer.yml`'s `package-native-launcher-msix` job (issue #82) — `Add-AppxPackage` +
+  launch via `shell:AppsFolder`, then poll `/api/admin/version` — confirmed live: the full
+  first-run bootstrap (stage bundled files, `initdb`, `pg_ctl start`, `createdb`, Alembic
+  migrations, spawn `uvicorn`) runs inside a real installed MSIX package on a real
+  GitHub-hosted Windows runner, and the backend answers its health check. This also confirms
+  `main.go`'s WebView2 window itself initializes there (the backend-spawning goroutine only
+  runs once `webview2.NewWithOptions` succeeds). Packaging assets (`AppxManifest.xml`,
+  `gen-assets/` icon renderer, `winres/` + `main_windows_amd64.syso` for the exe's own
+  taskbar/titlebar icon) live directly in this module, mirroring `installer/launcher/`'s own
+  layout — promoted here from a throwaway `installer/testing/native-launcher-poc/` diagnostic
+  (now deleted) once this exact mechanism was proven live.
 - `testing/` — reproducible scripts to recreate the win11 libvirt/QEMU test VM from scratch on
   a fresh Fedora host (not part of the shipped product; see its own `README.md`)
 - `testing/msix-loopback-poc/` — throwaway diagnostic confirming (live, on a real `windows-latest`
@@ -1365,8 +1368,9 @@ transmitted by the publisher, the only outbound network calls are public Yahoo F
 lookups, everything else stored locally) — no need to re-draft it. Category: Finances
 personnelles > Banque + investissements. Support URL already set to the GitHub repo. A signing
 certificate for local sideload testing must have a `Subject` matching this exact `Publisher` CN
-(a real MSIX requirement, not just a trust nicety) — see
-`installer/testing/native-launcher-poc/` for the current test packaging using this identity.
+(a real MSIX requirement, not just a trust nicety) — see `installer/launcher-native/
+AppxManifest.xml` and `build-installer.yml`'s `package-native-launcher-msix` job for the real
+packaging pipeline using this identity.
 
 ### Installed files (Linux)
 ```

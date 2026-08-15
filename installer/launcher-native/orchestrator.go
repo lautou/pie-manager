@@ -61,6 +61,14 @@ func startupSequence(home string) (*nativeSession, error) {
 		}
 	}
 
+	// Every launch, not just first run - an app update carrying new migrations needs them
+	// applied the next time the user opens the app, mirroring compose-prod.yaml's own
+	// unconditional "alembic upgrade head && uvicorn" startup sequence.
+	if err := runMigrations(home, p.Postgres); err != nil {
+		_ = stopPostgres(home)
+		return nil, fmt.Errorf("applying database migrations: %w", err)
+	}
+
 	backendCmd, err := startBackend(home, p.Backend, p.Postgres)
 	if err != nil {
 		_ = stopPostgres(home)

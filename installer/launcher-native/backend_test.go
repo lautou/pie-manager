@@ -54,6 +54,25 @@ func TestBuildUvicornArgs(t *testing.T) {
 	}
 }
 
+func TestBuildAlembicArgs(t *testing.T) {
+	args := buildAlembicArgs()
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "alembic upgrade head") {
+		t.Errorf("expected alembic upgrade head in args, got %v", args)
+	}
+}
+
+func TestRunMigrations_UsesBackendAppDirAndDatabaseURL(t *testing.T) {
+	// runMigrations itself execs a real process (python.exe, not available here) - covered by
+	// the CI install+launch smoke test, same documented policy as postgres.go's process-spawning
+	// functions. This only exercises that it delegates to runCapturedCommandIn with a
+	// non-existent python.exe, producing an error rather than panicking.
+	home := t.TempDir()
+	if err := runMigrations(home, 15432); err == nil {
+		t.Error("expected an error since no real python.exe exists in this test's temp home")
+	}
+}
+
 func TestHealthURL(t *testing.T) {
 	got := healthURL(14943)
 	want := "http://127.0.0.1:14943/api/admin/version"

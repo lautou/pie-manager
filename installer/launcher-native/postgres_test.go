@@ -133,6 +133,32 @@ func TestRunCapturedCommand_MissingExecutable(t *testing.T) {
 	}
 }
 
+func TestRunCapturedCommandIn_UsesWorkingDirectoryAndEnv(t *testing.T) {
+	home := t.TempDir()
+	logPath := filepath.Join(home, "logs", "test.log")
+
+	shExe := "/bin/sh"
+	if _, err := os.Stat(shExe); err != nil {
+		t.Skip("/bin/sh not available on this platform")
+	}
+	// Prints the CWD and an env var set via extraEnv - proves both are actually applied, not
+	// just accepted as parameters.
+	if err := runCapturedCommandIn(home, []string{"MY_TEST_VAR=hello"}, shExe, logPath, "-c", "pwd && echo $MY_TEST_VAR"); err != nil {
+		t.Fatalf("runCapturedCommandIn failed: %v", err)
+	}
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("expected log file to exist: %v", err)
+	}
+	got := string(content)
+	if !strings.Contains(got, home) {
+		t.Errorf("expected log to show working directory %q, got %q", home, got)
+	}
+	if !strings.Contains(got, "hello") {
+		t.Errorf("expected log to show env var value, got %q", got)
+	}
+}
+
 func TestRunCapturedCommand_ErrorWhenLogPathIsDirectory(t *testing.T) {
 	home := t.TempDir()
 	// logPath itself exists as a directory — MkdirAll(Dir(logPath)) succeeds (its parent),

@@ -62,9 +62,19 @@ func buildCreateDbArgs(port int) []string {
 }
 
 // runCapturedCommand runs exe with args, bounded by processTimeout, capturing combined
-// stdout/stderr to logPath for later inspection. Shared by every native-process call in this
-// file so the timeout/logging behavior is applied uniformly.
+// stdout/stderr to logPath for later inspection. Shared by every short-lived, run-to-completion
+// native-process call in this package (postgres.go and backend.go's runMigrations) so the
+// timeout/logging behavior is applied uniformly. Not used for startBackend, which spawns a
+// long-lived server rather than running a command to completion.
 func runCapturedCommand(exe, logPath string, args ...string) error {
+	return runCapturedCommandIn("", nil, exe, logPath, args...)
+}
+
+// runCapturedCommandIn is runCapturedCommand with an optional working directory and extra
+// environment variables - used by backend.go's runMigrations, which needs both (alembic.ini's
+// relative script_location requires the right working directory; DATABASE_URL must point at
+// the dynamically-selected Postgres port).
+func runCapturedCommandIn(dir string, extraEnv []string, exe, logPath string, args ...string) error {
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 		return fmt.Errorf("creating log directory for %s: %w", filepath.Base(logPath), err)
 	}
@@ -78,6 +88,10 @@ func runCapturedCommand(exe, logPath string, args ...string) error {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, exe, args...)
+	cmd.Dir = dir
+	if len(extraEnv) > 0 {
+		cmd.Env = append(os.Environ(), extraEnv...)
+	}
 	cmd.Stdout = out
 	cmd.Stderr = out
 	if err := cmd.Run(); err != nil {

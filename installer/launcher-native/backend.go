@@ -71,7 +71,10 @@ func startBackend(home string, backendPort, pgPort int) (*exec.Cmd, error) {
 	}
 
 	cmd := exec.Command(pythonExePath(home), buildUvicornArgs(home, backendPort)...)
-	cmd.Env = append(os.Environ(), "DATABASE_URL="+databaseURL(pgPort))
+	cmd.Env = append(os.Environ(),
+		"DATABASE_URL="+databaseURL(pgPort),
+		"FRONTEND_DIST_DIR="+frontendDistDir(home),
+	)
 	cmd.Stdout = out
 	cmd.Stderr = out
 	if err := cmd.Start(); err != nil {

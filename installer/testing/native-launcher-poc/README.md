@@ -17,6 +17,13 @@ compared to #76's poc — the **real backend source** (`backend/app/`, `alembic.
 so the whole flow (`initdb` → `pg_ctl start` → `createdb` → `alembic upgrade head` → spawn
 `uvicorn` → health poll) runs against the genuine application, not a minimal stand-in.
 
+**Extended a second time**: also builds the real frontend (`npm run build`) and stages it into
+the package as `frontend_dist/`, so `app/frontend.py`'s `mount_frontend` (see that module's own
+docstring) actually serves the genuine, built React app — not just a 404 on `/` — once the
+backend is up. Verified locally first (real `uvicorn` + real built `dist/` + a throwaway
+Postgres, `curl` against `/`, a real asset, an SPA deep link, `/api/*`, and two path-traversal
+attempts) before ever touching the win11 VM — see the commit history for that log.
+
 ## Unlike #76's poc, this one has no built-in result-reporting mechanism
 
 `launcher-native.exe` is the real, shipping-candidate code — it deliberately has no

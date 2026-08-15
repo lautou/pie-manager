@@ -15,11 +15,17 @@ architecture be bundled too, not just the database? See "PgQueuer extension" bel
 
 **A bundled portable PostgreSQL starts and accepts real connections as a plain, non-elevated
 child process launched from inside a full-trust MSIX package.** Confirmed on the project's own
-`installer/testing/` win11 libvirt VM (real Windows 11, a normal local non-admin user account
-"pie", default UAC):
+`installer/testing/` win11 libvirt VM (real Windows 11, local account "pie", default UAC) — and
+confirmed, via `Get-LocalGroupMember -SID S-1-5-32-544`, that "pie" is a genuine member of the
+built-in Administrators group, not merely a standard/limited user. This is the exact scenario
+issue #65 asked to verify ("a real Windows account that's a member of the Administrators group —
+the common case for a personal PC"): the "refuses if Administrators-group member" check
+`postgres.exe` performs is about group membership regardless of current elevation, so testing
+against a plain non-privileged account would not have exercised the real concern at all.
 
-- `IS_ADMIN_ROLE: False` for the account actually running the packaged app — this is the real
-  target scenario, not a proxy for it.
+- `IS_ADMIN_ROLE: False` for the packaged app's own process — UAC's token-splitting means an
+  Administrators-group member's ordinary (non-elevated) processes still run at medium integrity,
+  exactly like a full-trust MSIX app would. This is the real target scenario, not a proxy for it.
 - `initdb` + `pg_ctl start` both succeeded (after fixing an unrelated missing-runtime problem,
   see Phase 2 below).
 - Multiple live `postgres.exe` processes observed running (postmaster + the usual background
@@ -45,7 +51,8 @@ narrative, including two more real (non-elevation) problems this uncovered.
 
 **An embeddable Python distribution + PgQueuer (the Celery/Redis replacement from #66) also
 runs as a plain, non-elevated process from inside the same full-trust MSIX package, against the
-bundled Postgres started above.** Confirmed on the same win11 VM, same non-admin "pie" account:
+bundled Postgres started above.** Confirmed on the same win11 VM, same Administrators-group
+"pie" account (see the group-membership confirmation above):
 
 - python.org's official "embeddable package" .zip (matching the real backend's exact Python
   3.14.0, with `pgqueuer==1.3.2`/`asyncpg==0.31.0` — the real backend's exact pins — pip-installed

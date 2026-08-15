@@ -13,6 +13,7 @@ on:
       - 'installer/launcher-native/**'
       - 'installer/testing/native-launcher-poc/**'
       - 'backend/**'
+      - 'frontend/**'
       - '.github/workflows/native-launcher-poc.yml'
 
 jobs:
@@ -28,6 +29,22 @@ jobs:
       - uses: actions/setup-go@v7.0.0
         with:
           go-version: '1.22'
+
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: '24'
+
+      - name: Build the real frontend (vite build) and stage it into the package
+        # Matches ci.yml's own Node version. `npm run build` is `tsc && vite build`, output at
+        # frontend/dist/ (absolute-path asset references, e.g. /assets/index-XXXX.js) - served
+        # by the backend's new app/frontend.py mount_frontend via FRONTEND_DIST_DIR, staged by
+        # installer/launcher-native's stageBundledFiles the same way pgsql/python are.
+        run: |
+          cd ..\..\..\frontend
+          npm ci
+          npm run build
+          cd ..\installer\testing\native-launcher-poc
+          Copy-Item -Recurse ..\..\..\frontend\dist frontend_dist
 
       - name: Build launcher-native.exe and generate placeholder logo assets
         run: |

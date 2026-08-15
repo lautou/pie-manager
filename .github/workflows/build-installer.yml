@@ -417,6 +417,12 @@ jobs:
           Move-Item -Path pg_extracted\pgsql\bin -Destination pgsql\bin
           Move-Item -Path pg_extracted\pgsql\share -Destination pgsql\share
           Move-Item -Path pg_extracted\pgsql\lib -Destination pgsql\lib
+          # The selective move above drops these two license files that live at the zip's
+          # pgsql/ root (covering exactly the CLI tools bundled here) — copy them along too,
+          # so the license terms for postgres.exe/pg_ctl.exe/initdb.exe/createdb.exe actually
+          # ship with the binaries they cover, for a Store reviewer or anyone else looking.
+          Copy-Item pg_extracted\pgsql\server_license.txt pgsql\server_license.txt
+          Copy-Item pg_extracted\pgsql\commandlinetools_3rd_party_licenses.txt pgsql\commandlinetools_3rd_party_licenses.txt
           Remove-Item -Recurse -Force pg_extracted, pg.zip
 
       - name: Bundle the VC++ Redistributable app-local (no system-wide install needed)
@@ -493,28 +499,18 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "MAKEAPPX=$makeappx"
           Add-Content -Path $env:GITHUB_ENV -Value "SIGNTOOL=$signtool"
 
-      - name: Package MSIX
-        working-directory: installer/launcher-native
-        shell: pwsh
-        run: |
-          $version = "${{ needs.build.outputs.version }}"
-          & $env:MAKEAPPX pack /d . /p "pie-manager-native-launcher-$version.msix" /o
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "::error::makeappx pack failed with exit code $LASTEXITCODE"
-            exit 1
-          }
-
-      - name: Sign with an ephemeral cert matching the real Store Publisher CN, and trust it
+      - name: Generate ephemeral signing cert matching the real Store Publisher CN, and trust it
         # Per Microsoft's own docs, a Store submission's original signature never needs to
         # chain to a trusted root — Microsoft re-signs the package at publish time. This cert
         # only needs to make the package internally valid for makeappx/signtool/Add-AppxPackage
         # below, and its Subject must exactly match AppxManifest.xml's Identity/Publisher.
         # Trusted into LocalMachine so the install+launch test below can sideload it; discarded
-        # at the end of this job regardless of outcome.
+        # at the end of this job regardless of outcome. Generated before packaging (not right
+        # before the MSIX sign step) so the same cert can also sign the bundled PostgreSQL
+        # executables below, while they're still loose files, not yet inside the package.
         working-directory: installer/launcher-native
         shell: pwsh
         run: |
-          $version = "${{ needs.build.outputs.version }}"
           $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=2654AE3A-D473-41CE-8C17-0C2734C3B4A3" `
             -KeyUsage DigitalSignature -FriendlyName "PieManagerNativeLauncherPackaging" `
             -CertStoreLocation "Cert:\CurrentUser\My" `
@@ -526,7 +522,42 @@ jobs:
           Import-Certificate -FilePath cert.cer -CertStoreLocation "Cert:\LocalMachine\TrustedPeople" | Out-Null
           Import-Certificate -FilePath cert.cer -CertStoreLocation "Cert:\LocalMachine\Root" | Out-Null
 
-          & $env:SIGNTOOL sign /fd SHA256 /sha1 $thumbprint "pie-manager-native-launcher-$version.msix"
+      - name: Sign the bundled PostgreSQL executables
+        # EDB's official Windows zip ships these four completely unsigned (confirmed by
+        # inspecting their PE Security Directory directly, not assumed) — an unsigned database
+        # server binary that opens network listeners, sitting inside a Store submission, is a
+        # real Defender/SmartScreen reputation weak point on end-user machines, independent of
+        # whether Store certification itself passes (only the outer MSIX needs a signature for
+        # that). Self-signing a third-party redistributable like this is legitimate and gives
+        # Defender's heuristics a real signature to build trust against, even unchained to a
+        # public CA — same reasoning that already applies to the outer MSIX signature above.
+        working-directory: installer/launcher-native
+        shell: pwsh
+        run: |
+          & $env:SIGNTOOL sign /fd SHA256 /sha1 $env:THUMBPRINT `
+            pgsql\bin\postgres.exe pgsql\bin\pg_ctl.exe pgsql\bin\initdb.exe pgsql\bin\createdb.exe
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::signtool sign failed on the bundled PostgreSQL executables with exit code $LASTEXITCODE"
+            exit 1
+          }
+
+      - name: Package MSIX
+        working-directory: installer/launcher-native
+        shell: pwsh
+        run: |
+          $version = "${{ needs.build.outputs.version }}"
+          & $env:MAKEAPPX pack /d . /p "pie-manager-native-launcher-$version.msix" /o
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::makeappx pack failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+
+      - name: Sign the MSIX package
+        working-directory: installer/launcher-native
+        shell: pwsh
+        run: |
+          $version = "${{ needs.build.outputs.version }}"
+          & $env:SIGNTOOL sign /fd SHA256 /sha1 $env:THUMBPRINT "pie-manager-native-launcher-$version.msix"
           if ($LASTEXITCODE -ne 0) {
             Write-Host "::error::signtool sign failed with exit code $LASTEXITCODE"
             exit 1

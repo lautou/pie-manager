@@ -43,6 +43,13 @@ func logDir(home string) string {
 	return filepath.Join(dataDir(home), "logs")
 }
 
+// frontendDistDir returns where the built frontend (`vite build`'s `dist/` output) is staged
+// under dataDir — passed to the backend as FRONTEND_DIST_DIR so it can serve it via
+// app/frontend.py's mount_frontend (issue #82).
+func frontendDistDir(home string) string {
+	return filepath.Join(dataDir(home), "frontend_dist")
+}
+
 // pgVersionMarkerPath is the file initdb writes as part of a successful run. Its presence is
 // used to detect whether Postgres has ever been initialized here, rather than merely checking
 // whether the pgdata directory exists (a directory can exist empty after a partial/interrupted
@@ -66,7 +73,7 @@ func postmasterPidPath(home string) string {
 // ensureDataDirs creates every directory this app writes to under dataDir, if not already
 // present. Safe to call on every launch, not just first run.
 func ensureDataDirs(home string) error {
-	for _, d := range []string{dataDir(home), pgDataDir(home), pgBinDir(home), pythonDir(home), logDir(home)} {
+	for _, d := range []string{dataDir(home), pgDataDir(home), pgBinDir(home), pythonDir(home), logDir(home), frontendDistDir(home)} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			return err
 		}

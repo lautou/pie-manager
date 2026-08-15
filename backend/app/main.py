@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routers import portfolios, products, brokers, transactions, pools, prices, snapshots, dashboard, admin
 from app.api.routers import holdings, rebalancing, analytics, pv, fiscal, indicators, transaction_import
 from app.api.routers import country_performance
+from app.core.config import settings
+from app.frontend import mount_frontend
 
 
 @asynccontextmanager
@@ -88,3 +90,7 @@ app.include_router(transaction_import.router, prefix="/api/transactions/import")
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+# Must be the last thing registered in this file - see mount_frontend's own docstring for why.
+mount_frontend(app, settings.frontend_dist_dir)

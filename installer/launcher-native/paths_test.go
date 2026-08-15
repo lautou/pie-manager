@@ -46,6 +46,14 @@ func TestLogDir(t *testing.T) {
 	}
 }
 
+func TestFrontendDistDir(t *testing.T) {
+	got := frontendDistDir(`C:\Users\pie`)
+	want := filepath.Join(`C:\Users\pie`, "PieManager", "frontend_dist")
+	if got != want {
+		t.Errorf("frontendDistDir() = %q, want %q", got, want)
+	}
+}
+
 func TestPgVersionMarkerPath(t *testing.T) {
 	got := pgVersionMarkerPath(`C:\Users\pie`)
 	want := filepath.Join(`C:\Users\pie`, "PieManager", "pgdata", "PG_VERSION")
@@ -97,7 +105,7 @@ func TestEnsureDataDirs_CreatesAll(t *testing.T) {
 	if err := ensureDataDirs(home); err != nil {
 		t.Fatalf("ensureDataDirs failed: %v", err)
 	}
-	for _, d := range []string{dataDir(home), pgDataDir(home), pgBinDir(home), pythonDir(home), logDir(home)} {
+	for _, d := range []string{dataDir(home), pgDataDir(home), pgBinDir(home), pythonDir(home), logDir(home), frontendDistDir(home)} {
 		info, err := os.Stat(d)
 		if err != nil {
 			t.Errorf("expected %s to exist: %v", d, err)

@@ -121,12 +121,21 @@ func TestPythonStagedMarker(t *testing.T) {
 	}
 }
 
-func TestStageBundledFiles_CopiesBothTreesOnFirstCall(t *testing.T) {
+func TestFrontendDistStagedMarker(t *testing.T) {
+	got := frontendDistStagedMarker(`C:\Users\pie`)
+	want := filepath.Join(frontendDistDir(`C:\Users\pie`), "index.html")
+	if got != want {
+		t.Errorf("frontendDistStagedMarker() = %q, want %q", got, want)
+	}
+}
+
+func TestStageBundledFiles_CopiesAllThreeTreesOnFirstCall(t *testing.T) {
 	pkgRoot := t.TempDir()
 	home := t.TempDir()
 
 	writeTestFile(t, filepath.Join(pkgRoot, "pgsql", "bin", "postgres.exe"), "pg-binary")
 	writeTestFile(t, filepath.Join(pkgRoot, "python", "python.exe"), "py-binary")
+	writeTestFile(t, filepath.Join(pkgRoot, "frontend_dist", "index.html"), "<html></html>")
 
 	if err := stageBundledFiles(pkgRoot, home); err != nil {
 		t.Fatalf("stageBundledFiles failed: %v", err)
@@ -138,6 +147,9 @@ func TestStageBundledFiles_CopiesBothTreesOnFirstCall(t *testing.T) {
 	if _, err := os.Stat(pythonStagedMarker(home)); err != nil {
 		t.Errorf("expected python to be staged: %v", err)
 	}
+	if _, err := os.Stat(frontendDistStagedMarker(home)); err != nil {
+		t.Errorf("expected frontend_dist to be staged: %v", err)
+	}
 }
 
 func TestStageBundledFiles_SkipsAlreadyStagedTrees(t *testing.T) {
@@ -146,13 +158,15 @@ func TestStageBundledFiles_SkipsAlreadyStagedTrees(t *testing.T) {
 
 	writeTestFile(t, filepath.Join(pkgRoot, "pgsql", "bin", "postgres.exe"), "pg-binary")
 	writeTestFile(t, filepath.Join(pkgRoot, "python", "python.exe"), "py-binary")
+	writeTestFile(t, filepath.Join(pkgRoot, "frontend_dist", "index.html"), "<html></html>")
 
-	// Pre-stage both markers directly, without a real source tree at all - if
+	// Pre-stage all three markers directly, without a real source tree at all - if
 	// stageBundledFiles tried to copy anyway, it would fail (no matching source under pkgRoot
 	// for these specific marker paths' parent trees being absent is not the point here; the
 	// point is that a second call must not attempt the copy at all).
 	writeTestFile(t, pgsqlStagedMarker(home), "already-here")
 	writeTestFile(t, pythonStagedMarker(home), "already-here")
+	writeTestFile(t, frontendDistStagedMarker(home), "already-here")
 
 	if err := stageBundledFiles(pkgRoot, home); err != nil {
 		t.Fatalf("stageBundledFiles failed: %v", err)
@@ -187,5 +201,20 @@ func TestStageBundledFiles_ErrorWhenPythonSourceMissing(t *testing.T) {
 	}
 	if _, err := os.Stat(pgsqlStagedMarker(home)); err != nil {
 		t.Errorf("expected pgsql to still have staged successfully before the python error: %v", err)
+	}
+}
+
+func TestStageBundledFiles_ErrorWhenFrontendDistSourceMissing(t *testing.T) {
+	pkgRoot := t.TempDir()
+	home := t.TempDir()
+	// pgsql/ and python/ are present and stage successfully; frontend_dist/ is missing.
+	writeTestFile(t, filepath.Join(pkgRoot, "pgsql", "bin", "postgres.exe"), "pg-binary")
+	writeTestFile(t, filepath.Join(pkgRoot, "python", "python.exe"), "py-binary")
+
+	if err := stageBundledFiles(pkgRoot, home); err == nil {
+		t.Error("expected an error when the source frontend_dist tree is missing")
+	}
+	if _, err := os.Stat(pythonStagedMarker(home)); err != nil {
+		t.Errorf("expected python to still have staged successfully before the frontend_dist error: %v", err)
 	}
 }

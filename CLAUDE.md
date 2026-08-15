@@ -1302,14 +1302,15 @@ binaries, identical except Go's own build-ID cache string) that renaming back to
 `main_windows_amd64.syso` produces the exact same signed Windows binary while fixing every
 other platform. Never go back to a bare `main.syso`.
 
-### MSIX/Microsoft Store distribution of launcher.exe — investigated and rejected (issue #63)
+### MSIX/Microsoft Store distribution of launcher.exe alone — investigated and rejected (issue #63)
 
 Issue #63 explored Store-distributing only `launcher.exe` as an MSIX package to route around
-#60's Smart App Control (SAC) block (Store apps bypass SAC/SmartScreen by design). Confirmed
+#60's Smart App Control (SAC) block (Store apps bypass SAC/SmartScreen by design), with the rest
+of the app (WSL2/Podman/containers) staying a separately-elevated, sideloaded installer. Confirmed
 live that a full-trust MSIX-packaged WebView2 control can reach `localhost` exactly like the
 unpackaged exe (the loopback-isolation restriction only applies to sandboxed AppContainer/UWP
-apps) — but the approach is a dead end regardless, rejected twice by real Microsoft Store
-certification on two separate policies:
+apps) — but **this specific shape of the approach** is a dead end, rejected twice by real
+Microsoft Store certification on two separate policies:
 
 - **10.2.5 Security** ("Installing and Updating Store Apps"): *"The product is primarily an
   installer for another app. Products distributed through the Store may only be installed
@@ -1321,24 +1322,44 @@ certification on two separate policies:
 
 A first, passive-message variant fared no better either (rejected under 10.1.2 Functionality:
 *"fails to start with a message to download the App from outside the Store"*). There is no
-in-between design that satisfies "the Store app must be fully functional on its own" while the
-real app still needs a separately-elevated WSL2/Podman/container stack that cannot itself be
-Store-packaged (already ruled out when this was first scoped — a single MSIX cannot mix an
+in-between design that satisfies "the Store app must be fully functional on its own" while a
+separately-elevated WSL2/Podman/container stack sits behind it — a single MSIX cannot mix an
 elevated and non-elevated component, and Store certification is documented as very unlikely to
-pass an app that forces elevation on launch).
+pass an app that forces elevation on launch.
 
 **Not pursuing the paid-certificate path either** (SignPath Foundation, Azure Trusted Signing,
 Sectigo/SSL.com — see #60): the realistic recurring cost (~$370-410/year) isn't justified for a
 personal project, and even a paid cert must still build reputation with Microsoft's cloud
-service before SAC reliably allows it through, so it wouldn't even be a guaranteed fix.
+service before SAC reliably allows it through, so it wouldn't even be a guaranteed fix. SAC
+checks whether a signature chains to a CA in the Microsoft Trusted Root Program — not whether
+the signature is otherwise valid — so a self-signed certificate can never satisfy it either, no
+matter how it's deployed or locally trusted.
 
-**Current status: no free fix exists for SAC blocking `launcher.exe`.** SAC checks whether a
-signature chains to a CA in the Microsoft Trusted Root Program — not whether the signature is
-otherwise valid — so a self-signed certificate can never satisfy it, no matter how it's deployed
-or locally trusted. The only workaround is the end user disabling Smart App Control themselves
-(Settings → Privacy & security → Windows Security → App & browser control) — a real but drastic
-step, since re-enabling SAC afterward requires reinstalling Windows. This is a known, accepted
-limitation, not something this project can fix for free.
+**This does not mean no free fix exists — see issue #65/#82.** The rejections above specifically
+targeted *downloading a separate installer at runtime + requesting elevation*, not Store
+distribution itself. #65's own research (prompted by these exact rejections) found that an app
+bundling **everything** it needs inside the MSIX package — no network download, no elevation, no
+external installer, only ordinary non-elevated child processes — doesn't trigger either rejected
+policy. #82 is the resulting native-Windows-port MVP (bundled Postgres + bundled Python backend,
+no WSL2/Podman at all), now in active development. Until/unless that lands and passes
+certification for real, the SAC block remains a known, accepted limitation whose only current
+workaround is the end user disabling Smart App Control themselves (Settings → Privacy & security
+→ Windows Security → App & browser control) — a real but drastic step, since re-enabling SAC
+afterward requires reinstalling Windows.
+
+**The Partner Center reservation from this investigation is still valid and reused by #82,
+not recreated:** real identity `Name="PIEManager.PIEManager"`,
+`Publisher="CN=2654AE3A-D473-41CE-8C17-0C2734C3B4A3"` (PFN
+`PIEManager.PIEManager_9h5hzpm8nc7w0`, Store ID `9PM8GPSMJG0N`,
+listing at https://apps.microsoft.com/detail/9PM8GPSMJG0N). Confirmed still present in the
+Partner Center dashboard (2026-08-16), including a **privacy policy already drafted and on
+file** that remains accurate for #82's architecture too (self-hosted, no data collected/
+transmitted by the publisher, the only outbound network calls are public Yahoo Finance price
+lookups, everything else stored locally) — no need to re-draft it. Category: Finances
+personnelles > Banque + investissements. Support URL already set to the GitHub repo. A signing
+certificate for local sideload testing must have a `Subject` matching this exact `Publisher` CN
+(a real MSIX requirement, not just a trust nicety) — see
+`installer/testing/native-launcher-poc/` for the current test packaging using this identity.
 
 ### Installed files (Linux)
 ```

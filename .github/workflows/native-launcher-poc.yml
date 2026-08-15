@@ -152,12 +152,14 @@ jobs:
             exit 1
           }
 
-      - name: Generate ephemeral signing cert and sign
-        # Fully throwaway per-run cert, same as #76's poc — local sideload trust doesn't check
-        # the CN against a real Partner Center identity, only a real Store submission does (see
-        # issue #82's own Prerequisites section).
+      - name: Generate ephemeral signing cert matching the real Publisher CN, and sign
+        # The cert's Subject must match AppxManifest.xml's Identity/Publisher exactly - MSIX
+        # signing validation requires this (Add-AppxPackage rejects a mismatch), it isn't just a
+        # trust nicety. Still a fully throwaway, per-run cert though (same as PR #64's own
+        # approach for this exact identity): local sideload trust doesn't check this CN against
+        # a real Partner Center-issued certificate, only a real Store submission does.
         run: |
-          $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=PieManagerPoc" `
+          $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=2654AE3A-D473-41CE-8C17-0C2734C3B4A3" `
             -KeyUsage DigitalSignature -FriendlyName "PieManagerNativeLauncherPocCert" `
             -CertStoreLocation "Cert:\CurrentUser\My" `
             -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")

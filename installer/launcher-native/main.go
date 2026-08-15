@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -100,6 +101,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	exePath, err := os.Executable()
+	if err != nil {
+		os.Exit(1)
+	}
+	pkgRoot := filepath.Dir(exePath)
+
 	// IconId: 1 matches the numeric RT_GROUP_ICON resource ID ("#1") embedded via
 	// winres/winres.json - mirrors installer/launcher/main.go's own icon setup.
 	w := webview2.NewWithOptions(webview2.WebViewOptions{
@@ -121,7 +128,7 @@ func main() {
 
 	go func() {
 		setStatus(w, "Preparing local database…")
-		s, err := startupSequence(home)
+		s, err := startupSequence(pkgRoot, home)
 		if err != nil {
 			showError(w, fmt.Sprintf("Failed to start PIE Manager: %v", err))
 			return

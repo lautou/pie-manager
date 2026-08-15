@@ -17,9 +17,10 @@ type nativeSession struct {
 	backendCmd *exec.Cmd
 }
 
-// startupSequence runs the full launch orchestration: data-directory setup, first-run
-// detection, crash recovery, Postgres init/start, database creation on first run, and spawning
-// the backend.
+// startupSequence runs the full launch orchestration: data-directory setup, staging the
+// package's bundled pgsql/python from its own read-only install directory, first-run detection,
+// crash recovery, Postgres init/start, database creation on first run, and spawning the
+// backend.
 //
 // It composes runInitdb/startPostgres/createAppDatabase/startBackend/recoverFromPreviousSession
 // - already-documented, intentionally-untestable process-spawning functions (see
@@ -31,9 +32,18 @@ type nativeSession struct {
 // (paths, args, port selection, first-run detection) is already extracted into separately
 // tested, pure functions; this is deliberately kept as thin sequencing glue with no logic of
 // its own worth testing in isolation.
-func startupSequence(home string) (*nativeSession, error) {
+func startupSequence(pkgRoot, home string) (*nativeSession, error) {
 	if err := ensureDataDirs(home); err != nil {
 		return nil, fmt.Errorf("preparing data directories: %w", err)
+	}
+
+	// Confirmed live (a real end-to-end test of this exact orchestration, before this fix):
+	// initdb.exe fails with "fork/exec ... le fichier spécifié est introuvable" without this -
+	// ensureDataDirs only creates empty directories, it never populates them from the package's
+	// own bundled pgsql/python folders, which cannot execute in place from the package's
+	// read-only install directory (confirmed in #76's poc for the same reason).
+	if err := stageBundledFiles(pkgRoot, home); err != nil {
+		return nil, fmt.Errorf("staging bundled files: %w", err)
 	}
 
 	firstRun := isFirstRun(home)

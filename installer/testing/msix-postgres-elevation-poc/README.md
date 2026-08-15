@@ -6,10 +6,12 @@ methodology already proven for issue #63's `msix-loopback-poc` (same manifest sh
 ephemeral-cert packaging/sideload/AUMID-launch/result-file-poll/cleanup pattern) — see that
 directory's own README for the shared mechanics; this one only documents what's different.
 
-**Scope extended beyond #76's original question**: after confirming Postgres works, this poc
-also bundles an embeddable Python + PgQueuer (the Celery/Redis replacement from #66) inside the
-same package, to answer a natural follow-up — can the background-job side of #65's proposed
-architecture be bundled too, not just the database? See "PgQueuer extension" below.
+**Scope extended twice beyond #76's original question**: after confirming Postgres works, this
+poc also bundles an embeddable Python + PgQueuer (the Celery/Redis replacement from #66) inside
+the same package (see "PgQueuer extension" below), then extended a second time to bundle and run
+the real FastAPI/uvicorn backend itself plus static-frontend serving — the last piece of #65's
+proposed architecture (see "Backend/webserver extension" below). All three of #65's
+open technical-feasibility questions are now empirically closed.
 
 ## Answer: YES — confirmed live on a real Windows 11 machine
 
@@ -108,6 +110,42 @@ unrelated `LIGNE 1` (French "LINE 1") substring of that exact "relation does not
 making a real failure report as `PGQ_SCHEDULE_REGISTERED: True`. Fixed with an exact `-eq "1"`
 match — a reminder that a poc's own verification logic needs the same scrutiny as the thing it's
 testing.
+
+## Backend/webserver extension — Answer: YES, also confirmed live
+
+**The real backend itself — FastAPI/uvicorn, plus serving a pre-built frontend via
+`StaticFiles` — also runs non-elevated from inside the same full-trust MSIX package**, closing
+the last open technical-feasibility question for #65's target architecture (launcher → bundled
+Postgres → bundled backend serving the built frontend → WebView2 window). Confirmed live, same
+win11 VM, same Administrators-group "pie" account, first attempt succeeded outright (all the
+process-launch/exit-code lessons from the Postgres/PgQueuer extensions above already applied):
+
+- The embeddable Python bundled for this run has the **real, full `backend/requirements.txt`**
+  pip-installed into it (not a hand-picked subset) — `fastapi`, `uvicorn[standard]`,
+  `sqlalchemy[asyncio]`, `alembic`, `pgqueuer`, `croniter`, `pydantic`, `yfinance`, `httpx`, and
+  the rest — installed cleanly with no platform-compatibility failures. `uvicorn[standard]`'s
+  POSIX-only optional dependency (`uvloop`) is correctly skipped on Windows via pip's own
+  environment markers, not something this poc had to work around.
+- A minimal, DB-free test app (`from fastapi import FastAPI` + a `StaticFiles` mount) was
+  launched via `python -m uvicorn fastapi_test:app --host 127.0.0.1 --port 8123`, from the same
+  relocated-to-LocalState Python used for PgQueuer above.
+- Real HTTP requests (PowerShell `Invoke-WebRequest`, not just checking the process launched)
+  confirmed both a live API endpoint (`GET /api/health` → `{"status":"ok"}`) and a real static
+  file served through `StaticFiles` (`GET /` → the test file's content) — with uvicorn's own
+  access log independently corroborating both requests (`"GET /api/health HTTP/1.1" 200 OK`,
+  `"GET / HTTP/1.1" 200 OK`).
+- The uvicorn process shut down cleanly with no orphaned processes, same as Postgres/PgQueuer.
+
+This test deliberately doesn't touch the database (Postgres connectivity is already proven by
+the PgQueuer extension above) — it's scoped purely to "can the real web-serving dependency tree
+install and run non-elevated from a relocated embeddable Python," which is the one thing neither
+the Postgres nor the PgQueuer poc exercised.
+
+**With this, all three components of #65's proposed native-Windows architecture — the database,
+the background-job worker, and the web server/frontend host — are independently, empirically
+confirmed to run non-elevated inside a full-trust MSIX.** The remaining open item on #65 (Store
+certification actually accepting this pattern) cannot be resolved by a poc — it requires a real
+submission.
 
 ## Question it answers
 

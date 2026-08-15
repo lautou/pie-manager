@@ -25,10 +25,76 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 func writeResult(resultPath, body string) {
 	_ = os.WriteFile(resultPath, []byte(body), 0o644)
+}
+
+// runPersistenceTest answers a question none of this poc's other checks ever needed: does a
+// full-trust MSIX app's write to a path OUTSIDE its own package-scoped LocalState/AppData
+// storage actually persist as a real file that survives package uninstall? LocalState is known
+// to be wiped on uninstall — fine for throwaway poc data, not acceptable for a real app's
+// financial data. Two candidate paths are tested to isolate two independent questions:
+//   - pathA is built from USERPROFILE at runtime, landing outside AppData entirely (matches
+//     Microsoft's own documented behavior: "Read/Write operations to files and folders that are
+//     not part of the package or VFS mapping are not controlled by the container" — Documents
+//     and other non-AppData profile folders are explicitly called out as one example).
+//   - pathB is a fully hardcoded literal string with NO environment variable involved at all,
+//     landing physically under AppData\Local — this tests whether MSIX's AppData redirection
+//     ("All writes to the user's AppData folder... are copied on write to a private per-user,
+//     per-app location") is a raw-path-level interception (would still catch pathB) or merely an
+//     environment-variable substitution trick (pathB would bypass it). pathBMirror checks the
+//     documented private-copy destination directly, so a redirected pathB shows exactly where
+//     its data actually went instead of just "not here."
+func runPersistenceTest() []string {
+	var lines []string
+	lines = append(lines, "--- PERSISTENCE_TEST ---")
+
+	userProfile := os.Getenv("USERPROFILE")
+	localAppData := os.Getenv("LOCALAPPDATA")
+	appData := os.Getenv("APPDATA")
+	temp := os.Getenv("TEMP")
+	lines = append(lines, fmt.Sprintf("ENV_USERPROFILE: %s", userProfile))
+	lines = append(lines, fmt.Sprintf("ENV_LOCALAPPDATA: %s", localAppData))
+	lines = append(lines, fmt.Sprintf("ENV_APPDATA: %s", appData))
+	lines = append(lines, fmt.Sprintf("ENV_TEMP: %s", temp))
+
+	homeDir, homeErr := os.UserHomeDir()
+	lines = append(lines, fmt.Sprintf("GO_USERHOMEDIR: %s (err: %v)", homeDir, homeErr))
+
+	writeMarker := func(label, path, content string) {
+		mkdirErr := os.MkdirAll(filepath.Dir(path), 0o755)
+		var writeErr error
+		if mkdirErr == nil {
+			writeErr = os.WriteFile(path, []byte(content), 0o644)
+		}
+		lines = append(lines, fmt.Sprintf("%s_PATH: %s", label, path))
+		lines = append(lines, fmt.Sprintf("%s_MKDIR_ERROR: %v", label, mkdirErr))
+		lines = append(lines, fmt.Sprintf("%s_WRITE_ERROR: %v", label, writeErr))
+	}
+
+	pathA := filepath.Join(homeDir, "PieManagerPersistTest", "marker_a.txt")
+	writeMarker("PATH_A", pathA, "PERSIST_TEST_A_OK")
+
+	// Deliberately not filepath.Join(localAppData, ...) or any env-var-derived value — a raw
+	// literal string, matching the account confirmed earlier in this investigation ("pie").
+	pathB := `C:\Users\pie\AppData\Local\PieManagerPersistTest\marker_b.txt`
+	writeMarker("PATH_B", pathB, "PERSIST_TEST_B_OK")
+
+	// Where Microsoft's own docs say an AppData write actually lands for a packaged app:
+	// %LocalAppData%\Packages\<PackageFamilyName>\LocalCache\Local\... — check directly whether
+	// pathB's content ended up here instead, rather than leaving "pathB wasn't at the literal
+	// location" as an unexplained negative result.
+	matches, _ := filepath.Glob(filepath.Join(localAppData, "Packages", "PieManagerMsixPostgresElevationPoc_*", "LocalCache", "Local", "PieManagerPersistTest", "marker_b.txt"))
+	lines = append(lines, fmt.Sprintf("PATH_B_MIRROR_CANDIDATES: %v", matches))
+	for _, m := range matches {
+		content, readErr := os.ReadFile(m)
+		lines = append(lines, fmt.Sprintf("PATH_B_MIRROR_CONTENT(%s): %s (err: %v)", m, string(content), readErr))
+	}
+
+	return lines
 }
 
 func main() {
@@ -51,6 +117,11 @@ func main() {
 	}
 	resultPath := filepath.Join(localState, "result.txt")
 	pgData := filepath.Join(localState, "pgdata")
+
+	// Runs and writes its own result file before anything else below - independent of, and not
+	// gated on, the Postgres/PgQueuer/webserver checks that follow.
+	persistLines := runPersistenceTest()
+	writeResult(filepath.Join(localState, "persist_test.txt"), strings.Join(persistLines, "\n"))
 
 	scriptPath := filepath.Join(localState, "worker.ps1")
 	if err := os.WriteFile(scriptPath, []byte(workerScript), 0o644); err != nil {

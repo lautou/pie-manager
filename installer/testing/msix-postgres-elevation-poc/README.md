@@ -6,12 +6,15 @@ methodology already proven for issue #63's `msix-loopback-poc` (same manifest sh
 ephemeral-cert packaging/sideload/AUMID-launch/result-file-poll/cleanup pattern) — see that
 directory's own README for the shared mechanics; this one only documents what's different.
 
-**Scope extended twice beyond #76's original question**: after confirming Postgres works, this
-poc also bundles an embeddable Python + PgQueuer (the Celery/Redis replacement from #66) inside
-the same package (see "PgQueuer extension" below), then extended a second time to bundle and run
-the real FastAPI/uvicorn backend itself plus static-frontend serving — the last piece of #65's
-proposed architecture (see "Backend/webserver extension" below). All three of #65's
-open technical-feasibility questions are now empirically closed.
+**Scope extended three times beyond #76's original question**: after confirming Postgres works,
+this poc also bundles an embeddable Python + PgQueuer (the Celery/Redis replacement from #66)
+inside the same package (see "PgQueuer extension" below), extended a second time to bundle and
+run the real FastAPI/uvicorn backend itself plus static-frontend serving — the last piece of
+#65's proposed architecture (see "Backend/webserver extension" below) — and a third time, for
+#82 (the native-port MVP issue), to answer whether a full-trust MSIX app can persist real user
+data outside its own package-scoped, uninstall-wiped storage (see "Data persistence extension"
+below). All three of #65's open technical-feasibility questions are empirically closed, plus the
+data-persistence question #82 depends on.
 
 ## Answer: YES — confirmed live on a real Windows 11 machine
 
@@ -146,6 +149,49 @@ the background-job worker, and the web server/frontend host — are independentl
 confirmed to run non-elevated inside a full-trust MSIX.** The remaining open item on #65 (Store
 certification actually accepting this pattern) cannot be resolved by a poc — it requires a real
 submission.
+
+## Data persistence extension — a real financial-data app cannot use `LocalState`
+
+**Confirmed live: a full-trust MSIX app's writes anywhere under `AppData` — even via a fully
+hardcoded literal path with zero environment-variable involvement — are transparently redirected
+to a private, per-package location that Windows deletes on uninstall. Writes to a path derived
+from `USERPROFILE`, outside `AppData` entirely, are real and survive uninstall.** This closes a
+prerequisite for #82 (the native-port MVP issue): none of the three extensions above needed to
+worry about this, since they only ever used throwaway test data, but a real app's Postgres data
+directory cannot live under the package-scoped storage every other check in this poc used.
+
+Extended `main.go` (a pure Go check, no PowerShell — this doesn't need Postgres or Python at
+all) to write two marker files and log the raw environment variables as seen from inside the
+packaged process:
+
+- **Path A**: `filepath.Join(os.UserHomeDir(), "PieManagerPersistTest", "marker_a.txt")` — built
+  from `USERPROFILE` at runtime, landing outside `AppData` entirely.
+- **Path B**: `C:\Users\pie\AppData\Local\PieManagerPersistTest\marker_b.txt` — a **literal Go
+  string**, no environment variable read at all, landing physically under `AppData\Local`.
+
+Result, verified from outside the package (`guest-exec` running as `SYSTEM`, i.e. genuinely
+outside any package activation context — the packaged process's own `os.WriteFile` calls
+reported *no error* for either path, which on its own proves nothing about where the data
+actually ended up):
+
+| | Path A (outside `AppData`) | Path B (hardcoded, under `AppData\Local`) |
+|---|---|---|
+| `ENV_USERPROFILE`/`ENV_LOCALAPPDATA` as read from inside the package | Real values (`C:\Users\pie`, `C:\Users\pie\AppData\Local`) — **not** rewritten to a package-scoped value | (same env vars, same real values) |
+| File exists at the literal path, checked from outside | ✅ Yes, correct content | ❌ No |
+| Actual data found instead at `%LocalAppData%\Packages\<PFN>\LocalCache\Local\...` | — (never checked, not needed) | ✅ Yes, correct content — the write was silently redirected here |
+| Survives `Remove-AppxPackage` (real uninstall, confirmed via the package's own folder disappearing) | ✅ **Yes** — file and content intact | ❌ N/A — the redirect target was deleted along with the rest of the package |
+
+This directly confirms (not just cites) Microsoft's own documented behavior for full-trust MSIX
+apps: *"All writes to the user's AppData folder... are copied on write to a private per-user,
+per-app location"* — and confirms the mechanism operates at the **physical path level**, not via
+environment-variable substitution (the env vars themselves report the true, non-rewritten
+values; the interception happens transparently underneath, so hardcoding around the env var
+does not help). Non-`AppData` profile paths are outside this mechanism entirely and behave like
+an ordinary desktop app's writes always have.
+
+**Conclusion for #82**: Postgres's data directory (and any other real, must-not-be-lost user
+data) must live under a `USERPROFILE`-derived, non-`AppData` path — e.g. `%USERPROFILE%\PieManager\`
+— never anywhere under `AppData`/`LocalAppData`, hardcoded or not.
 
 ## Question it answers
 

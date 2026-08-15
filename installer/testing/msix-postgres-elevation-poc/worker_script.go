@@ -130,6 +130,7 @@ if ($initdbExit -eq 0) {
         # overload, WaitForExit(ms), only waits on the process handle and has no such hazard.
         $startProc = Start-Process -FilePath $pgctl -ArgumentList $startArgs -NoNewWindow -PassThru -RedirectStandardOutput $startOut -RedirectStandardError $startErr
         if ($startProc.WaitForExit(60000)) {
+            $startProc.Refresh()
             $startExit = $startProc.ExitCode
         } else {
             $lines += "PGCTL_START_WAIT_TIMEOUT: pg_ctl.exe still running after 60s"
@@ -142,17 +143,22 @@ if ($initdbExit -eq 0) {
     $lines += @(Get-Content $startOut -ErrorAction SilentlyContinue)
     $lines += "--- PGCTL_START_STDERR ---"
     $lines += @(Get-Content $startErr -ErrorAction SilentlyContinue)
+
+    # ExitCode came back empty/unreadable on a real run even though WaitForExit(60000) returned
+    # true and the captured stdout clearly showed "serveur d�marr�" (server started) - a .NET
+    # Process object obtained via Start-Process -PassThru doesn't always reliably expose
+    # ExitCode after a timed (non-default) WaitForExit overload. postmaster.pid is written by
+    # pg_ctl only on a genuinely successful start and is locale-independent, unlike parsing
+    # stdout text - use its presence as a fallback success signal when ExitCode is unusable.
+    $postmasterPidExists = Test-Path (Join-Path $PgData "postmaster.pid")
+    $lines += "POSTMASTER_PID_EXISTS: $postmasterPidExists"
+    if ($startExit -ne 0 -and $postmasterPidExists) {
+        $lines += "PGCTL_START_EXIT_FALLBACK: treating as success via postmaster.pid presence (ExitCode was $startExit)"
+        $startExit = 0
+    }
     Flush-Lines
 
     if ($startExit -eq 0) {
-        # A pg_ctl status check used to sit here and was removed after it hung indefinitely
-        # (near-zero CPU over 8+ minutes) even with output redirection. A later run showed the
-        # same class of hang (near-zero CPU, no forward progress) can still occur somewhere in
-        # this general area even without that call - root cause not pinned down. Flush-Lines
-        # calls throughout this block exist specifically so a live poll of $ResultPath from
-        # outside the package shows exactly which step is stuck, instead of requiring indirect
-        # process/thread inspection to guess.
-
         # PgQueuer (the Celery/Redis replacement, issue #66) — same LocalState-copy pattern as
         # pgsql above (robocopy, not Copy-Item -Recurse — see that step's comment for why): the
         # bundled embeddable Python/pgq.exe can't run in-place from the package's own read-only

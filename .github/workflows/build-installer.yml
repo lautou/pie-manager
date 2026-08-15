@@ -403,9 +403,9 @@ jobs:
           go run ./gen-assets 256x256.png Assets
 
       - name: Download and stage the portable PostgreSQL distribution
-        # Identical to #76's msix-postgres-elevation-poc / #82's native-launcher-poc — see
-        # those poc's own workflow comments for why bin+share+lib must all be staged together
-        # with their relative layout preserved.
+        # bin+share+lib must all be staged together with their relative layout preserved —
+        # pg_ctl/initdb/postgres.exe locate their own share/lib dependencies relative to their
+        # own location, confirmed via #76/#82's earlier proof-of-work poc iterations.
         working-directory: installer/launcher-native
         shell: pwsh
         run: |
@@ -533,9 +533,11 @@ jobs:
           }
 
       - name: Install the package and launch it via its AUMID
-        # Mirrors native-launcher-poc.yml's proven install/launch mechanism — see that
-        # workflow's own comment for why this is a genuine test of launcher-native.exe's
-        # WebView2 GUI window coming up, not just the backend starting.
+        # This is a genuine test of launcher-native.exe's WebView2 GUI window actually coming
+        # up, not just the backend starting: main.go's backend-spawning goroutine only runs
+        # once webview2.NewWithOptions succeeds, so a healthy backend below proves the window
+        # initialized too. First proven this way via the now-retired native-launcher-poc.yml
+        # (see CLAUDE.md).
         working-directory: installer/launcher-native
         shell: pwsh
         run: |

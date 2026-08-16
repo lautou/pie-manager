@@ -64,7 +64,37 @@ acceptable for a system-interaction binary.
 - `main_windows.go` — Windows full installer (`//go:build windows`)
 - `install.go`, `start.go`, `install_test.go` — Linux only (`//go:build linux`)
 - `main_darwin.go`, `install_darwin.go`, `start_darwin.go` — macOS full installer (`//go:build darwin`)
-- `launcher/` — separate Go module, builds `launcher.exe` (Windows WebView2 native launcher)
+- `launcher/` — separate Go module, builds `launcher.exe` (Windows WebView2 native launcher,
+  Podman-based product — waits for Podman Machine + containers, no process orchestration of
+  its own)
+- `launcher-native/` — separate Go module, issue #82's native-Windows-port MVP launcher (no
+  Podman/containers at all — orchestrates a bundled Postgres + bundled Python backend directly).
+  Own coverage policy, mirroring the pattern above: **fully testable (100% covered)** —
+  `paths.go` (data-directory resolution under `%USERPROFILE%\PieManager\`, deliberately never
+  under `AppData`/`LocalAppData` — confirmed live in #76/#82 that MSIX transparently redirects
+  any write under `AppData`, even a fully hardcoded path, to a location wiped on uninstall),
+  `ports.go` (dynamic port selection, never the #76 poc's hardcoded 5432/8123), all arg-builder
+  functions in `postgres.go`/`backend.go` (`buildInitdbArgs`, `buildPgCtlStartArgs`,
+  `buildPgCtlStopArgs`, `buildCreateDbArgs`, `databaseURL`, `buildUvicornArgs`, `healthURL`),
+  `runCapturedCommand`, `stopBackend`, `waitForHealth` (fully exercised via `httptest.Server` and
+  real short-lived subprocesses, not just argument-building), and `readPostmasterPid`.
+  **Intentionally untestable** (real process spawns/OS liveness checks, same class as the
+  Podman-based installer's own untestable bucket) — `runInitdb`, `startPostgres`, `stopPostgres`,
+  `createAppDatabase`, `startBackend`, `isPidRunning`, `recoverFromPreviousSession`,
+  `startupSequence` (the top-level orchestrator — every decision it makes is already covered by
+  testing the pure functions it calls; the function itself is thin sequencing glue), and all of
+  `main.go` (WebView2/window glue). Covered instead by the CI install+launch smoke test in
+  `build-installer.yml`'s `package-native-launcher-msix` job (issue #82) — `Add-AppxPackage` +
+  launch via `shell:AppsFolder`, then poll `/api/admin/version` — confirmed live: the full
+  first-run bootstrap (stage bundled files, `initdb`, `pg_ctl start`, `createdb`, Alembic
+  migrations, spawn `uvicorn`) runs inside a real installed MSIX package on a real
+  GitHub-hosted Windows runner, and the backend answers its health check. This also confirms
+  `main.go`'s WebView2 window itself initializes there (the backend-spawning goroutine only
+  runs once `webview2.NewWithOptions` succeeds). Packaging assets (`AppxManifest.xml`,
+  `gen-assets/` icon renderer, `winres/` + `main_windows_amd64.syso` for the exe's own
+  taskbar/titlebar icon) live directly in this module, mirroring `installer/launcher/`'s own
+  layout — promoted here from a throwaway `installer/testing/native-launcher-poc/` diagnostic
+  (now deleted) once this exact mechanism was proven live.
 - `testing/` — reproducible scripts to recreate the win11 libvirt/QEMU test VM from scratch on
   a fresh Fedora host (not part of the shipped product; see its own `README.md`)
 - `testing/msix-loopback-poc/` — throwaway diagnostic confirming (live, on a real `windows-latest`
@@ -1282,14 +1312,15 @@ binaries, identical except Go's own build-ID cache string) that renaming back to
 `main_windows_amd64.syso` produces the exact same signed Windows binary while fixing every
 other platform. Never go back to a bare `main.syso`.
 
-### MSIX/Microsoft Store distribution of launcher.exe — investigated and rejected (issue #63)
+### MSIX/Microsoft Store distribution of launcher.exe alone — investigated and rejected (issue #63)
 
 Issue #63 explored Store-distributing only `launcher.exe` as an MSIX package to route around
-#60's Smart App Control (SAC) block (Store apps bypass SAC/SmartScreen by design). Confirmed
+#60's Smart App Control (SAC) block (Store apps bypass SAC/SmartScreen by design), with the rest
+of the app (WSL2/Podman/containers) staying a separately-elevated, sideloaded installer. Confirmed
 live that a full-trust MSIX-packaged WebView2 control can reach `localhost` exactly like the
 unpackaged exe (the loopback-isolation restriction only applies to sandboxed AppContainer/UWP
-apps) — but the approach is a dead end regardless, rejected twice by real Microsoft Store
-certification on two separate policies:
+apps) — but **this specific shape of the approach** is a dead end, rejected twice by real
+Microsoft Store certification on two separate policies:
 
 - **10.2.5 Security** ("Installing and Updating Store Apps"): *"The product is primarily an
   installer for another app. Products distributed through the Store may only be installed
@@ -1301,24 +1332,87 @@ certification on two separate policies:
 
 A first, passive-message variant fared no better either (rejected under 10.1.2 Functionality:
 *"fails to start with a message to download the App from outside the Store"*). There is no
-in-between design that satisfies "the Store app must be fully functional on its own" while the
-real app still needs a separately-elevated WSL2/Podman/container stack that cannot itself be
-Store-packaged (already ruled out when this was first scoped — a single MSIX cannot mix an
+in-between design that satisfies "the Store app must be fully functional on its own" while a
+separately-elevated WSL2/Podman/container stack sits behind it — a single MSIX cannot mix an
 elevated and non-elevated component, and Store certification is documented as very unlikely to
-pass an app that forces elevation on launch).
+pass an app that forces elevation on launch.
 
 **Not pursuing the paid-certificate path either** (SignPath Foundation, Azure Trusted Signing,
 Sectigo/SSL.com — see #60): the realistic recurring cost (~$370-410/year) isn't justified for a
 personal project, and even a paid cert must still build reputation with Microsoft's cloud
-service before SAC reliably allows it through, so it wouldn't even be a guaranteed fix.
+service before SAC reliably allows it through, so it wouldn't even be a guaranteed fix. SAC
+checks whether a signature chains to a CA in the Microsoft Trusted Root Program — not whether
+the signature is otherwise valid — so a self-signed certificate can never satisfy it either, no
+matter how it's deployed or locally trusted.
 
-**Current status: no free fix exists for SAC blocking `launcher.exe`.** SAC checks whether a
-signature chains to a CA in the Microsoft Trusted Root Program — not whether the signature is
-otherwise valid — so a self-signed certificate can never satisfy it, no matter how it's deployed
-or locally trusted. The only workaround is the end user disabling Smart App Control themselves
-(Settings → Privacy & security → Windows Security → App & browser control) — a real but drastic
-step, since re-enabling SAC afterward requires reinstalling Windows. This is a known, accepted
-limitation, not something this project can fix for free.
+**This does not mean no free fix exists — see issue #65/#82.** The rejections above specifically
+targeted *downloading a separate installer at runtime + requesting elevation*, not Store
+distribution itself. #65's own research (prompted by these exact rejections) found that an app
+bundling **everything** it needs inside the MSIX package — no network download, no elevation, no
+external installer, only ordinary non-elevated child processes — doesn't trigger either rejected
+policy. #82 is the resulting native-Windows-port MVP (bundled Postgres + bundled Python backend,
+no WSL2/Podman at all), now in active development. Until/unless that lands and passes
+certification for real, the SAC block remains a known, accepted limitation whose only current
+workaround is the end user disabling Smart App Control themselves (Settings → Privacy & security
+→ Windows Security → App & browser control) — a real but drastic step, since re-enabling SAC
+afterward requires reinstalling Windows.
+
+**The Partner Center reservation from this investigation is still valid and reused by #82,
+not recreated:** real identity `Name="PIEManager.PIEManager"`,
+`Publisher="CN=2654AE3A-D473-41CE-8C17-0C2734C3B4A3"` (PFN
+`PIEManager.PIEManager_9h5hzpm8nc7w0`, Store ID `9PM8GPSMJG0N`,
+listing at https://apps.microsoft.com/detail/9PM8GPSMJG0N). Confirmed still present in the
+Partner Center dashboard (2026-08-16), including a **privacy policy already drafted and on
+file** that remains accurate for #82's architecture too (self-hosted, no data collected/
+transmitted by the publisher, the only outbound network calls are public Yahoo Finance price
+lookups, everything else stored locally) — no need to re-draft it. Category: Finances
+personnelles > Banque + investissements. Support URL already set to the GitHub repo. A signing
+certificate for local sideload testing must have a `Subject` matching this exact `Publisher` CN
+(a real MSIX requirement, not just a trust nicety) — see `installer/launcher-native/
+AppxManifest.xml` and `build-installer.yml`'s `package-native-launcher-msix` job for the real
+packaging pipeline using this identity.
+
+### Windows Firewall first-launch prompt (issue #82) — expected, not a bug to fix
+
+On a fresh install, first launch shows a "Windows Security Alert" dialog ("Voulez-vous
+autoriser les réseaux publics et privés à accéder à cette application ?") for the bundled
+`postgres.exe`/`python.exe` (uvicorn) — both bind `127.0.0.1` only, yet the prompt still
+appears. **"Loopback binds are exempt from this prompt" is folklore, not fact** — confirmed
+against Microsoft's own Windows Firewall docs: the interactive notification fires on *any*
+new, unrecognized executable path calling `listen()`, with no bind-address qualifier at all.
+The genuinely-real loopback exemption is a separate mechanism (WFP's loopback packet
+classification) that governs whether *traffic* passes the resulting rule, not whether the
+*dialog* appears — which is exactly why the app is fully functional (health checks, log
+files) whether or not anyone ever dismisses the dialog, confirmed live in CI where nothing is
+present to click it.
+
+**No elevation-free fix exists.** Both `netsh advfirewall`/Group Policy pre-provisioning and
+the `INetFwPolicy2`/`INetFwRule` COM API are admin-gated for inbound rules with no per-user
+exception — confirmed directly against Microsoft's docs, which state plainly that a
+non-admin's response to the dialog only ever creates a *block* rule regardless of which
+option is clicked, and that the whole automatic-rule-creation mechanism "require[s] user
+interaction and administrative privilege." Adding a rule from this app's own first-run code
+would either silently fail (standard user) or trigger the exact UAC-style elevation prompt
+this app's whole design exists to avoid (see the #63 section above) — not an acceptable
+trade to suppress a cosmetic dialog. A structural workaround (Unix-domain sockets instead of
+TCP loopback) is also a dead end: `asyncpg` explicitly refuses Unix sockets on Windows
+regardless of OS/Postgres support, and even if it worked for Postgres, uvicorn still needs a
+real TCP listener for WebView2's `Navigate()` call — browsers don't navigate to Unix sockets
+without a custom scheme handler, a much bigger redesign for zero net benefit (it would still
+leave uvicorn's own listener triggering the same prompt).
+
+**Decision: accept it as a one-time, first-run UX cost**, matching every comparable
+bundled-local-server desktop app (XAMPP, local dev-server tooling, etc.) — this is
+industry-standard friction, not a PIE Manager-specific defect. One meaningfully good property
+worth noting: unlike WebView2's own well-documented "prompts on every update" problem (caused
+by its Evergreen runtime's version-numbered install path — see WebView2Feedback #2252/#3604),
+this app's bundled `postgres.exe`/`python.exe` sit at stable, non-versioned paths
+(`%USERPROFILE%\PieManager\pgsql\bin\postgres.exe`, `...\python\python.exe` — see
+`paths.go`), and Windows Firewall rules are keyed on full executable path with no wildcard
+support — so this should be a true one-time-per-machine event on first install, not a
+recurring one on every app update. `main.go`'s `loadingHTMLTpl` (the WebView2 loading screen
+shown while `startupSequence` runs) includes a one-line hint that this is expected and safe
+to dismiss either way, so a real user isn't left wondering if something's wrong.
 
 ### Installed files (Linux)
 ```

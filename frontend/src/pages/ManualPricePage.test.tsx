@@ -62,11 +62,13 @@ vi.mock('@patternfly/react-core', () => ({
 const mockUseProducts = vi.fn();
 const mockUsePrices = vi.fn();
 const mockUseCreatePrice = vi.fn();
+const mockUseHoldings = vi.fn();
 
 vi.mock('../api/queries', () => ({
   useProducts: () => mockUseProducts(),
   usePrices: (...args: any[]) => mockUsePrices(...args),
   useCreatePrice: () => mockUseCreatePrice(),
+  useHoldings: (...args: any[]) => mockUseHoldings(...args),
 }));
 
 const mockManualProduct = {
@@ -101,6 +103,9 @@ describe('ManualPricePage', () => {
     vi.clearAllMocks();
     mockUsePrices.mockReturnValue({ data: [], isLoading: false });
     mockUseCreatePrice.mockReturnValue({ mutateAsync: vi.fn(), isPending: false, isError: false });
+    // Default: this portfolio holds both tickers used across the fixtures below (GOLD, SILV) —
+    // individual tests override this when specifically testing portfolio-scoping (issue #75).
+    mockUseHoldings.mockReturnValue({ data: [{ ticker: 'GOLD' }, { ticker: 'SILV' }], isLoading: false });
   });
 
   it('shows spinner when loading', () => {
@@ -125,6 +130,23 @@ describe('ManualPricePage', () => {
     mockUseProducts.mockReturnValue({ data: [], isLoading: false, isError: false });
     render(<ManualPricePage />);
     expect(screen.getByText(/Saisie des prix manuels/i)).toBeTruthy();
+  });
+
+  it('excludes an Or physique product this portfolio never held (issue #75)', () => {
+    // GOLD exists in the global product catalog but this portfolio's holdings don't include
+    // it — the global catalog has exactly one OR.PHYSIQUE row shared across every portfolio,
+    // so this portfolio must never see the manual-entry card for gold it never held.
+    mockUseProducts.mockReturnValue({ data: [mockManualProduct], isLoading: false, isError: false });
+    mockUseHoldings.mockReturnValue({ data: [], isLoading: false });
+    render(<ManualPricePage />);
+    expect(screen.getByText(/Aucun produit à cotation manuelle trouvé/i)).toBeTruthy();
+  });
+
+  it('shows spinner while holdings are still loading, even once products has loaded', () => {
+    mockUseProducts.mockReturnValue({ data: [mockManualProduct], isLoading: false, isError: false });
+    mockUseHoldings.mockReturnValue({ data: undefined, isLoading: true });
+    render(<ManualPricePage />);
+    expect(screen.getByTestId('spinner-xl')).toBeTruthy();
   });
 
   it('renders manual product card', () => {

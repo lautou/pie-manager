@@ -40,6 +40,12 @@ def test_default_debug_is_false():
     assert s.debug is False
 
 
+def test_default_frontend_dist_dir_is_none(monkeypatch):
+    monkeypatch.delenv("FRONTEND_DIST_DIR", raising=False)
+    s = Settings()
+    assert s.frontend_dist_dir is None
+
+
 # ---------------------------------------------------------------------------
 # Environment variable override
 # ---------------------------------------------------------------------------
@@ -57,6 +63,14 @@ def test_env_override_debug_false(monkeypatch):
     monkeypatch.setenv("DEBUG", "false")
     s = Settings()
     assert s.debug is False
+
+
+def test_env_override_frontend_dist_dir(monkeypatch):
+    """FRONTEND_DIST_DIR env var overrides the default - set only by the native-Windows-port
+    launcher (issue #82), never by the containerized deployment."""
+    monkeypatch.setenv("FRONTEND_DIST_DIR", "/some/staged/dist")
+    s = Settings()
+    assert s.frontend_dist_dir == "/some/staged/dist"
 
 
 def test_extra_env_vars_are_ignored(monkeypatch):

@@ -353,6 +353,322 @@ jobs:
             gh release delete "$tag" --repo ${{ github.repository }} --yes 2>/dev/null || true
           done
 
+  package-native-launcher-msix:
+    # Builds the real, Store-identity MSIX package of the native Windows port (issue #82) as a
+    # durable release asset. Mirrors package-launcher-msix's versioning/signing/release-upload
+    # pattern from PR #64 (issue #63's rejected launcher.exe-only approach) — but needs the full
+    # bundling (Postgres, embeddable Python, real backend, real frontend) that a launcher.exe-
+    # alone package never did; that bundling mechanism was proven live via
+    # installer/testing/native-launcher-poc before being promoted here (see CLAUDE.md).
+    #
+    # Does NOT submit anything to the Microsoft Store — the "PIE Manager" Store listing is still
+    # an unpublished draft in Partner Center; uploading this .msix there is a manual step for
+    # now (see CLAUDE.md's #63 section for why, and issue #82 for what's still open). Runs on
+    # every release, not gated behind detect-installer-changes, matching package-launcher-msix's
+    # own reasoning: cheap, and keeps a submittable package available at every version.
+    needs: build
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version: '1.22'
+
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: '24'
+
+      - name: Build the real frontend and stage it into the package
+        working-directory: frontend
+        shell: pwsh
+        run: |
+          npm ci
+          npm run build
+          Copy-Item -Recurse dist ..\installer\launcher-native\frontend_dist
+
+      - name: Build launcher-native.exe and render the real brand icon into MSIX logo assets
+        working-directory: installer/launcher-native
+        shell: pwsh
+        run: |
+          $version = "${{ needs.build.outputs.version }}"
+          go mod tidy
+          $env:CGO_ENABLED = "0"
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+          go build -ldflags "-H windowsgui -s -w -X main.Version=$version" -o launcher-native.exe .
+          New-Item -ItemType Directory -Force -Path Assets | Out-Null
+          go run ./gen-assets 256x256.png Assets
+
+      - name: Download and stage the portable PostgreSQL distribution
+        # bin+share+lib must all be staged together with their relative layout preserved —
+        # pg_ctl/initdb/postgres.exe locate their own share/lib dependencies relative to their
+        # own location, confirmed via #76/#82's earlier proof-of-work poc iterations.
+        working-directory: installer/launcher-native
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          $url = "https://get.enterprisedb.com/postgresql/postgresql-16.14-1-windows-x64-binaries.zip"
+          Invoke-WebRequest -Uri $url -OutFile pg.zip
+          Expand-Archive -Path pg.zip -DestinationPath pg_extracted -Force
+          New-Item -ItemType Directory -Force -Path pgsql | Out-Null
+          Move-Item -Path pg_extracted\pgsql\bin -Destination pgsql\bin
+          Move-Item -Path pg_extracted\pgsql\share -Destination pgsql\share
+          Move-Item -Path pg_extracted\pgsql\lib -Destination pgsql\lib
+          # The selective move above drops these two license files that live at the zip's
+          # pgsql/ root (covering exactly the CLI tools bundled here) — copy them along too,
+          # so the license terms for postgres.exe/pg_ctl.exe/initdb.exe/createdb.exe actually
+          # ship with the binaries they cover, for a Store reviewer or anyone else looking.
+          Copy-Item pg_extracted\pgsql\server_license.txt pgsql\server_license.txt
+          Copy-Item pg_extracted\pgsql\commandlinetools_3rd_party_licenses.txt pgsql\commandlinetools_3rd_party_licenses.txt
+          Remove-Item -Recurse -Force pg_extracted, pg.zip
+
+      - name: Bundle the VC++ Redistributable app-local (no system-wide install needed)
+        # Store-distributable apps can't run an elevated external installer at activation, so
+        # the runtime DLLs are copied in app-local instead — same rationale as #76/#82's pocs.
+        working-directory: installer/launcher-native
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile vc_redist.x64.exe
+          Start-Process -FilePath .\vc_redist.x64.exe -ArgumentList "/install","/quiet","/norestart" -Wait
+          Copy-Item C:\Windows\System32\vcruntime140.dll pgsql\bin\vcruntime140.dll
+          Copy-Item C:\Windows\System32\vcruntime140_1.dll pgsql\bin\vcruntime140_1.dll
+          Copy-Item C:\Windows\System32\msvcp140.dll pgsql\bin\msvcp140.dll
+          Remove-Item vc_redist.x64.exe
+
+      - name: Bundle an embeddable Python + the real backend (source + requirements.txt)
+        working-directory: installer/launcher-native
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest -Uri "https://www.python.org/ftp/python/3.14.0/python-3.14.0-embed-amd64.zip" -OutFile python-embed.zip
+          Expand-Archive -Path python-embed.zip -DestinationPath python -Force
+          Remove-Item python-embed.zip
+
+          $pthFile = Get-ChildItem python\python*._pth | Select-Object -First 1
+          (Get-Content $pthFile.FullName) -replace '#import site', 'import site' | Set-Content $pthFile.FullName
+
+          Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile get-pip.py
+          & python\python.exe get-pip.py --no-warn-script-location
+          Remove-Item get-pip.py
+
+          & python\python.exe -m pip install --no-warn-script-location -r ..\..\backend\requirements.txt
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::pip install failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+
+          Copy-Item -Recurse ..\..\backend\app python\app
+          Copy-Item ..\..\backend\alembic.ini python\alembic.ini
+          Copy-Item -Recurse ..\..\backend\alembic python\alembic
+          Get-ChildItem -Path python\app, python\alembic -Recurse -Directory -Filter "__pycache__" -ErrorAction SilentlyContinue |
+            Remove-Item -Recurse -Force
+
+      - name: Stage manifest with the real version
+        working-directory: installer/launcher-native
+        shell: pwsh
+        run: |
+          $version = "${{ needs.build.outputs.version }}"
+          (Get-Content AppxManifest.xml) -replace '__VERSION__', $version | Set-Content AppxManifest.xml
+
+      - name: Locate Windows SDK packaging/signing tools
+        working-directory: installer/launcher-native
+        shell: pwsh
+        run: |
+          $sdkRoot = "C:\Program Files (x86)\Windows Kits\10\bin"
+          $sdkVer = Get-ChildItem $sdkRoot -Directory |
+            Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' } |
+            Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $sdkVer) {
+            Write-Host "::error::No Windows 10 SDK bin directory found under $sdkRoot"
+            exit 1
+          }
+          $makeappx = Join-Path $sdkVer.FullName "x64\makeappx.exe"
+          $signtool = Join-Path $sdkVer.FullName "x64\signtool.exe"
+          if (-not (Test-Path $makeappx)) {
+            Write-Host "::error::makeappx.exe not found at $makeappx"
+            exit 1
+          }
+          if (-not (Test-Path $signtool)) {
+            Write-Host "::error::signtool.exe not found at $signtool"
+            exit 1
+          }
+          Add-Content -Path $env:GITHUB_ENV -Value "MAKEAPPX=$makeappx"
+          Add-Content -Path $env:GITHUB_ENV -Value "SIGNTOOL=$signtool"
+
+      - name: Generate ephemeral signing cert matching the real Store Publisher CN, and trust it
+        # Per Microsoft's own docs, a Store submission's original signature never needs to
+        # chain to a trusted root — Microsoft re-signs the package at publish time. This cert
+        # only needs to make the package internally valid for makeappx/signtool/Add-AppxPackage
+        # below, and its Subject must exactly match AppxManifest.xml's Identity/Publisher.
+        # Trusted into LocalMachine so the install+launch test below can sideload it; discarded
+        # at the end of this job regardless of outcome. Generated before packaging (not right
+        # before the MSIX sign step) so the same cert can also sign the bundled PostgreSQL
+        # executables below, while they're still loose files, not yet inside the package.
+        working-directory: installer/launcher-native
+        shell: pwsh
+        run: |
+          $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=2654AE3A-D473-41CE-8C17-0C2734C3B4A3" `
+            -KeyUsage DigitalSignature -FriendlyName "PieManagerNativeLauncherPackaging" `
+            -CertStoreLocation "Cert:\CurrentUser\My" `
+            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
+          $thumbprint = $cert.Thumbprint
+          Add-Content -Path $env:GITHUB_ENV -Value "THUMBPRINT=$thumbprint"
+
+          Export-Certificate -Cert $cert -FilePath cert.cer | Out-Null
+          Import-Certificate -FilePath cert.cer -CertStoreLocation "Cert:\LocalMachine\TrustedPeople" | Out-Null
+          Import-Certificate -FilePath cert.cer -CertStoreLocation "Cert:\LocalMachine\Root" | Out-Null
+
+      - name: Sign the bundled PostgreSQL executables
+        # EDB's official Windows zip ships these four completely unsigned (confirmed by
+        # inspecting their PE Security Directory directly, not assumed) — an unsigned database
+        # server binary that opens network listeners, sitting inside a Store submission, is a
+        # real Defender/SmartScreen reputation weak point on end-user machines, independent of
+        # whether Store certification itself passes (only the outer MSIX needs a signature for
+        # that). Self-signing a third-party redistributable like this is legitimate and gives
+        # Defender's heuristics a real signature to build trust against, even unchained to a
+        # public CA — same reasoning that already applies to the outer MSIX signature above.
+        working-directory: installer/launcher-native
+        shell: pwsh
+        run: |
+          & $env:SIGNTOOL sign /fd SHA256 /sha1 $env:THUMBPRINT `
+            pgsql\bin\postgres.exe pgsql\bin\pg_ctl.exe pgsql\bin\initdb.exe pgsql\bin\createdb.exe
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::signtool sign failed on the bundled PostgreSQL executables with exit code $LASTEXITCODE"
+            exit 1
+          }
+
+      - name: Package MSIX
+        working-directory: installer/launcher-native
+        shell: pwsh
+        run: |
+          $version = "${{ needs.build.outputs.version }}"
+          & $env:MAKEAPPX pack /d . /p "pie-manager-native-launcher-$version.msix" /o
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::makeappx pack failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+
+      - name: Sign the MSIX package
+        working-directory: installer/launcher-native
+        shell: pwsh
+        run: |
+          $version = "${{ needs.build.outputs.version }}"
+          & $env:SIGNTOOL sign /fd SHA256 /sha1 $env:THUMBPRINT "pie-manager-native-launcher-$version.msix"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::signtool sign failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+
+      - name: Install the package and launch it via its AUMID
+        # This is a genuine test of launcher-native.exe's WebView2 GUI window actually coming
+        # up, not just the backend starting: main.go's backend-spawning goroutine only runs
+        # once webview2.NewWithOptions succeeds, so a healthy backend below proves the window
+        # initialized too. First proven this way via the now-retired native-launcher-poc.yml
+        # (see CLAUDE.md).
+        working-directory: installer/launcher-native
+        shell: pwsh
+        run: |
+          $version = "${{ needs.build.outputs.version }}"
+          try {
+            Add-AppxPackage -Path "pie-manager-native-launcher-$version.msix" -Verbose
+          } catch {
+            Write-Host "::error::Add-AppxPackage failed: $_"
+            exit 1
+          }
+
+          $pkg = Get-AppxPackage -Name "PIEManager.PIEManager"
+          if (-not $pkg) {
+            Write-Host "::error::Package not found after Add-AppxPackage"
+            exit 1
+          }
+          $aumid = "$($pkg.PackageFamilyName)!App"
+          Write-Host "Resolved AUMID: $aumid"
+          Start-Process "shell:AppsFolder\$aumid"
+
+      - name: Wait for the backend to become healthy, then dump logs
+        # Generous deadline: covers MSIX activation, WebView2 startup, staging ~150+MB of
+        # pgsql/python/frontend_dist out of the package's read-only install directory, initdb,
+        # pg_ctl start, createdb, and Alembic migrations — all first-run-only work.
+        shell: pwsh
+        run: |
+          $dataDir = Join-Path $env:USERPROFILE "PieManager"
+          $logDir = Join-Path $dataDir "logs"
+          $healthUrl = "http://127.0.0.1:14943/api/admin/version"
+
+          $deadline = (Get-Date).AddSeconds(300)
+          $healthy = $false
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $response = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 5
+              if ($response.StatusCode -eq 200) { $healthy = $true; break }
+            } catch {}
+            Start-Sleep -Seconds 5
+          }
+
+          foreach ($log in @("initdb.log", "pgctl-start.log", "createdb.log", "alembic.log", "backend.log")) {
+            $path = Join-Path $logDir $log
+            if (Test-Path $path) {
+              Write-Host "--- $log ---"
+              Get-Content $path
+            } else {
+              Write-Host "--- $log : not written ---"
+            }
+          }
+
+          if (-not $healthy) {
+            Write-Host "::error::Backend never became healthy within the deadline"
+            Get-Process -Name launcher-native, postgres, python -ErrorAction SilentlyContinue | Format-List *
+            exit 1
+          }
+          Write-Host "Health check passed"
+
+      - name: Uninstall test package and clean up trust store
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Process -Name launcher-native -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Get-Process -Name postgres -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Get-Process -Name python -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          $pkg = Get-AppxPackage -Name "PIEManager.PIEManager"
+          if ($pkg) {
+            Remove-AppxPackage -Package $pkg.PackageFullName -ErrorAction SilentlyContinue
+          }
+          if ($env:THUMBPRINT) {
+            Remove-Item "Cert:\LocalMachine\Root\$env:THUMBPRINT" -ErrorAction SilentlyContinue
+            Remove-Item "Cert:\LocalMachine\TrustedPeople\$env:THUMBPRINT" -ErrorAction SilentlyContinue
+            Remove-Item "Cert:\CurrentUser\My\$env:THUMBPRINT" -ErrorAction SilentlyContinue
+          }
+          Remove-Item (Join-Path $env:USERPROFILE "PieManager") -Recurse -Force -ErrorAction SilentlyContinue
+
+      - name: Upload MSIX as a workflow artifact
+        # Kept even on failure (unlike the release-attach step below) so a failed run's
+        # package can still be downloaded and inspected/sideloaded manually for debugging.
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: pie-manager-native-launcher-msix
+          path: installer/launcher-native/pie-manager-native-launcher-*.msix
+          retention-days: 7
+
+      - name: Attach MSIX to the GitHub release
+        # Unlike the workflow artifact above (7-day retention), the Store submission in
+        # Partner Center happens whenever the maintainer is ready — potentially long after this
+        # release — so the durable copy lives on the GitHub Release itself. Only reached if
+        # every step above (including the live install+launch test) succeeded, and never runs
+        # on a manual workflow_dispatch test run.
+        if: github.event_name == 'push'
+        working-directory: installer/launcher-native
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "${{ needs.build.outputs.version }}"
+          gh release upload "${{ github.ref_name }}" "pie-manager-native-launcher-$version.msix" --repo "${{ github.repository }}" --clobber
+
   test-macos:
     # Real Apple Silicon hardware — the only way to actually run this binary,
     # since arm64 macOS cannot be virtualized on the x86_64 host used elsewhere

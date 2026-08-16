@@ -2,6 +2,23 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.4.3] - 2026-08-16
+
+### Added
+
+- **installer:** Add launcher-native orchestration core (issue #82)
+- **backend,installer:** Serve the built frontend for the native port (issue #82)
+- **installer:** Add permanent MSIX packaging pipeline for the native launcher (issue #82)
+
+### Fixed
+
+- **launcher-native:** Apply Alembic migrations on every launch
+- **launcher-native:** Stage bundled pgsql/python before use (issue #82)
+- **poc:** Render real brand icon for MSIX assets instead of blue placeholders
+- **installer:** Sign bundled Postgres binaries, ship their license files (issue #82)
+- **frontend:** Scope Or physique manual price screen to portfolio holdings (#75)
+- **launcher-native:** Decouple migration timeout from Postgres process timeout (issue #82)
+
 ## [1.4.2] - 2026-08-14
 
 ### Fixed

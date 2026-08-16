@@ -69,3 +69,7 @@ VERSION
 
 # Playwright MCP manual-testing artifacts — may capture real personal data from the QA env
 .playwright-mcp/
+
+# Claude Code local settings — personal permission grants (visited domains, approved command
+# patterns), not project-shared config. .claude/rules/ and .claude/CLAUDE.md stay tracked.
+.claude/settings.local.json

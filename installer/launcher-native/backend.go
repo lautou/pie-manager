@@ -44,6 +44,21 @@ func buildAlembicArgs() []string {
 	return []string{"-m", "alembic", "upgrade", "head"}
 }
 
+// migrationTimeout bounds runMigrations, deliberately far longer than postgres.go's
+// processTimeout (60s, sized only for quick Postgres commands becoming ready). Root cause of
+// issue #82's Microsoft Store certification failure: a first-run "alembic upgrade head" applies
+// the project's entire migration history, and runMigrations used to share processTimeout via
+// the same runCapturedCommandIn call - on the certification lab's locked-down machines this
+// exceeded 60s (plausibly Windows Defender real-time-scanning the freshly-extracted embedded
+// Python interpreter's many DLL/.pyd dependencies on first import), and Go's context timeout
+// killed python.exe mid-migration (0xC000013A / STATUS_CONTROL_C_EXIT in the crash report).
+// A measured from-scratch run of the full migration chain takes ~1-2s of actual work (Python
+// startup + imports + all migrations, Linux, warm dependencies) - the DB work itself is not the
+// bottleneck, so this budget only needs to be generous enough to absorb first-run environment
+// overhead, not to match any real expected duration. No UX cost to a large value: main.go
+// already shows a loading screen for the entire startup sequence.
+const migrationTimeout = 10 * time.Minute
+
 // runMigrations applies pending Alembic migrations - run on EVERY launch, not just first run,
 // so an app update carrying new migrations gets them applied automatically the next time the
 // user opens the app (mirrors compose-prod.yaml's own "alembic upgrade head && uvicorn" startup
@@ -52,7 +67,7 @@ func buildAlembicArgs() []string {
 // backendAppDir, where both alembic.ini and the alembic/ scripts folder are staged alongside
 // the app package.
 func runMigrations(home string, pgPort int) error {
-	return runCapturedCommandIn(backendAppDir(home), []string{"DATABASE_URL=" + databaseURL(pgPort)},
+	return runCapturedCommandIn(backendAppDir(home), []string{"DATABASE_URL=" + databaseURL(pgPort)}, migrationTimeout,
 		pythonExePath(home), filepath.Join(logDir(home), "alembic.log"), buildAlembicArgs()...)
 }
 

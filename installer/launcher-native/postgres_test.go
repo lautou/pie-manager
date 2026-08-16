@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestInitdbExePath(t *testing.T) {
@@ -143,7 +144,7 @@ func TestRunCapturedCommandIn_UsesWorkingDirectoryAndEnv(t *testing.T) {
 	}
 	// Prints the CWD and an env var set via extraEnv - proves both are actually applied, not
 	// just accepted as parameters.
-	if err := runCapturedCommandIn(home, []string{"MY_TEST_VAR=hello"}, shExe, logPath, "-c", "pwd && echo $MY_TEST_VAR"); err != nil {
+	if err := runCapturedCommandIn(home, []string{"MY_TEST_VAR=hello"}, processTimeout, shExe, logPath, "-c", "pwd && echo $MY_TEST_VAR"); err != nil {
 		t.Fatalf("runCapturedCommandIn failed: %v", err)
 	}
 	content, err := os.ReadFile(logPath)
@@ -169,6 +170,36 @@ func TestRunCapturedCommand_ErrorWhenLogPathIsDirectory(t *testing.T) {
 	}
 	if err := runCapturedCommand("/bin/echo", logPath, "hi"); err == nil {
 		t.Error("expected an error when logPath itself is a directory")
+	}
+}
+
+// TestRunCapturedCommandIn_RespectsPerCallTimeout guards against issue #82's certification
+// failure regressing: runMigrations was killed at 60s because the timeout used to be a single
+// package-level constant baked into runCapturedCommandIn, shared by every caller regardless of
+// how long its command legitimately needs. Proves the timeout is a real per-call parameter, not
+// a fixed value, by giving the same long-running command two different budgets and observing
+// two different outcomes.
+func TestRunCapturedCommandIn_RespectsPerCallTimeout(t *testing.T) {
+	sleepExe := "/bin/sleep"
+	if _, err := os.Stat(sleepExe); err != nil {
+		t.Skip("/bin/sleep not available on this platform")
+	}
+
+	home := t.TempDir()
+	shortTimeoutLog := filepath.Join(home, "logs", "short.log")
+	start := time.Now()
+	err := runCapturedCommandIn("", nil, 200*time.Millisecond, sleepExe, shortTimeoutLog, "5")
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Error("expected a timeout error for a command exceeding its short per-call timeout")
+	}
+	if elapsed >= 5*time.Second {
+		t.Errorf("expected the short timeout to kill the process well before its 5s sleep completed, took %v", elapsed)
+	}
+
+	generousTimeoutLog := filepath.Join(home, "logs", "generous.log")
+	if err := runCapturedCommandIn("", nil, 5*time.Second, sleepExe, generousTimeoutLog, "0.1"); err != nil {
+		t.Errorf("expected a generous timeout to let a quick command finish normally, got %v", err)
 	}
 }
 

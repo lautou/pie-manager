@@ -19,14 +19,19 @@ const pgSuperuser = "pie"
 // database, so this app's own database still needs an explicit createdb on first run.
 const pgDatabaseName = "pie_db"
 
-// processTimeout bounds every native process this file spawns. Not a workaround for a known
-// Go-specific hang (the #76 poc's Start-Process -Wait hang was a PowerShell/.NET-specific
-// behavior tied to how that API waits on redirected output streams, not a general Windows
-// process-handle-inheritance problem — Go's os/exec, given real *os.File values for
-// Stdout/Stderr rather than pipes, does not set up that kind of stream-completion wait, so
-// cmd.Wait() only waits on the child's own process handle). This is defensive engineering for a
-// real launcher regardless: bound how long we wait on postgres itself failing to become ready,
-// not just on a hypothetical hang mechanism.
+// processTimeout bounds every short-lived native Postgres process this file spawns (initdb,
+// pg_ctl start, createdb). Not a workaround for a known Go-specific hang (the #76 poc's
+// Start-Process -Wait hang was a PowerShell/.NET-specific behavior tied to how that API waits on
+// redirected output streams, not a general Windows process-handle-inheritance problem — Go's
+// os/exec, given real *os.File values for Stdout/Stderr rather than pipes, does not set up that
+// kind of stream-completion wait, so cmd.Wait() only waits on the child's own process handle).
+// This is defensive engineering for a real launcher regardless: bound how long we wait on
+// postgres itself failing to become ready, not just on a hypothetical hang mechanism.
+//
+// Deliberately NOT used for backend.go's runMigrations — see migrationTimeout there for why a
+// first-run Alembic chain needs a much longer, separate budget (issue #82 certification
+// failure: this constant used to be shared with runMigrations via the same
+// runCapturedCommandIn call, and killed a slow-but-legitimate first-run migration mid-flight).
 const processTimeout = 60 * time.Second
 
 func initdbExePath(home string) string   { return filepath.Join(pgBinDir(home), "initdb.exe") }
@@ -63,18 +68,19 @@ func buildCreateDbArgs(port int) []string {
 
 // runCapturedCommand runs exe with args, bounded by processTimeout, capturing combined
 // stdout/stderr to logPath for later inspection. Shared by every short-lived, run-to-completion
-// native-process call in this package (postgres.go and backend.go's runMigrations) so the
-// timeout/logging behavior is applied uniformly. Not used for startBackend, which spawns a
-// long-lived server rather than running a command to completion.
+// Postgres process call in this file. Not used for startBackend, which spawns a long-lived
+// server rather than running a command to completion.
 func runCapturedCommand(exe, logPath string, args ...string) error {
-	return runCapturedCommandIn("", nil, exe, logPath, args...)
+	return runCapturedCommandIn("", nil, processTimeout, exe, logPath, args...)
 }
 
-// runCapturedCommandIn is runCapturedCommand with an optional working directory and extra
-// environment variables - used by backend.go's runMigrations, which needs both (alembic.ini's
-// relative script_location requires the right working directory; DATABASE_URL must point at
-// the dynamically-selected Postgres port).
-func runCapturedCommandIn(dir string, extraEnv []string, exe, logPath string, args ...string) error {
+// runCapturedCommandIn is runCapturedCommand with an optional working directory, extra
+// environment variables, and an explicit timeout - used by backend.go's runMigrations, which
+// needs all three (alembic.ini's relative script_location requires the right working directory;
+// DATABASE_URL must point at the dynamically-selected Postgres port; migrationTimeout must be
+// far longer than the quick Postgres commands' processTimeout - see migrationTimeout's own
+// comment for why).
+func runCapturedCommandIn(dir string, extraEnv []string, timeout time.Duration, exe, logPath string, args ...string) error {
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 		return fmt.Errorf("creating log directory for %s: %w", filepath.Base(logPath), err)
 	}
@@ -84,7 +90,7 @@ func runCapturedCommandIn(dir string, extraEnv []string, exe, logPath string, ar
 	}
 	defer out.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), processTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, exe, args...)

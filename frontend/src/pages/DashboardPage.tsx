@@ -207,7 +207,13 @@ export default function DashboardPage() {
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
   const [compositionTicker, setCompositionTicker] = useState<string | null>(null);
 
-  const manuelProducts = (products ?? []).filter((p) => p.instrument_type === 'Or physique');
+  // Scope to this portfolio's actual holdings (issue #75) — the global product catalog has
+  // exactly one OR.PHYSIQUE row shared across every portfolio, so filtering it alone showed
+  // the stale-price banner for every portfolio regardless of whether it ever held physical gold.
+  const heldTickers = new Set((holdings ?? []).map((h) => h.ticker));
+  const manuelProducts = (products ?? []).filter(
+    (p) => p.instrument_type === 'Or physique' && heldTickers.has(p.ticker),
+  );
 
   if (isLoading) {
     return (

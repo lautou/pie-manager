@@ -691,6 +691,7 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     const manuelProduct = { ticker: 'GOLD', name: 'Or physique', category: 'Actif', instrument_type: 'Or physique', currency: 'EUR' };
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseProducts.mockReturnValue({ data: [manuelProduct] });
+    mockUseHoldings.mockReturnValue({ data: [{ ticker: 'GOLD' }] });
     // Empty prices array → no latestDate → isStale = true
     mockUsePrices.mockReturnValue({ data: [] });
     render(<DashboardPage />);
@@ -702,6 +703,7 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     const manuelProduct = { ticker: 'GOLD', name: 'Or physique', category: 'Actif', instrument_type: 'Or physique', currency: 'EUR' };
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseProducts.mockReturnValue({ data: [manuelProduct] });
+    mockUseHoldings.mockReturnValue({ data: [{ ticker: 'GOLD' }] });
     // Price dated 2024-01-01 is well over 30 days ago
     mockUsePrices.mockReturnValue({ data: [{ id: 1, ticker: 'GOLD', date: '2024-01-01', price: 1800, currency: 'EUR', source: 'manual' }] });
     render(<DashboardPage />);
@@ -712,6 +714,7 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     const manuelProduct = { ticker: 'GOLD', name: 'Or physique', category: 'Actif', instrument_type: 'Or physique', currency: 'EUR' };
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseProducts.mockReturnValue({ data: [manuelProduct] });
+    mockUseHoldings.mockReturnValue({ data: [{ ticker: 'GOLD' }] });
     // Price dated today → 0 days ago → not stale
     const today = new Date().toISOString().slice(0, 10);
     mockUsePrices.mockReturnValue({ data: [{ id: 1, ticker: 'GOLD', date: today, price: 1800, currency: 'EUR', source: 'manual' }] });
@@ -732,8 +735,22 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     const manuelProduct = { ticker: 'GOLD', name: 'Or physique', category: 'Actif', instrument_type: 'Or physique', currency: 'EUR' };
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseProducts.mockReturnValue({ data: [manuelProduct] });
+    mockUseHoldings.mockReturnValue({ data: [{ ticker: 'GOLD' }] });
     // prices data undefined = still loading → ManuelProductStalenessCheck returns null
     mockUsePrices.mockReturnValue({ data: undefined });
+    render(<DashboardPage />);
+    expect(screen.queryByTestId('alert-warning')).toBeNull();
+  });
+
+  it('does not show stale-price warning for an Or physique product this portfolio never held (issue #75)', () => {
+    // GOLD exists in the global product catalog (Or physique) but this portfolio's holdings
+    // don't include it — the global catalog has exactly one OR.PHYSIQUE row shared across
+    // every portfolio, so this portfolio must never see a warning for gold it never held.
+    const manuelProduct = { ticker: 'GOLD', name: 'Or physique', category: 'Actif', instrument_type: 'Or physique', currency: 'EUR' };
+    mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
+    mockUseProducts.mockReturnValue({ data: [manuelProduct] });
+    mockUseHoldings.mockReturnValue({ data: [] });
+    mockUsePrices.mockReturnValue({ data: [] });
     render(<DashboardPage />);
     expect(screen.queryByTestId('alert-warning')).toBeNull();
   });
@@ -743,6 +760,7 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     const sicav = { ticker: 'SICAV1', name: 'SICAV Prudent', category: 'Actif', instrument_type: 'Or physique', currency: 'EUR' };
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseProducts.mockReturnValue({ data: [gold, sicav] });
+    mockUseHoldings.mockReturnValue({ data: [{ ticker: 'GOLD' }, { ticker: 'SICAV1' }] });
     mockUsePrices.mockReturnValue({ data: [] }); // both stale
     render(<DashboardPage />);
     const alert = screen.getByTestId('alert-warning');
@@ -765,6 +783,7 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     const manuelProduct = { ticker: 'GOLD', name: 'Or physique', category: 'Actif', instrument_type: 'Or physique', currency: 'EUR' };
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseProducts.mockReturnValue({ data: [manuelProduct] });
+    mockUseHoldings.mockReturnValue({ data: [{ ticker: 'GOLD' }] });
 
     // First: stale prices (empty array → isStale = true → onStale fires)
     mockUsePrices.mockReturnValue({ data: [] });
@@ -1194,6 +1213,7 @@ describe('DashboardPage — additional branch coverage', () => {
     const manuelProduct = { ticker: 'GOLD', name: 'Or physique', category: 'Actif', instrument_type: 'Or physique', currency: 'EUR' };
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseProducts.mockReturnValue({ data: [manuelProduct] });
+    mockUseHoldings.mockReturnValue({ data: [{ ticker: 'GOLD' }] });
     // Stale price → onStale fires once
     mockUsePrices.mockReturnValue({ data: [] });
     const { rerender } = render(<DashboardPage />);

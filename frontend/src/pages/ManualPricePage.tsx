@@ -20,7 +20,8 @@ import {
   TextVariants,
   Title,
 } from '@patternfly/react-core';
-import { useProducts, usePrices, useCreatePrice } from '../api/queries';
+import { useParams } from 'react-router-dom';
+import { useProducts, usePrices, useCreatePrice, useHoldings } from '../api/queries';
 import type { Product } from '../types';
 import { localDateStr } from '../utils/format';
 import FrDatePicker from '../components/FrDatePicker';
@@ -226,10 +227,17 @@ function ProductCard({ product }: ProductCardProps) {
 
 export default function ManualPricePage() {
   const { t } = useTranslation();
-  const { data: products, isLoading, isError } = useProducts();
+  const { portfolioId } = useParams<{ portfolioId: string }>();
+  const { data: products, isLoading: productsLoading, isError } = useProducts();
+  const { data: holdings, isLoading: holdingsLoading } = useHoldings(portfolioId);
+  const isLoading = productsLoading || holdingsLoading;
 
+  // Scope to this portfolio's actual holdings (issue #75) — the global product catalog has
+  // exactly one OR.PHYSIQUE row shared across every portfolio, so filtering it alone showed
+  // this screen for every portfolio regardless of whether it ever held physical gold.
+  const heldTickers = new Set((holdings ?? []).map((h) => h.ticker));
   const manualProducts: Product[] = (products ?? []).filter(
-    (p) => p.instrument_type === 'Or physique',
+    (p) => p.instrument_type === 'Or physique' && heldTickers.has(p.ticker),
   );
 
   if (isLoading) {

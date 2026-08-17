@@ -2,12 +2,22 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import {
-  Badge,
-  Card, CardBody, CardTitle,
-  Grid, GridItem,
-  Modal, ModalVariant,
-  PageSection, PageSectionVariants,
-  Spinner, Text, TextContent, TextVariants, Title,
+	Badge,
+	Card,
+	CardBody,
+	CardTitle,
+	Grid,
+	GridItem,
+	Modal,
+	ModalBody,
+	ModalHeader,
+	ModalVariant,
+	PageSection,
+	PageSectionVariants,
+	Spinner,
+	Content,
+	ContentVariants,
+	Title
 } from '@patternfly/react-core';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import { formatEUR, formatUnitPrice, dateToLocalStr } from '../utils/format';
@@ -205,7 +215,7 @@ export default function PerformancePage() {
 
   if (loading) {
     return (
-      <PageSection variant={PageSectionVariants.default}>
+      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
         <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem' }}>
           <Spinner size="xl" />
         </div>
@@ -328,7 +338,7 @@ export default function PerformancePage() {
   };
 
   return (
-    <PageSection variant={PageSectionVariants.default}>
+    <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
       <Title headingLevel="h1" size="xl" style={{ marginBottom: '1.5rem' }}>
         {t('performance.title')}
       </Title>
@@ -351,7 +361,7 @@ export default function PerformancePage() {
                   />
                 </>
               ) : (
-                <Text component={TextVariants.p} style={{ color: '#6A6E73' }}>{t('performance.noData')}</Text>
+                <Content component={ContentVariants.p} style={{ color: '#6A6E73' }}>{t('performance.noData')}</Content>
               )}
             </CardBody>
           </Card>
@@ -451,14 +461,15 @@ export default function PerformancePage() {
       {selectedSnap && (
         <Modal
           variant={ModalVariant.large}
-          title={`${t('holdings.currentHoldings')} ${selectedSnap.date} — ${t('common.total')} ${formatEUR(selectedSnap.total_eur)}`}
           isOpen
           onClose={() => setSelectedSnap(null)}
         >
+          <ModalHeader title={`${t('holdings.currentHoldings')} ${selectedSnap.date} — ${t('common.total')} ${formatEUR(selectedSnap.total_eur)}`} />
+          <ModalBody>
           {loadingHist ? (
             <div style={{ textAlign: 'center', padding: '2rem' }}><Spinner size="lg" /></div>
           ) : !histHoldings || histHoldings.length === 0 ? (
-            <TextContent><Text>{t('performance.noHoldingsAtDate')}</Text></TextContent>
+            <Content><Content component="p">{t('performance.noHoldingsAtDate')}</Content></Content>
           ) : (() => {
             const UNASSIGNED = t('holdings.unassigned');
             const byPool = new Map<string, Holding[]>();
@@ -509,6 +520,7 @@ export default function PerformancePage() {
               </div>
             );
           })()}
+          </ModalBody>
         </Modal>
       )}
       <EtfCompositionModal ticker={compositionTicker} onClose={() => setCompositionTicker(null)} />

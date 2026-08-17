@@ -28,6 +28,8 @@ vi.mock('@patternfly/react-core', () => ({
         {children}
       </div>
     ) : null,
+  ModalHeader: ({ title }: any) => <div>{title}</div>,
+  ModalBody: ({ children }: any) => <>{children}</>,
 }));
 
 // Mock PatternFly table

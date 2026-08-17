@@ -23,8 +23,8 @@ vi.mock('@patternfly/react-core', () => ({
   Alert: ({ title, variant }: any) => (
     <div data-testid={`alert-${variant}`} role="alert">{title}</div>
   ),
-  Button: ({ children, onClick, isDisabled }: any) => (
-    <button onClick={onClick} disabled={isDisabled}>{children}</button>
+  Button: ({ children, icon, onClick, isDisabled }: any) => (
+    <button onClick={onClick} disabled={isDisabled}>{icon}{children}</button>
   ),
   FormSelect: ({ children, value, onChange, 'aria-label': ariaLabel }: any) => (
     <select aria-label={ariaLabel} value={value} onChange={(e: any) => onChange?.(e, e.target.value)}>

@@ -5,7 +5,7 @@ import {
   Alert, Button, Card, CardBody, CardTitle,
   PageSection, PageSectionVariants,
   Progress, ProgressMeasureLocation,
-  Text, TextContent, TextVariants,
+  Content, ContentVariants,
 } from '@patternfly/react-core';
 import { DatabaseIcon, DownloadIcon, SyncAltIcon, UploadIcon } from '@patternfly/react-icons';
 import { useQueryClient } from '@tanstack/react-query';
@@ -145,31 +145,31 @@ export default function SystemAdminPage() {
     : 0;
 
   return (
-    <PageSection variant={PageSectionVariants.default}>
-      <TextContent style={{ marginBottom: '1.5rem' }}>
-        <Text component={TextVariants.h1}>{t('systemAdmin.title')}</Text>
-      </TextContent>
+    <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
+      <Content style={{ marginBottom: '1.5rem' }}>
+        <Content component={ContentVariants.h1}>{t('systemAdmin.title')}</Content>
+      </Content>
 
       {/* ── Synchronisation manuelle ── */}
       <Card style={{ maxWidth: 640, marginBottom: '1.5rem' }}>
         <CardTitle><SyncAltIcon style={{ marginRight: '0.5rem' }} />Synchronisation des prix</CardTitle>
         <CardBody>
-          <TextContent style={{ marginBottom: '1rem' }}>
-            <Text component={TextVariants.p}>
+          <Content style={{ marginBottom: '1rem' }}>
+            <Content component={ContentVariants.p}>
               Les prix sont automatiquement récupérés toutes les 15 minutes via PgQueuer.
               Utilisez ce bouton uniquement pour forcer une synchronisation immédiate.
-            </Text>
+            </Content>
             {syncStatus && syncStatus.status !== 'never' && (
-              <Text component={TextVariants.small} style={{ color: '#6A6E73' }}>
+              <Content component={ContentVariants.small} style={{ color: '#6A6E73' }}>
                 Dernière synchro : {formatSyncDateTime(syncStatus)}
                 {syncStatus.failed_tickers.length > 0 && (
                   <span style={{ color: '#E65100', marginLeft: '0.5rem' }}>
                     — Échec : {syncStatus.failed_tickers.join(', ')}
                   </span>
                 )}
-              </Text>
+              </Content>
             )}
-          </TextContent>
+          </Content>
           <Button
             variant="secondary"
             icon={<SyncAltIcon />}
@@ -186,13 +186,13 @@ export default function SystemAdminPage() {
       <Card style={{ maxWidth: 640, marginBottom: '1.5rem' }}>
         <CardTitle><DatabaseIcon style={{ marginRight: '0.5rem' }} />{t('admin.backup')}</CardTitle>
         <CardBody>
-          <TextContent style={{ marginBottom: '1rem' }}>
-            <Text component={TextVariants.p}>
+          <Content style={{ marginBottom: '1rem' }}>
+            <Content component={ContentVariants.p}>
               La sauvegarde génère un dump SQL complet de la base de données. La restauration est
               <strong> transactionnelle</strong> : si une seule instruction échoue, toute l'opération
               est annulée et la base reste intacte.
-            </Text>
-          </TextContent>
+            </Content>
+          </Content>
 
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <Button
@@ -252,14 +252,14 @@ export default function SystemAdminPage() {
       <Card style={{ maxWidth: 640 }}>
         <CardTitle>{t('admin.regenerateSnapshots')}</CardTitle>
         <CardBody>
-          <TextContent style={{ marginBottom: '1rem' }}>
-            <Text component={TextVariants.p}>
+          <Content style={{ marginBottom: '1rem' }}>
+            <Content component={ContentVariants.p}>
               Recalcule les snapshots de performance pour tous les utilisateurs
               sur la plage de dates sélectionnée, en utilisant les prix disponibles
               dans la base (yfinance + prix manuels). Les prix de l'or saisis
               manuellement sont préservés.
-            </Text>
-          </TextContent>
+            </Content>
+          </Content>
 
           <Alert
             variant="info"

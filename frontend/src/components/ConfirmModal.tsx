@@ -1,5 +1,14 @@
 import { useTranslation } from 'react-i18next';
-import { Button, Modal, ModalVariant, Text, TextContent, TextVariants } from '@patternfly/react-core';
+import {
+	Button,
+	Content,
+	ContentVariants,
+	Modal,
+	ModalBody,
+	ModalFooter,
+	ModalHeader,
+	ModalVariant
+} from '@patternfly/react-core';
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -30,23 +39,25 @@ export default function ConfirmModal({
   return (
     <Modal
       variant={ModalVariant.small}
-      title={<span style={{ color: 'var(--pf-v5-global--danger-color--100)' }}>⚠ {title}</span>}
       isOpen={isOpen}
       onClose={onCancel}
-      actions={[
+    >
+      <ModalHeader title={<span style={{ color: 'var(--pf-t--global--text--color--status--danger--default)' }}>⚠ {title}</span>} />
+      <ModalBody>
+        <Content>
+          {paragraphs.map((p, i) => (
+            <Content key={i} component={ContentVariants.p}>{p}</Content>
+          ))}
+        </Content>
+      </ModalBody>
+      <ModalFooter>
         <Button key="confirm" variant={variant} onClick={onConfirm} isLoading={isLoading} isDisabled={isLoading}>
           {confirmLabel ?? t('common.delete')}
-        </Button>,
+        </Button>
         <Button key="cancel" variant="link" onClick={onCancel} isDisabled={isLoading}>
           {cancelLabel ?? t('common.cancel')}
-        </Button>,
-      ]}
-    >
-      <TextContent>
-        {paragraphs.map((p, i) => (
-          <Text key={i} component={TextVariants.p}>{p}</Text>
-        ))}
-      </TextContent>
+        </Button>
+      </ModalFooter>
     </Modal>
   );
 }

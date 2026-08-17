@@ -19,7 +19,7 @@ export default function IndicatorsPage() {
   const [activeTab, setActiveTab] = useState<IndicatorsTab>('growth-inflation');
 
   return (
-    <PageSection variant={PageSectionVariants.default}>
+    <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
       <Title headingLevel="h1" size="xl" style={{ marginBottom: '1rem' }}>{t('indicators.title')}</Title>
       <Tabs
         activeKey={activeTab}

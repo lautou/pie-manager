@@ -12,9 +12,8 @@ import {
   PageSection,
   PageSectionVariants,
   Spinner,
-  Text,
-  TextContent,
-  TextVariants,
+  Content,
+  ContentVariants,
   Title,
 } from '@patternfly/react-core';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
@@ -37,7 +36,7 @@ function StatusLabel({ status }: { status: ImportRowResult['status'] }) {
 function RowDetail({ row }: { row: ImportRowResult }) {
   const { t } = useTranslation();
   if (row.status === 'error') {
-    return <span style={{ color: 'var(--pf-v5-global--danger-color--100)' }}>{row.errors.join(' ')}</span>;
+    return <span style={{ color: 'var(--pf-t--global--text--color--status--danger--default)' }}>{row.errors.join(' ')}</span>;
   }
   if (row.status === 'duplicate' && row.duplicate_of) {
     return row.duplicate_of.kind === 'db'
@@ -123,13 +122,13 @@ export default function TransactionImportPage() {
   } : null;
 
   return (
-    <PageSection variant={PageSectionVariants.default}>
+    <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
       <Title headingLevel="h1" size="xl" style={{ marginBottom: '0.5rem' }}>
         {t('import.title')}
       </Title>
-      <TextContent style={{ marginBottom: '1rem' }}>
-        <Text component={TextVariants.p}>{t('import.intro')}</Text>
-      </TextContent>
+      <Content style={{ marginBottom: '1rem' }}>
+        <Content component={ContentVariants.p}>{t('import.intro')}</Content>
+      </Content>
 
       <Card style={{ marginBottom: '1.5rem' }}>
         <CardBody>

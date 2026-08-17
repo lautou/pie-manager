@@ -7,7 +7,7 @@ import {
   Label,
   PageSection, PageSectionVariants,
   Spinner,
-  Text, TextContent, TextVariants, Title,
+  Content, ContentVariants, Title,
   Tooltip,
 } from '@patternfly/react-core';
 import { ExclamationTriangleIcon } from '@patternfly/react-icons';
@@ -71,7 +71,7 @@ type PosColIndex = typeof POS_COL[keyof typeof POS_COL];
 function pvColor(val: number): string {
   if (val > 0) return '#137333';
   if (val < 0) return '#D93025';
-  return 'var(--pf-v5-global--Color--200)';
+  return 'var(--pf-t--global--text--color--subtle)';
 }
 
 function PoolHoldingsTable({ holdings, poolName, failedTickers, pvMap }: {
@@ -198,7 +198,7 @@ function PoolHoldingsTable({ holdings, poolName, failedTickers, pvMap }: {
                 <Td>
                   {formatEUR(h.value_eur)}
                   {h.instrument_type === 'Or physique' && h.last_price_date && (
-                    <div style={{ fontSize: '0.78rem', color: 'var(--pf-v5-global--Color--200)', marginTop: '2px' }}>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--pf-t--global--text--color--subtle)', marginTop: '2px' }}>
                       {h.last_price_date}
                     </div>
                   )}
@@ -218,14 +218,14 @@ function PoolHoldingsTable({ holdings, poolName, failedTickers, pvMap }: {
                     ? <span style={{ color: pvColor(unrealizedPv), fontWeight: 500 }}>
                         {unrealizedPv > 0 ? '+' : ''}{formatEUR(unrealizedPv)}
                       </span>
-                    : <span style={{ color: 'var(--pf-v5-global--Color--200)' }}>—</span>}
+                    : <span style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>—</span>}
                 </Td>
                 <Td>
                   {pvPct !== undefined
                     ? <span style={{ color: pvColor(pvPct) }}>
                         {formatPct2(pvPct, true)}
                       </span>
-                    : <span style={{ color: 'var(--pf-v5-global--Color--200)' }}>—</span>}
+                    : <span style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>—</span>}
                 </Td>
               </Tr>
             );
@@ -234,7 +234,7 @@ function PoolHoldingsTable({ holdings, poolName, failedTickers, pvMap }: {
           {hasPvData && (
             <Tr style={{ backgroundColor: '#f0f4ff', fontWeight: 'bold' }}>
               <Td colSpan={8}>
-                <span style={{ fontSize: '0.85rem', color: 'var(--pf-v5-global--Color--200)' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--pf-t--global--text--color--subtle)' }}>
                   {t('holdings.poolSubtotal')}
                 </span>
               </Td>
@@ -288,7 +288,7 @@ export default function HoldingsPage() {
 
   if (isLoading) {
     return (
-      <PageSection variant={PageSectionVariants.default}>
+      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
         <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem' }}>
           <Spinner size="xl" aria-label={t('common.loading')} />
         </div>
@@ -298,15 +298,15 @@ export default function HoldingsPage() {
 
   if (isError || !dashboard || !holdings) {
     return (
-      <PageSection variant={PageSectionVariants.default}>
-        <TextContent>
-          <Text
-            component={TextVariants.p}
-            style={{ color: 'var(--pf-v5-global--danger-color--100)' }}
+      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
+        <Content>
+          <Content
+            component={ContentVariants.p}
+            style={{ color: 'var(--pf-t--global--text--color--status--danger--default)' }}
           >
             {t('error.loadingPositions')}
-          </Text>
-        </TextContent>
+          </Content>
+        </Content>
       </PageSection>
     );
   }
@@ -317,21 +317,21 @@ export default function HoldingsPage() {
   const grandTotal = investableHoldings.reduce((sum, h) => sum + h.value_eur, 0);
 
   return (
-    <PageSection variant={PageSectionVariants.default}>
+    <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
         <Title headingLevel="h1" size="xl">{t('holdings.currentHoldings')}</Title>
         <SyncBadge />
       </div>
 
       {/* Cash holdings — shown separately above pool groups */}
-      <Card style={{ marginBottom: '1.5rem', borderLeft: '4px solid var(--pf-v5-global--palette--gold-400)' }}>
+      <Card style={{ marginBottom: '1.5rem', borderLeft: '4px solid var(--pf-t--global--color--nonstatus--yellow--400)' }}>
         <CardTitle>{t('dashboard.availableCash')}</CardTitle>
         <CardBody>
           <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
             <span style={{ fontSize: '1.4rem', fontWeight: 'bold' }}>
               {formatEUR(dashboard.liquidity_eur)}
             </span>
-            <span style={{ fontSize: '0.85rem', color: 'var(--pf-v5-global--Color--200)' }}>
+            <span style={{ fontSize: '0.85rem', color: 'var(--pf-t--global--text--color--subtle)' }}>
               {t('holdings.cashNotInvested')}
             </span>
           </div>
@@ -357,7 +357,7 @@ export default function HoldingsPage() {
               <span style={{ fontSize: '1.3rem', fontWeight: 'bold' }}>
                 {formatEUR(dashboard.offensive_eur)}
               </span>
-              <div style={{ fontSize: '0.9rem', color: 'var(--pf-v5-global--Color--200)' }}>
+              <div style={{ fontSize: '0.9rem', color: 'var(--pf-t--global--text--color--subtle)' }}>
                 {dashboard.total_eur > 0
                   ? formatPct1(dashboard.offensive_eur / dashboard.total_eur * 100)
                   : '–'}
@@ -372,7 +372,7 @@ export default function HoldingsPage() {
               <span style={{ fontSize: '1.3rem', fontWeight: 'bold' }}>
                 {formatEUR(dashboard.defensive_eur)}
               </span>
-              <div style={{ fontSize: '0.9rem', color: 'var(--pf-v5-global--Color--200)' }}>
+              <div style={{ fontSize: '0.9rem', color: 'var(--pf-t--global--text--color--subtle)' }}>
                 {dashboard.total_eur > 0
                   ? formatPct1(dashboard.defensive_eur / dashboard.total_eur * 100)
                   : '–'}
@@ -413,9 +413,9 @@ export default function HoldingsPage() {
                     style={{
                       backgroundColor:
                         group.pool.strategy === 'Offensive'
-                          ? 'var(--pf-v5-global--palette--blue-200)'
-                          : 'var(--pf-v5-global--palette--green-200)',
-                      color: 'var(--pf-v5-global--Color--100)',
+                          ? 'var(--pf-t--global--color--nonstatus--blue--200)'
+                          : 'var(--pf-t--global--color--nonstatus--green--200)',
+                      color: 'var(--pf-t--global--text--color--regular)',
                     }}
                   >
                     {group.pool.strategy}
@@ -424,7 +424,7 @@ export default function HoldingsPage() {
                 <span style={{ marginLeft: 'auto', fontWeight: 'normal', fontSize: '0.95rem' }}>
                   {formatEUR(poolTotal)}
                   {group.pool && (
-                    <span style={{ marginLeft: '0.5rem', color: 'var(--pf-v5-global--Color--200)' }}>
+                    <span style={{ marginLeft: '0.5rem', color: 'var(--pf-t--global--text--color--subtle)' }}>
                       · {t('holdings.target')} {formatPct1(group.pool.target_pct * 100)} · {t('holdings.actual')}{' '}
                       {formatPct1(group.pool.current_pct)}
                     </span>

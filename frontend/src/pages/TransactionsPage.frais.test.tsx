@@ -22,21 +22,22 @@ vi.mock('react-router-dom', () => ({
 
 vi.mock('@patternfly/react-core', () => ({
   ...pfCoreStubs,
+  Modal: ({ children, isOpen, onClose }: any) =>
+    isOpen ? (
+      <div data-testid="modal" role="dialog">
+        <button onClick={onClose}>Close</button>
+        {children}
+      </div>
+    ) : null,
+  ModalHeader: ({ title }: any) => <div>{title}</div>,
+  ModalBody: ({ children }: any) => <>{children}</>,
+  ModalFooter: ({ children }: any) => <div>{children}</div>,
   Alert: ({ title, children }: any) => (
     <div data-testid="alert" role="alert">
       <span>{title}</span>
       {children}
     </div>
   ),
-  Modal: ({ children, isOpen, title, onClose, actions }: any) =>
-    isOpen ? (
-      <div data-testid="modal" role="dialog">
-        <div>{title}</div>
-        <div>{actions}</div>
-        <button onClick={onClose}>Close</button>
-        {children}
-      </div>
-    ) : null,
   Pagination: ({ onSetPage, onPerPageSelect }: any) => (
     <div data-testid="pagination">
       <button onClick={() => onSetPage(null, 2)}>Page 2</button>

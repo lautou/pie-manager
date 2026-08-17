@@ -5,7 +5,7 @@ import {
   Button,
   Card, CardBody, CardTitle,
   PageSection, PageSectionVariants,
-  Text, TextContent, TextVariants, Title,
+  Content, ContentVariants, Title,
 } from '@patternfly/react-core';
 import { PlusCircleIcon } from '@patternfly/react-icons';
 import { useQueryClient } from '@tanstack/react-query';
@@ -312,7 +312,7 @@ export default function AdminPage() {
   const { portfolioId: _portfolioId } = useParams<{ portfolioId: string }>();
 
   return (
-    <PageSection variant={PageSectionVariants.default}>
+    <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
       <Title headingLevel="h1" size="xl" style={{ marginBottom: '1.5rem' }}>
         {t('admin.title')}
       </Title>
@@ -321,11 +321,11 @@ export default function AdminPage() {
       <Card style={{ maxWidth: 900, marginBottom: '1.5rem' }}>
         <CardTitle>{t('admin.assignedAccounts')}</CardTitle>
         <CardBody>
-          <TextContent style={{ marginBottom: '1rem' }}>
-            <Text component={TextVariants.p}>
+          <Content style={{ marginBottom: '1rem' }}>
+            <Content component={ContentVariants.p}>
               {t('admin.assignedAccountsDesc')}
-            </Text>
-          </TextContent>
+            </Content>
+          </Content>
           <AccountAssignmentManager portfolioId={_portfolioId!} />
         </CardBody>
       </Card>
@@ -334,11 +334,11 @@ export default function AdminPage() {
       <Card style={{ maxWidth: 900, marginBottom: '1.5rem' }}>
         <CardTitle>{t('admin.poolManagement')}</CardTitle>
         <CardBody>
-          <TextContent style={{ marginBottom: '1rem' }}>
-            <Text component={TextVariants.p}>
+          <Content style={{ marginBottom: '1rem' }}>
+            <Content component={ContentVariants.p}>
               {t('admin.poolManagementDesc')}
-            </Text>
-          </TextContent>
+            </Content>
+          </Content>
           <PoolManager portfolioId={_portfolioId!} />
         </CardBody>
       </Card>

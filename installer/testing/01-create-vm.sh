@@ -20,10 +20,18 @@ fi
 
 # NOCOW must be set on the directory BEFORE the disk file exists — it does not
 # apply retroactively. btrfs COW + qcow2's own COW is a severe I/O amplifier
-# for VM disk images (see global CLAUDE.md's libvirt/QEMU section).
+# for VM disk images (double copy-on-write on the same small random writes a
+# VM disk produces) - roughly halved guest-agent-ready boot time once fixed.
 mkdir -p "$DISK_DIR"
 chattr +C "$DISK_DIR" 2>/dev/null || true # no-op if already set, or not on btrfs
 
+# A named, curated CPU model below (not host-passthrough/host-model) with
+# +vmx/+invtsc forced on: this guest runs a nested hypervisor (WSL2/Podman
+# Machine), and host-passthrough's full real CPUID surface reproducibly
+# crashed the nested hypervisor on first boot (Windows bugcheck 0x00020001)
+# regardless of core topology or added hv-* enlightenment flags - confirmed
+# by elimination across 4 configurations. This model swap is what actually
+# fixed it.
 virt-install \
   --connect qemu:///system \
   --name "$NAME" \

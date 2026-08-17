@@ -689,7 +689,7 @@ describe('AccountsSummaryPage — computePV and pvColor coverage', () => {
   });
 
   it('pvColor: zero PV renders neutral color (line 57 - return Color 200)', () => {
-    // Position with PV = 0 → pvColor(0) = 'var(--pf-v5-global--Color--200)' (line 57)
+    // Position with PV = 0 → pvColor(0) = 'var(--pf-t--global--text--color--subtle)' (line 57)
     const accountZeroPV = {
       id: 1, name: 'Degiro', currency: 'EUR', cash_balance_eur: 0, positions_value_eur: 1000, total_eur: 1000,
       positions: [

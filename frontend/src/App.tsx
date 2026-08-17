@@ -53,7 +53,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
         <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
           <Content>
             <Content component={ContentVariants.h2}>Une erreur est survenue</Content>
-            <Content component={ContentVariants.p} style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */ }}>
+            <Content component={ContentVariants.p} style={{ color: 'var(--pf-t--global--text--color--status--danger--default)' }}>
               {this.state.error.message}
             </Content>
             <Button variant="primary" onClick={() => this.setState({ error: null })}>

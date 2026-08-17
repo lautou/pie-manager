@@ -90,7 +90,7 @@ export default function PortfolioSelectPage() {
       )}
 
       {isError && (
-        <Content style={{ textAlign: 'center', color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */ }}>
+        <Content style={{ textAlign: 'center', color: 'var(--pf-t--global--text--color--status--danger--default)' }}>
           <Content component="p">Erreur lors du chargement.</Content>
         </Content>
       )}
@@ -122,7 +122,7 @@ export default function PortfolioSelectPage() {
                 <Card  style={{ cursor: 'default', height: '100%' }}>
                   <CardTitle>
                     <span
-                      style={{ cursor: 'pointer', color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--link--Color */, fontSize: '1.1rem', fontWeight: 'bold' }}
+                      style={{ cursor: 'pointer', color: 'var(--pf-t--global--text--color--link--default)', fontSize: '1.1rem', fontWeight: 'bold' }}
                       onClick={() => navigate(`/portfolio/${portfolio.id}/dashboard`)}
                     >
                       {portfolio.name}
@@ -179,7 +179,7 @@ export default function PortfolioSelectPage() {
         <TextInput placeholder="Nom du portefeuille" value={newName}
           onChange={(_e, v) => setNewName(v)}
           onKeyDown={(e) => e.key === 'Enter' && handleCreate()} />
-        {error && <div style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */, marginTop: '0.5rem', fontSize: '0.85rem' }}>{error}</div>}
+        {error && <div style={{ color: 'var(--pf-t--global--text--color--status--danger--default)', marginTop: '0.5rem', fontSize: '0.85rem' }}>{error}</div>}
         </ModalBody>
         <ModalFooter>
           <Button key="ok" variant="primary" onClick={handleCreate} isLoading={createPortfolio.isPending}>{t('common.create')}</Button>
@@ -198,7 +198,7 @@ export default function PortfolioSelectPage() {
             t => t ? { ...t, name: v } : t,
           )}
           onKeyDown={(e) => e.key === 'Enter' && handleRename()} />
-        {error && <div style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */, marginTop: '0.5rem', fontSize: '0.85rem' }}>{error}</div>}
+        {error && <div style={{ color: 'var(--pf-t--global--text--color--status--danger--default)', marginTop: '0.5rem', fontSize: '0.85rem' }}>{error}</div>}
         </ModalBody>
         <ModalFooter>
           <Button key="ok" variant="primary" onClick={handleRename} isLoading={renamePortfolio.isPending}>{t('portfolioSelect.rename')}</Button>
@@ -210,7 +210,7 @@ export default function PortfolioSelectPage() {
       <Modal variant={ModalVariant.small}
         isOpen={!!deleteTarget}
         onClose={() => { setDeleteTarget(null); setDeleteConfirmName(''); }}>
-        <ModalHeader title={<span style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */ }}>⚠ Supprimer le portefeuille</span>} />
+        <ModalHeader title={<span style={{ color: 'var(--pf-t--global--text--color--status--danger--default)' }}>⚠ Supprimer le portefeuille</span>} />
         <ModalBody>
         <div>
           <Content component={ContentVariants.p}>

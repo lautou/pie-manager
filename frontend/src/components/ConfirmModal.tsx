@@ -42,7 +42,7 @@ export default function ConfirmModal({
       isOpen={isOpen}
       onClose={onCancel}
     >
-      <ModalHeader title={<span style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */ }}>⚠ {title}</span>} />
+      <ModalHeader title={<span style={{ color: 'var(--pf-t--global--text--color--status--danger--default)' }}>⚠ {title}</span>} />
       <ModalBody>
         <Content>
           {paragraphs.map((p, i) => (

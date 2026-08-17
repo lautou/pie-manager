@@ -102,7 +102,7 @@ export default function RebalancingPage() {
         <Content>
           <Content
             component={ContentVariants.p}
-            style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */ }}
+            style={{ color: 'var(--pf-t--global--text--color--status--danger--default)' }}
           >
             {t('error.loadingRebalancing')}
           </Content>

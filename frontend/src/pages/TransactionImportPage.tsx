@@ -36,7 +36,7 @@ function StatusLabel({ status }: { status: ImportRowResult['status'] }) {
 function RowDetail({ row }: { row: ImportRowResult }) {
   const { t } = useTranslation();
   if (row.status === 'error') {
-    return <span style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */ }}>{row.errors.join(' ')}</span>;
+    return <span style={{ color: 'var(--pf-t--global--text--color--status--danger--default)' }}>{row.errors.join(' ')}</span>;
   }
   if (row.status === 'duplicate' && row.duplicate_of) {
     return row.duplicate_of.kind === 'db'

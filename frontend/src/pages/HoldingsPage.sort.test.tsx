@@ -246,7 +246,7 @@ describe('PoolPositionsTable sorting — branch coverage', () => {
     };
     setup([positionAAP], capitalGainsWithZero);
     render(<HoldingsPage />);
-    // pvColor(0) returns 'var(--pf-v5-global--Color--200)' — verify render doesn't crash
+    // pvColor(0) returns 'var(--pf-t--global--text--color--subtle)' — verify render doesn't crash
     expect(screen.getByText('Positions actuelles')).toBeTruthy();
     // The "0.00 €" PV value should be present and not red or green
     const body = document.body.textContent ?? '';

@@ -180,18 +180,18 @@ function PortfolioLayout({ children }: { children: React.ReactNode }) {
 
   const masthead = (
     <Masthead>
-      
-      <MastheadMain><MastheadToggle>
-        <Button
-          variant="plain"
-          onClick={() => setIsSidebarOpen((o) => !o)}
-          aria-label="Toggle sidebar"
-          icon={<BarsIcon />}
-        />
-      </MastheadToggle>
-        <MastheadBrand data-codemods><MastheadBrand data-codemods><MastheadBrand data-codemods><MastheadLogo data-codemods style={{ color: 'white', fontWeight: 'bold', fontSize: '1.2rem' }}>
+      <MastheadMain>
+        <MastheadToggle>
+          <Button
+            variant="plain"
+            onClick={() => setIsSidebarOpen((o) => !o)}
+            aria-label="Toggle sidebar"
+            icon={<BarsIcon />}
+          />
+        </MastheadToggle>
+        <MastheadBrand><MastheadLogo style={{ color: 'white', fontWeight: 'bold', fontSize: '1.2rem' }}>
           PIE Manager
-        </MastheadLogo></MastheadBrand></MastheadBrand></MastheadBrand>
+        </MastheadLogo></MastheadBrand>
         <AppVersion />
       </MastheadMain>
     </Masthead>
@@ -242,7 +242,7 @@ function RootLayout() {
   const masthead = (
     <Masthead>
       <MastheadMain>
-        <MastheadBrand data-codemods><MastheadLogo data-codemods style={{ color: 'white', fontWeight: 'bold', fontSize: '1.2rem' }}>
+        <MastheadBrand><MastheadLogo style={{ color: 'white', fontWeight: 'bold', fontSize: '1.2rem' }}>
           PIE Manager
         </MastheadLogo></MastheadBrand>
         <AppVersion />
@@ -282,7 +282,7 @@ function GlobalLayout({ title, children }: { title: string; children: React.Reac
           >
             {t('app.back')}
           </button>
-          <MastheadBrand data-codemods><MastheadLogo data-codemods style={{ color: 'white', fontWeight: 'bold', fontSize: '1.1rem', flexShrink: 0 }}>
+          <MastheadBrand><MastheadLogo style={{ color: 'white', fontWeight: 'bold', fontSize: '1.1rem', flexShrink: 0 }}>
             PIE Manager
           </MastheadLogo></MastheadBrand>
           <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', flexShrink: 0 }}>

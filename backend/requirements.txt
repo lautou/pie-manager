@@ -10,7 +10,7 @@ pydantic-settings==2.15.0
 python-dotenv==1.2.2
 yfinance==1.6.0
 httpx==0.28.1
-python-dateutil==2.9.0
+python-dateutil==2.9.0.post0
 python-multipart==0.0.32
 packaging==26.3
 openpyxl==3.1.5

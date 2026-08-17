@@ -80,7 +80,7 @@ export default function PoolAllocationSection({ portfolioId, poolId }: PoolAlloc
               ))}
               {data.unclassified_eur > 0 && (
                 <Tr>
-                  <Td style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--Color--200 */, fontStyle: 'italic' }}>
+                  <Td style={{ color: 'var(--pf-t--global--text--color--subtle)', fontStyle: 'italic' }}>
                     {t('holdings.allocationUnclassified')}
                   </Td>
                   <Td>{formatEUR(data.unclassified_eur)}</Td>

@@ -1308,7 +1308,7 @@ export default function TransactionsPage() {
             <Tbody>
               {paginated.length === 0 ? (
                 <Tr>
-                  <Td colSpan={showDevise ? 13 : 10} style={{ textAlign: 'center', color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--Color--200 */ }}>
+                  <Td colSpan={showDevise ? 13 : 10} style={{ textAlign: 'center', color: 'var(--pf-t--global--text--color--subtle)' }}>
                     {t('transactions.noTransactions')}
                   </Td>
                 </Tr>
@@ -1401,7 +1401,7 @@ export default function TransactionsPage() {
                         variant="plain"
                         aria-label={t('common.delete')}
                         onClick={() => handleDeleteClick(tx)}
-                        style={{ padding: '0 0.5rem', color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */ }}
+                        style={{ padding: '0 0.5rem', color: 'var(--pf-t--global--text--color--status--danger--default)' }}
                        />
                     </Td>
                   </Tr>

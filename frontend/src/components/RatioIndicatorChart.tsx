@@ -292,7 +292,7 @@ export default function RatioIndicatorChart({
               </div>
             </div>
             {interpretation && (
-              <div style={{ fontSize: '0.85rem', color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--Color--200 */, marginTop: '0.5rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.85rem', color: 'var(--pf-t--global--text--color--subtle)', marginTop: '0.5rem', textAlign: 'center' }}>
                 {interpretation}
               </div>
             )}

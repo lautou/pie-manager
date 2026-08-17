@@ -18,7 +18,7 @@ import type { TickerCapitalGains, CapitalGainsEvent } from '../types';
 function pvColor(val: number): string {
   if (val > 0) return '#137333';
   if (val < 0) return '#D93025';
-  return "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--Color--200 */;
+  return 'var(--pf-t--global--text--color--subtle)';
 }
 
 function PvCell({ val }: { val: number }) {
@@ -123,14 +123,14 @@ function SummaryTable({ tickers }: { tickers: TickerCapitalGains[] }) {
             <Tr key={t.ticker} style={{ backgroundColor: idx % 2 === 0 ? '#fff' : '#f5f5f5' }}>
               <Td><strong>{t.ticker}</strong></Td>
               <Td>{t.product_name}</Td>
-              <Td style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--Color--200 */ }}>{formatEUR(t.cump)}</Td>
+              <Td style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>{formatEUR(t.cump)}</Td>
               <Td>{formatEUR(t.current_value_eur)}</Td>
               <Td>{formatEUR(t.cost_basis_eur)}</Td>
               <Td><PvCell val={t.unrealized_pv} /></Td>
               <Td>
                 {pvPct !== undefined
                   ? <span style={{ color: pvColor(pvPct) }}>{formatPct1(pvPct, true)}</span>
-                  : <span style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--Color--200 */ }}>—</span>}
+                  : <span style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>—</span>}
               </Td>
               <Td><PvCell val={t.realized_pv_total} /></Td>
               <Td><PvCell val={netPv} /></Td>
@@ -277,7 +277,7 @@ function HistoryTable({ events }: { events: CapitalGainsEvent[] }) {
             <Td>
               {ev.qty_sold.toLocaleString('fr-FR', { maximumFractionDigits: 4 })}
             </Td>
-            <Td style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--Color--200 */ }}>{formatEUR(ev.cump_at_sell)}</Td>
+            <Td style={{ color: 'var(--pf-t--global--text--color--subtle)' }}>{formatEUR(ev.cump_at_sell)}</Td>
             <Td>{formatEUR(ev.sell_price_eur)}</Td>
             <Td><PvCell val={ev.realized_pv} /></Td>
           </Tr>
@@ -308,7 +308,7 @@ export default function CapitalGainsPage() {
     return (
       <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
         <Content>
-          <Content component={ContentVariants.p} style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */ }}>
+          <Content component={ContentVariants.p} style={{ color: 'var(--pf-t--global--text--color--status--danger--default)' }}>
             {t('error.loadingCapitalGains')}
           </Content>
         </Content>

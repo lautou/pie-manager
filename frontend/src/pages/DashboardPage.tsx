@@ -242,7 +242,7 @@ export default function DashboardPage() {
     return (
       <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
         <Content>
-          <Content component={ContentVariants.p} style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */ }}>
+          <Content component={ContentVariants.p} style={{ color: 'var(--pf-t--global--text--color--status--danger--default)' }}>
             {t('error.loadingDashboard')}
           </Content>
         </Content>
@@ -365,9 +365,9 @@ export default function DashboardPage() {
                 <span style={{
                   fontSize: '1.3rem', fontWeight: 'bold',
                   color: capitalGains.total_unrealized_pv > 0
-                    ? "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--success-color--100 */
+                    ? 'var(--pf-t--global--text--color--status--success--default)'
                     : capitalGains.total_unrealized_pv < 0
-                    ? "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */
+                    ? 'var(--pf-t--global--text--color--status--danger--default)'
                     : undefined,
                 }}>
                   {capitalGains.total_unrealized_pv > 0 ? '+' : ''}
@@ -383,9 +383,9 @@ export default function DashboardPage() {
                 <span style={{
                   fontSize: '1.3rem', fontWeight: 'bold',
                   color: capitalGains.total_realized_pv > 0
-                    ? "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--success-color--100 */
+                    ? 'var(--pf-t--global--text--color--status--success--default)'
                     : capitalGains.total_realized_pv < 0
-                    ? "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */
+                    ? 'var(--pf-t--global--text--color--status--danger--default)'
                     : undefined,
                 }}>
                   {capitalGains.total_realized_pv > 0 ? '+' : ''}
@@ -503,8 +503,8 @@ export default function DashboardPage() {
                     <Td style={{
                       color: Math.abs(pool.gap_pct) <= 2 ? 'inherit'
                         : pool.gap_pct > 0
-                          ? "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--success-color--100 */
-                          : "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */,
+                          ? 'var(--pf-t--global--text--color--status--success--default)'
+                          : 'var(--pf-t--global--text--color--status--danger--default)',
                       fontWeight: Math.abs(pool.gap_pct) > 5 ? 'bold' : 'normal',
                     }}>
                       {pool.gap_pct > 0 ? '+' : ''}{formatPct1(pool.gap_pct)}
@@ -575,7 +575,7 @@ export default function DashboardPage() {
                   <div style={{ marginTop: '1rem', fontSize: '0.85rem', color: '#6A6E73', display: 'flex', gap: '2rem' }}>
                     <span>{t('common.target')} : <strong>{formatPct1(poolInfo.target_pct * 100)}</strong></span>
                     <span>{t('common.current')} : <strong>{formatPct1(poolInfo.current_pct)}</strong></span>
-                    <span>{t('common.gap')} : <strong style={{ color: Math.abs(poolInfo.gap_pct) <= 2 ? 'inherit' : poolInfo.gap_pct > 0 ? "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--success-color--100 */ : "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */ }}>
+                    <span>{t('common.gap')} : <strong style={{ color: Math.abs(poolInfo.gap_pct) <= 2 ? 'inherit' : poolInfo.gap_pct > 0 ? 'var(--pf-t--global--text--color--status--success--default)' : 'var(--pf-t--global--text--color--status--danger--default)' }}>
                       {poolInfo.gap_pct > 0 ? '+' : ''}{formatPct1(poolInfo.gap_pct)}
                     </strong></span>
                   </div>
@@ -596,9 +596,9 @@ export default function DashboardPage() {
           ? (gains.unrealized_pv / gains.cost_basis_eur) * 100
           : null;
         const pvColor = gains && gains.unrealized_pv > 0
-          ? "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--success-color--100 */
+          ? 'var(--pf-t--global--text--color--status--success--default)'
           : gains && gains.unrealized_pv < 0
-          ? "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */
+          ? 'var(--pf-t--global--text--color--status--danger--default)'
           : undefined;
 
         return (

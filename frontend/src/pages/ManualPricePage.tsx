@@ -129,7 +129,7 @@ function ProductCard({ product }: ProductCardProps) {
               <Content component={ContentVariants.p}>
                 <strong>{t('manualPrices.lastKnownPrice')}</strong>{' '}
                 {formatEUR(latestPrice.price, latestPrice.currency)}{' '}
-                <span style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--Color--200 */, fontSize: '0.85rem' }}>
+                <span style={{ color: 'var(--pf-t--global--text--color--subtle)', fontSize: '0.85rem' }}>
                   ({latestPrice.date})
                 </span>
                 {' '}
@@ -140,7 +140,7 @@ function ProductCard({ product }: ProductCardProps) {
             <Content>
               <Content
                 component={ContentVariants.p}
-                style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--Color--200 */, fontStyle: 'italic' }}
+                style={{ color: 'var(--pf-t--global--text--color--subtle)', fontStyle: 'italic' }}
               >
                 {t('manualPrices.noPriceRecorded')}{' '}
                 <PriceAgeBadge dateStr={null} />
@@ -273,7 +273,7 @@ export default function ManualPricePage() {
         <Content>
           <Content
             component={ContentVariants.p}
-            style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--Color--200 */, fontStyle: 'italic' }}
+            style={{ color: 'var(--pf-t--global--text--color--subtle)', fontStyle: 'italic' }}
           >
             {t('configGenerale.noManualProducts')}
           </Content>

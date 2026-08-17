@@ -40,6 +40,17 @@ FROM python:3.14-slim@sha256:a7fb1e634c4a578f9e0bd6327f11a3cde11b7a9395f48e24360
 
 WORKDIR /app
 
+# Pull OS security patches at build time, independent of when the pinned base digest above was
+# last rebuilt. The digest pin above is for reproducible build *tooling*, not a promise that the
+# base image's own pre-installed OS packages stay vulnerability-free forever - #21 made a real
+# fixable HIGH/CRITICAL CVE fail the release outright, and Debian's security repo can (and did,
+# same week #21 shipped) publish a fix for an already-installed package well before Docker Hub
+# gets around to rebuilding python:3.14-slim itself.
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 # Remove the base image's own pre-installed pip/setuptools/wheel. Neither is
 # ever used by this app at runtime (verified: no code path calls pip, no
 # runtime import of pkg_resources/setuptools), but Trivy flags known HIGH

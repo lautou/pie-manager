@@ -777,6 +777,73 @@ describe('RebalancingPage', () => {
     expect(screen.getByText('Rééquilibrage')).toBeTruthy();
   });
 
+  it('handleInjectionChange debounce timer fires and re-fetches with the new injection amount (without unmounting)', async () => {
+    // Companion to the #109 unmount test: without this, the setTimeout callback body
+    // itself (which only runs if the component stays mounted past 600ms) has zero
+    // coverage, since RTL's automatic per-test cleanup now correctly cancels any
+    // still-pending timer before it can leak into a later test's execution window.
+    const { default: apiClient } = await import('../api/client');
+    mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
+    const user = userEvent.setup({ delay: null });
+    render(<RebalancingPage />);
+
+    await user.click(screen.getByText('+1k€'));
+    await waitFor(() => {
+      const call = vi.mocked(apiClient.post).mock.calls.find(
+        (c) => (c[1] as any)?.external_injection === 1000
+      );
+      expect(call).toBeTruthy();
+    }, { timeout: 1500 });
+  });
+
+  it('handleCommissionChange debounce timer fires and re-fetches with the new commission (without unmounting)', async () => {
+    const { default: apiClient } = await import('../api/client');
+    mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
+    const user = userEvent.setup({ delay: null });
+    render(<RebalancingPage />);
+
+    // rebalData must be non-null for handleCommissionChange's debounced re-fetch to arm.
+    await user.click(screen.getByText('+1k€'));
+    await waitFor(() => screen.getByText('Asie'), { timeout: 1500 });
+
+    const pctInput = screen.getByLabelText('Commission (%)');
+    await user.type(pctInput, '2');
+    await waitFor(() => {
+      const call = vi.mocked(apiClient.post).mock.calls.find(
+        (c) => (c[1] as any)?.commission_pct === 2
+      );
+      expect(call).toBeTruthy();
+    }, { timeout: 1500 });
+  });
+
+  it('issue #109: clears the pending debounce timer on unmount — no post-unmount fetch fires', async () => {
+    // Regression test for a bug where handleInjectionChange's 600ms debounced
+    // setTimeout was never cleared on unmount, so fetchRebalancing (and its
+    // setRebalLoading state update) fired against an already-torn-down component.
+    // This is deterministic (unlike the original flaky "run the suite a few times"
+    // reproduction): revert the RebalancingPage.tsx cleanup effect and this test fails,
+    // because postCallCount increases after the 700ms wait below.
+    const { default: apiClient } = await import('../api/client');
+    mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
+    const user = userEvent.setup({ delay: null });
+    const { unmount } = render(<RebalancingPage />);
+
+    // Arms the 600ms debounce timer via handleInjectionChange.
+    await user.click(screen.getByText('+1k€'));
+
+    const postCallCountAtUnmount = vi.mocked(apiClient.post).mock.calls.length;
+    unmount();
+
+    // Wait past the 600ms debounce window with real timers (this file never uses
+    // fake timers, consistent with userEvent's real-timer requirement elsewhere
+    // in this project — see .claude/rules/frontend-test-tooling.md).
+    await new Promise((resolve) => setTimeout(resolve, 700));
+
+    // If the timer weren't cleared, fetchRebalancing would fire here, calling
+    // apiClient.post again and then setRebalLoading on the unmounted component.
+    expect(vi.mocked(apiClient.post).mock.calls.length).toBe(postCallCountAtUnmount);
+  });
+
   it('hard mode with commission > 0 and undefined rebalance_fee/rebalance_net hits ?? 0 fallback (lines 278, 281)', async () => {
     // This test covers the two uncovered branches:
     //   line 278: (p.rebalance_fee ?? 0)   when rebalMode === 'hard' and showFees === true

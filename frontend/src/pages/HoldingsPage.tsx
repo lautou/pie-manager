@@ -324,7 +324,7 @@ export default function HoldingsPage() {
       </div>
 
       {/* Cash holdings — shown separately above pool groups */}
-      <Card style={{ marginBottom: '1.5rem', borderLeft: 'var(--pf-t--global--color--nonstatus--yellow--400)' }}>
+      <Card style={{ marginBottom: '1.5rem', borderLeft: '4px solid var(--pf-t--global--color--nonstatus--yellow--400)' }}>
         <CardTitle>{t('dashboard.availableCash')}</CardTitle>
         <CardBody>
           <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>

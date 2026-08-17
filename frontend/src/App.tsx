@@ -179,7 +179,7 @@ function PortfolioLayout({ children }: { children: React.ReactNode }) {
   useAutoRefresh(portfolioId);
 
   const masthead = (
-    <Masthead>
+    <Masthead style={{ backgroundColor: '#1b1d21' }}>
       <MastheadMain>
         <MastheadToggle>
           <Button
@@ -240,7 +240,7 @@ function PortfolioLayout({ children }: { children: React.ReactNode }) {
 
 function RootLayout() {
   const masthead = (
-    <Masthead>
+    <Masthead style={{ backgroundColor: '#1b1d21' }}>
       <MastheadMain>
         <MastheadBrand><MastheadLogo style={{ color: 'white', fontWeight: 'bold', fontSize: '1.2rem' }}>
           PIE Manager
@@ -263,7 +263,7 @@ function GlobalLayout({ title, children }: { title: string; children: React.Reac
   const navigate = useNavigate();
 
   const masthead = (
-    <Masthead>
+    <Masthead style={{ backgroundColor: '#1b1d21' }}>
       <MastheadMain>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '100%' }}>
           <button

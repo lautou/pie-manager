@@ -7,6 +7,11 @@ import {
 	FormGroup,
 	FormSelect,
 	FormSelectOption,
+	Modal,
+	ModalBody,
+	ModalFooter,
+	ModalHeader,
+	ModalVariant,
 	PageSection,
 	Switch,
 	Pagination,
@@ -18,10 +23,6 @@ import {
 	ToolbarContent,
 	ToolbarItem
 } from '@patternfly/react-core';
-import {
-	Modal,
-	ModalVariant
-} from '@patternfly/react-core/deprecated';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import { PencilAltIcon, TrashIcon } from '@patternfly/react-icons';
 import {
@@ -486,25 +487,12 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
   return (
     <Modal
       variant={ModalVariant.large}
-      title={isEditing ? t('transactions.editTransaction') : t('transactions.newTransaction')}
       isOpen={isOpen}
       onClose={onClose}
       onEscapePress={onClose}
-      actions={[
-        <Button
-          key="submit"
-          variant="primary"
-          onClick={handleSubmit}
-          isLoading={isLoading}
-          isDisabled={isLoading}
-        >
-          {isEditing ? t('common.save') : t('common.add')}
-        </Button>,
-        <Button key="cancel" variant="link" onClick={onClose} isDisabled={isLoading}>
-          {t('common.cancel')}
-        </Button>,
-      ]}
     >
+      <ModalHeader title={isEditing ? t('transactions.editTransaction') : t('transactions.newTransaction')} />
+      <ModalBody>
       {error && (
         <Alert variant="danger" title={error} isInline style={{ marginBottom: '1rem' }} />
       )}
@@ -1054,6 +1042,21 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
         </div>
       )}
 
+      </ModalBody>
+      <ModalFooter>
+        <Button
+          key="submit"
+          variant="primary"
+          onClick={handleSubmit}
+          isLoading={isLoading}
+          isDisabled={isLoading}
+        >
+          {isEditing ? t('common.save') : t('common.add')}
+        </Button>
+        <Button key="cancel" variant="link" onClick={onClose} isDisabled={isLoading}>
+          {t('common.cancel')}
+        </Button>
+      </ModalFooter>
     </Modal>
   );
 }

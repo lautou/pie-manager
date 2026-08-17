@@ -13,12 +13,10 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => vi.fn(),
 }));
 
-vi.mock('@patternfly/react-core', () => pfCoreStubs);
-
 // Modal overridden to expose an onClose trigger (the generic stub has no
-// close affordance) — imported from the deprecated subpath since v6.
-vi.mock('@patternfly/react-core/deprecated', () => ({
-  ModalVariant: pfCoreStubs.ModalVariant,
+// close affordance)
+vi.mock('@patternfly/react-core', () => ({
+  ...pfCoreStubs,
   Modal: ({ children, isOpen, onClose }: any) =>
     isOpen ? (
       <div data-testid="modal">
@@ -26,6 +24,8 @@ vi.mock('@patternfly/react-core/deprecated', () => ({
         {children}
       </div>
     ) : null,
+  ModalHeader: ({ title }: any) => <div>{title}</div>,
+  ModalBody: ({ children }: any) => <>{children}</>,
 }));
 
 // Mock PatternFly table — override Th to invoke sort.onSort when clicked

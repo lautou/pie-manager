@@ -17,14 +17,15 @@ vi.mock('react-router-dom', () => ({
 // Mock PatternFly core — same override as DashboardPage.test.tsx (Modal with testids)
 vi.mock('@patternfly/react-core', () => ({
   ...pfCoreStubs,
-  Modal: ({ children, isOpen, title, onClose }: any) =>
+  Modal: ({ children, isOpen, onClose }: any) =>
     isOpen ? (
       <div data-testid="modal">
-        <div data-testid="modal-title">{title}</div>
         <button data-testid="modal-close" onClick={onClose}>Close</button>
         {children}
       </div>
     ) : null,
+  ModalHeader: ({ title }: any) => <div data-testid="modal-title">{title}</div>,
+  ModalBody: ({ children }: any) => <>{children}</>,
   ModalVariant: { medium: 'medium' },
 }));
 

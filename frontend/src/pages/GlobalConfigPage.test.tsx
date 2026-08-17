@@ -20,17 +20,16 @@ vi.mock('@tanstack/react-query', () => ({
 vi.mock('@patternfly/react-core', () => ({
   ...pfCoreStubs,
   ...pfTableStubs,
-}));
-vi.mock('@patternfly/react-core/deprecated', () => ({
-  Modal: ({ children, isOpen, actions, onClose, title }: any) =>
+  Modal: ({ children, isOpen, onClose }: any) =>
     isOpen ? (
       <div data-testid="modal">
-        <div data-testid="modal-title">{title}</div>
         <div>{children}</div>
-        <div data-testid="modal-actions">{actions}</div>
         <button onClick={onClose}>Close modal</button>
       </div>
     ) : null,
+  ModalHeader: ({ title }: any) => <div data-testid="modal-title">{title}</div>,
+  ModalBody: ({ children }: any) => <>{children}</>,
+  ModalFooter: ({ children }: any) => <div data-testid="modal-actions">{children}</div>,
   ModalVariant: { medium: 'medium', large: 'large', small: 'small' },
 }));
 

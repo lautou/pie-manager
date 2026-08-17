@@ -8,6 +8,10 @@ import {
 	CardTitle,
 	Grid,
 	GridItem,
+	Modal,
+	ModalBody,
+	ModalHeader,
+	ModalVariant,
 	PageSection,
 	PageSectionVariants,
 	Spinner,
@@ -15,10 +19,6 @@ import {
 	ContentVariants,
 	Title
 } from '@patternfly/react-core';
-import {
-	Modal,
-	ModalVariant
-} from '@patternfly/react-core/deprecated';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import { formatEUR, formatUnitPrice, dateToLocalStr } from '../utils/format';
 import { useDailySnapshots, useDailyWithPools, useMonthlySnapshots, useHoldingsAtDate, useTWRR } from '../api/queries';
@@ -461,10 +461,11 @@ export default function PerformancePage() {
       {selectedSnap && (
         <Modal
           variant={ModalVariant.large}
-          title={`${t('holdings.currentHoldings')} ${selectedSnap.date} — ${t('common.total')} ${formatEUR(selectedSnap.total_eur)}`}
           isOpen
           onClose={() => setSelectedSnap(null)}
         >
+          <ModalHeader title={`${t('holdings.currentHoldings')} ${selectedSnap.date} — ${t('common.total')} ${formatEUR(selectedSnap.total_eur)}`} />
+          <ModalBody>
           {loadingHist ? (
             <div style={{ textAlign: 'center', padding: '2rem' }}><Spinner size="lg" /></div>
           ) : !histHoldings || histHoldings.length === 0 ? (
@@ -519,6 +520,7 @@ export default function PerformancePage() {
               </div>
             );
           })()}
+          </ModalBody>
         </Modal>
       )}
       <EtfCompositionModal ticker={compositionTicker} onClose={() => setCompositionTicker(null)} />

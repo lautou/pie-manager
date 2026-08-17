@@ -39,13 +39,6 @@ vi.mock('@patternfly/react-core', () => ({
   Title: ({ children }: any) => <h1>{children}</h1>,
 }));
 
-// Renders ConfirmModal for its delete confirmation, which imports Modal from
-// the deprecated subpath since v6.
-vi.mock('@patternfly/react-core/deprecated', () => ({
-  Modal: pfCoreStubs.Modal,
-  ModalVariant: pfCoreStubs.ModalVariant,
-}));
-
 vi.mock('@patternfly/react-table', () => ({
   ...pfTableStubs,
   // Override Tr to forward data-testid for new-row assertions

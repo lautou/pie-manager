@@ -22,6 +22,16 @@ vi.mock('react-router-dom', () => ({
 
 vi.mock('@patternfly/react-core', () => ({
   ...pfCoreStubs,
+  Modal: ({ children, isOpen, onClose }: any) =>
+    isOpen ? (
+      <div data-testid="modal" role="dialog">
+        <button onClick={onClose}>Close</button>
+        {children}
+      </div>
+    ) : null,
+  ModalHeader: ({ title }: any) => <div>{title}</div>,
+  ModalBody: ({ children }: any) => <>{children}</>,
+  ModalFooter: ({ children }: any) => <div>{children}</div>,
   Alert: ({ title, children }: any) => (
     <div data-testid="alert" role="alert">
       <span>{title}</span>
@@ -48,19 +58,6 @@ vi.mock('@patternfly/react-core', () => ({
       <button onClick={onPlus} disabled={isDisabled}>+</button>
     </div>
   ),
-}));
-
-vi.mock('@patternfly/react-core/deprecated', () => ({
-  Modal: ({ children, isOpen, title, onClose, actions }: any) =>
-    isOpen ? (
-      <div data-testid="modal" role="dialog">
-        <div>{title}</div>
-        <div>{actions}</div>
-        <button onClick={onClose}>Close</button>
-        {children}
-      </div>
-    ) : null,
-  ModalVariant: pfCoreStubs.ModalVariant,
 }));
 
 vi.mock('@patternfly/react-table', () => pfTableStubs);

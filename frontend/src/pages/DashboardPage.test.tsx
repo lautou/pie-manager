@@ -15,19 +15,18 @@ vi.mock('react-router-dom', () => ({
 }));
 
 // Mock PatternFly core
-vi.mock('@patternfly/react-core', () => pfCoreStubs);
-
-// Modal overridden to expose testid attributes for assertions — imported
-// from the deprecated subpath since v6.
-vi.mock('@patternfly/react-core/deprecated', () => ({
-  Modal: ({ children, isOpen, title, onClose }: any) =>
+vi.mock('@patternfly/react-core', () => ({
+  ...pfCoreStubs,
+  // Modal overridden to expose testid attributes for assertions
+  Modal: ({ children, isOpen, onClose }: any) =>
     isOpen ? (
       <div data-testid="modal">
-        <div data-testid="modal-title">{title}</div>
         <button data-testid="modal-close" onClick={onClose}>Close</button>
         {children}
       </div>
     ) : null,
+  ModalHeader: ({ title }: any) => <div data-testid="modal-title">{title}</div>,
+  ModalBody: ({ children }: any) => <>{children}</>,
   ModalVariant: { medium: 'medium' },
 }));
 

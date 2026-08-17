@@ -29,17 +29,16 @@ vi.mock('@patternfly/react-core', () => ({
       {children}
     </button>
   ),
-}));
-vi.mock('@patternfly/react-core/deprecated', () => ({
-  Modal: ({ children, isOpen, title, onClose, actions }: any) =>
+  Modal: ({ children, isOpen, onClose }: any) =>
     isOpen ? (
       <div data-testid="modal" role="dialog">
-        <div>{title}</div>
-        <div data-testid="modal-actions">{actions}</div>
         <button onClick={onClose}>Close</button>
         {children}
       </div>
     ) : null,
+  ModalHeader: ({ title }: any) => <div>{title}</div>,
+  ModalBody: ({ children }: any) => <>{children}</>,
+  ModalFooter: ({ children }: any) => <div data-testid="modal-actions">{children}</div>,
   ModalVariant: { small: 'small' },
 }));
 

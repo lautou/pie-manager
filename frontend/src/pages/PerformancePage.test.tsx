@@ -31,19 +31,15 @@ vi.mock('@patternfly/react-core', () => ({
   ),
   // Override Spinner to accept size prop for spinner-md / spinner-xl assertions
   Spinner: ({ size }: any) => <div data-testid={`spinner-${size || 'xl'}`} />,
-}));
-
-// Modal overridden for PerformancePage specifics — imported from the
-// deprecated subpath since v6.
-vi.mock('@patternfly/react-core/deprecated', () => ({
-  Modal: ({ children, isOpen, title, onClose }: any) =>
+  Modal: ({ children, isOpen, onClose }: any) =>
     isOpen ? (
       <div data-testid="modal">
-        <div>{title}</div>
         <button onClick={onClose}>Close</button>
         {children}
       </div>
     ) : null,
+  ModalHeader: ({ title }: any) => <div>{title}</div>,
+  ModalBody: ({ children }: any) => <>{children}</>,
   ModalVariant: { large: 'large' },
 }));
 

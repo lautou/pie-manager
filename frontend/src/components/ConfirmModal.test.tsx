@@ -3,8 +3,9 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { pfCoreStubs } from '../../tests/utils/patternfly-mocks';
 
-vi.mock('@patternfly/react-core', () => ({
-  ...pfCoreStubs,
+vi.mock('@patternfly/react-core', () => pfCoreStubs);
+vi.mock('@patternfly/react-core/deprecated', () => ({
+  ModalVariant: pfCoreStubs.ModalVariant,
   Modal: ({ children, isOpen, title, onClose, actions }: any) =>
     isOpen ? (
       <div data-testid="modal" role="dialog">

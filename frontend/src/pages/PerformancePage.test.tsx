@@ -21,9 +21,21 @@ vi.mock('react-router-dom', () => ({
 
 import { pfCoreStubs, pfTableStubs } from '../../tests/utils/patternfly-mocks';
 
-// Mock PatternFly core — override Spinner (size prop), Modal, Pagination for PerformancePage specifics
+// Mock PatternFly core — override Spinner (size prop), Pagination for PerformancePage specifics
 vi.mock('@patternfly/react-core', () => ({
   ...pfCoreStubs,
+  Pagination: ({ onSetPage, page }: any) => (
+    <div data-testid="pagination">
+      <button onClick={() => onSetPage(null, page + 1)}>Next</button>
+    </div>
+  ),
+  // Override Spinner to accept size prop for spinner-md / spinner-xl assertions
+  Spinner: ({ size }: any) => <div data-testid={`spinner-${size || 'xl'}`} />,
+}));
+
+// Modal overridden for PerformancePage specifics — imported from the
+// deprecated subpath since v6.
+vi.mock('@patternfly/react-core/deprecated', () => ({
   Modal: ({ children, isOpen, title, onClose }: any) =>
     isOpen ? (
       <div data-testid="modal">
@@ -33,13 +45,6 @@ vi.mock('@patternfly/react-core', () => ({
       </div>
     ) : null,
   ModalVariant: { large: 'large' },
-  Pagination: ({ onSetPage, page }: any) => (
-    <div data-testid="pagination">
-      <button onClick={() => onSetPage(null, page + 1)}>Next</button>
-    </div>
-  ),
-  // Override Spinner to accept size prop for spinner-md / spinner-xl assertions
-  Spinner: ({ size }: any) => <div data-testid={`spinner-${size || 'xl'}`} />,
 }));
 
 // Mock PatternFly table

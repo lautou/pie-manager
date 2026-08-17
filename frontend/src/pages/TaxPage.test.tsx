@@ -23,8 +23,8 @@ vi.mock('@patternfly/react-core', () => ({
   Alert: ({ title, variant }: any) => (
     <div data-testid={`alert-${variant}`} role="alert">{title}</div>
   ),
-  Button: ({ children, onClick, isDisabled }: any) => (
-    <button onClick={onClick} disabled={isDisabled}>{children}</button>
+  Button: ({ children, icon, onClick, isDisabled }: any) => (
+    <button onClick={onClick} disabled={isDisabled}>{icon}{children}</button>
   ),
   FormSelect: ({ children, value, onChange, 'aria-label': ariaLabel }: any) => (
     <select aria-label={ariaLabel} value={value} onChange={(e: any) => onChange?.(e, e.target.value)}>
@@ -37,6 +37,13 @@ vi.mock('@patternfly/react-core', () => ({
   PageSection: ({ children }: any) => <div>{children}</div>,
   Spinner: ({ 'aria-label': ariaLabel }: any) => <div data-testid="spinner" aria-label={ariaLabel} />,
   Title: ({ children }: any) => <h1>{children}</h1>,
+}));
+
+// Renders ConfirmModal for its delete confirmation, which imports Modal from
+// the deprecated subpath since v6.
+vi.mock('@patternfly/react-core/deprecated', () => ({
+  Modal: pfCoreStubs.Modal,
+  ModalVariant: pfCoreStubs.ModalVariant,
 }));
 
 vi.mock('@patternfly/react-table', () => ({

@@ -14,9 +14,12 @@ vi.mock('react-router-dom', () => ({
   useParams: () => ({}),
 }));
 
-// Mock PatternFly core — override Modal to expose role="dialog" and actions slot
-vi.mock('@patternfly/react-core', () => ({
-  ...pfCoreStubs,
+// Mock PatternFly core
+vi.mock('@patternfly/react-core', () => pfCoreStubs);
+
+// Modal overridden to expose role="dialog" and actions slot — imported from
+// the deprecated subpath since v6.
+vi.mock('@patternfly/react-core/deprecated', () => ({
   Modal: ({ children, isOpen, title, onClose, actions }: any) =>
     isOpen ? (
       <div data-testid="modal" role="dialog">

@@ -123,29 +123,18 @@ create-transaction code path as manual UI entry.
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React 18 + TypeScript + PatternFly 5 + TanStack Query v5 + Vite |
+| Frontend | React 18 + TypeScript + PatternFly 6 + TanStack Query v5 + Vite |
 | Backend | Python FastAPI + SQLAlchemy 2.0 async + PgQueuer |
 | Database | PostgreSQL 16 |
 | Deployment | **Podman** Compose (never Docker) |
 | Containerfiles | `Containerfile` (never `Dockerfile`) |
 
 **Keep `@patternfly/react-icons` on the same major as `@patternfly/react-core`/`react-table`
-(currently v5) — do not bump it alone.** react-icons v6 ships a dual-glyph mechanism per icon
-(an old design + a new "RH-UI" redesign, class `pf-v6-icon-rh-ui`) toggled via PatternFly v6
-core's own CSS, which this app doesn't load (still on core v5) — without that CSS both glyphs
-render nested, unstyled, simultaneously. It happens to look fine today for every icon this app
-currently uses (verified visually — both are solid `currentColor` silhouettes similar enough
-that the overlaid union still reads correctly), but it's an unsupported pairing: any future
-icon addition isn't guaranteed to render cleanly, and no test can catch a purely visual
-regression like this.
-
-**Confirmed via POC (#95): PatternFly v6 core CSS resolves this cleanly with zero icon-code
-changes.** v6's stylesheet sets `.pf-v6-icon-rh-ui { display: none }` by default, so every icon
-renders as the classic glyph out of the box — no opt-in class, no per-icon import changes
-needed. The only required step for the icon half of the v5→v6 migration is loading v6's CSS
-instead of v5's (already scoped in #98) — confirmed live against every icon this app uses.
-Revisit only as part of the real PatternFly v5→v6 core migration (core + table + icons bumped
-together), never as a standalone icons bump. Tracked in #59.
+(currently v6) — do not bump it alone.** A version mismatch reintroduces a dual-glyph icon
+rendering bug (an old design + a "RH-UI" redesign overlaid, unstyled) that v6 core's own CSS
+resolves by default (`.pf-v6-icon-rh-ui { display: none }`) when all three packages match. No
+test catches a purely visual regression like this, so this has to stay a manual discipline.
+Full v5→v6 migration history: #59.
 
 **`recharts` is on v3** (bumped from v2, issue #3) — the only chart type it's used for is the
 Dashboard's Treemap (`DashboardPage.tsx`), since PatternFly-charts/Victory has no Treemap

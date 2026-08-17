@@ -16,11 +16,11 @@ export default function RefreshBanner() {
   return (
     <div style={{
       position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
-      backgroundColor: 'var(--pf-v5-global--palette--blue-100)',
-      borderBottom: '2px solid var(--pf-v5-global--palette--blue-300)',
+      backgroundColor: 'var(--pf-t--global--color--nonstatus--blue--100)',
+      borderBottom: '2px solid var(--pf-t--global--color--nonstatus--blue--300)',
       padding: '4px 16px',
       display: 'flex', alignItems: 'center', gap: '8px',
-      fontSize: '0.8rem', color: 'var(--pf-v5-global--palette--blue-700)',
+      fontSize: '0.8rem', color: 'var(--pf-t--global--text--color--nonstatus--on-blue--default)',
     }}>
       <Spinner size="sm" />
       {t('refreshBanner.newDataAvailable')}

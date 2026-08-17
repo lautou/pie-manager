@@ -5,15 +5,16 @@ import { pfCoreStubs } from '../../tests/utils/patternfly-mocks';
 
 vi.mock('@patternfly/react-core', () => ({
   ...pfCoreStubs,
-  Modal: ({ children, isOpen, title, onClose, actions }: any) =>
+  Modal: ({ children, isOpen, onClose }: any) =>
     isOpen ? (
       <div data-testid="modal" role="dialog">
-        <div>{title}</div>
-        <div>{actions}</div>
         <button onClick={onClose}>CloseX</button>
         {children}
       </div>
     ) : null,
+  ModalHeader: ({ title }: any) => <div>{title}</div>,
+  ModalBody: ({ children }: any) => <>{children}</>,
+  ModalFooter: ({ children }: any) => <div>{children}</div>,
 }));
 
 import ConfirmModal from './ConfirmModal';

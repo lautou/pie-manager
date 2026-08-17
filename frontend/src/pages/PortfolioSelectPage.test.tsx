@@ -14,18 +14,20 @@ vi.mock('react-router-dom', () => ({
   useParams: () => ({}),
 }));
 
-// Mock PatternFly core — override Modal to expose role="dialog" and actions slot
+// Mock PatternFly core
 vi.mock('@patternfly/react-core', () => ({
   ...pfCoreStubs,
-  Modal: ({ children, isOpen, title, onClose, actions }: any) =>
+  // Modal overridden to expose role="dialog" and a footer slot
+  Modal: ({ children, isOpen, onClose }: any) =>
     isOpen ? (
       <div data-testid="modal" role="dialog">
-        <div>{title}</div>
-        <div>{actions}</div>
         <button onClick={onClose}>Close</button>
         {children}
       </div>
     ) : null,
+  ModalHeader: ({ title }: any) => <div>{title}</div>,
+  ModalBody: ({ children }: any) => <>{children}</>,
+  ModalFooter: ({ children }: any) => <div>{children}</div>,
   ModalVariant: { small: 'small' },
 }));
 

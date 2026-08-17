@@ -7,7 +7,12 @@ import {
   Spinner,
 } from '@patternfly/react-core';
 import {
-  Chart, ChartAxis, ChartGroup, ChartLegend, ChartLine, ChartThemeColor,
+	Chart,
+	ChartAxis,
+	ChartGroup,
+	ChartLegend,
+	ChartLine,
+	ChartThemeColor
 } from '@patternfly/react-charts';
 import type { RatioIndicator } from '../types';
 import { clampZoomRange, timeAxisStyle } from '../utils/chartZoom';
@@ -287,7 +292,7 @@ export default function RatioIndicatorChart({
               </div>
             </div>
             {interpretation && (
-              <div style={{ fontSize: '0.85rem', color: 'var(--pf-v5-global--Color--200)', marginTop: '0.5rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.85rem', color: 'var(--pf-t--global--text--color--subtle)', marginTop: '0.5rem', textAlign: 'center' }}>
                 {interpretation}
               </div>
             )}

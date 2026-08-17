@@ -15,9 +15,8 @@ import {
   PageSection,
   PageSectionVariants,
   Spinner,
-  Text,
-  TextContent,
-  TextVariants,
+  Content,
+  ContentVariants,
   Title,
 } from '@patternfly/react-core';
 import { useParams } from 'react-router-dom';
@@ -126,27 +125,27 @@ function ProductCard({ product }: ProductCardProps) {
           {pricesLoading ? (
             <Spinner size="sm" aria-label={t('common.loading')} />
           ) : latestPrice ? (
-            <TextContent>
-              <Text component={TextVariants.p}>
+            <Content>
+              <Content component={ContentVariants.p}>
                 <strong>{t('manualPrices.lastKnownPrice')}</strong>{' '}
                 {formatEUR(latestPrice.price, latestPrice.currency)}{' '}
-                <span style={{ color: 'var(--pf-v5-global--Color--200)', fontSize: '0.85rem' }}>
+                <span style={{ color: 'var(--pf-t--global--text--color--subtle)', fontSize: '0.85rem' }}>
                   ({latestPrice.date})
                 </span>
                 {' '}
                 <PriceAgeBadge dateStr={latestPrice.date} />
-              </Text>
-            </TextContent>
+              </Content>
+            </Content>
           ) : (
-            <TextContent>
-              <Text
-                component={TextVariants.p}
-                style={{ color: 'var(--pf-v5-global--Color--200)', fontStyle: 'italic' }}
+            <Content>
+              <Content
+                component={ContentVariants.p}
+                style={{ color: 'var(--pf-t--global--text--color--subtle)', fontStyle: 'italic' }}
               >
                 {t('manualPrices.noPriceRecorded')}{' '}
                 <PriceAgeBadge dateStr={null} />
-              </Text>
-            </TextContent>
+              </Content>
+            </Content>
           )}
         </div>
 
@@ -242,7 +241,7 @@ export default function ManualPricePage() {
 
   if (isLoading) {
     return (
-      <PageSection variant={PageSectionVariants.default}>
+      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
         <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem' }}>
           <Spinner size="xl" aria-label={t('common.loading')} />
         </div>
@@ -252,33 +251,33 @@ export default function ManualPricePage() {
 
   if (isError) {
     return (
-      <PageSection variant={PageSectionVariants.default}>
+      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
         <Alert variant="danger" isInline title={t('error.loadingPrices')} />
       </PageSection>
     );
   }
 
   return (
-    <PageSection variant={PageSectionVariants.default}>
+    <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
       <Title headingLevel="h1" size="xl" style={{ marginBottom: '0.5rem' }}>
         {t('manualPrices.title')}
       </Title>
 
-      <TextContent style={{ marginBottom: '1.5rem' }}>
-        <Text component={TextVariants.p}>
+      <Content style={{ marginBottom: '1.5rem' }}>
+        <Content component={ContentVariants.p}>
           {t('manualPrices.description')}
-        </Text>
-      </TextContent>
+        </Content>
+      </Content>
 
       {manualProducts.length === 0 ? (
-        <TextContent>
-          <Text
-            component={TextVariants.p}
-            style={{ color: 'var(--pf-v5-global--Color--200)', fontStyle: 'italic' }}
+        <Content>
+          <Content
+            component={ContentVariants.p}
+            style={{ color: 'var(--pf-t--global--text--color--subtle)', fontStyle: 'italic' }}
           >
             {t('configGenerale.noManualProducts')}
-          </Text>
-        </TextContent>
+          </Content>
+        </Content>
       ) : (
         <Grid hasGutter>
           {manualProducts.map((product) => (

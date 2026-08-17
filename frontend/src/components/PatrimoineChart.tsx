@@ -1,10 +1,14 @@
 import { useRef, useState } from 'react';
 import {
   Card, CardBody, CardTitle,
-  Text, TextContent, TextVariants,
+  Content, ContentVariants,
 } from '@patternfly/react-core';
 import {
-  Chart, ChartArea, ChartAxis, ChartGroup, ChartThemeColor,
+	Chart,
+	ChartArea,
+	ChartAxis,
+	ChartGroup,
+	ChartThemeColor
 } from '@patternfly/react-charts';
 import { VictoryZoomContainer } from 'victory-zoom-container';
 import type { BrushState } from './IndexChart';
@@ -151,9 +155,9 @@ export default function PatrimoineChart({
       </CardTitle>
       <CardBody style={{ padding: '1rem 1rem 0.5rem' }}>
         {patrimoineData.length === 0 ? (
-          <TextContent>
-            <Text component={TextVariants.p}>Aucune donnée disponible.</Text>
-          </TextContent>
+          <Content>
+            <Content component={ContentVariants.p}>Aucune donnée disponible.</Content>
+          </Content>
         ) : (
           <div
             ref={patrimoineChartRef}

@@ -2,15 +2,28 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import {
-  Alert,
-  Card, CardBody, CardTitle,
-  Grid, GridItem,
-  Modal, ModalVariant,
-  PageSection, PageSectionVariants,
-  Spinner, Text, TextContent, TextVariants, Title,
+	Alert,
+	Card,
+	CardBody,
+	CardTitle,
+	Grid,
+	GridItem,
+	Modal,
+	ModalBody,
+	ModalHeader,
+	ModalVariant,
+	PageSection,
+	PageSectionVariants,
+	Spinner,
+	Content,
+	ContentVariants,
+	Title
 } from '@patternfly/react-core';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
-import { ChartDonut, ChartThemeColor } from '@patternfly/react-charts';
+import {
+	ChartDonut,
+	ChartThemeColor
+} from '@patternfly/react-charts';
 import { Treemap, ResponsiveContainer } from 'recharts';
 import { formatEUR, formatPct1, formatUnitPrice, localDateStr } from '../utils/format';
 import { useCapitalGains, useDashboard, useHoldings, useProducts, usePrices } from '../api/queries';
@@ -217,7 +230,7 @@ export default function DashboardPage() {
 
   if (isLoading) {
     return (
-      <PageSection variant={PageSectionVariants.default}>
+      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
         <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem' }}>
           <Spinner size="xl" />
         </div>
@@ -227,22 +240,22 @@ export default function DashboardPage() {
 
   if (isError) {
     return (
-      <PageSection variant={PageSectionVariants.default}>
-        <TextContent>
-          <Text component={TextVariants.p} style={{ color: 'var(--pf-v5-global--danger-color--100)' }}>
+      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
+        <Content>
+          <Content component={ContentVariants.p} style={{ color: 'var(--pf-t--global--text--color--status--danger--default)' }}>
             {t('error.loadingDashboard')}
-          </Text>
-        </TextContent>
+          </Content>
+        </Content>
       </PageSection>
     );
   }
 
   if (!dashboard || dashboard.pools.length === 0) {
     return (
-      <PageSection variant={PageSectionVariants.default}>
-        <TextContent>
-          <Text component={TextVariants.h2}>{t('error.noData')}</Text>
-        </TextContent>
+      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
+        <Content>
+          <Content component={ContentVariants.h2}>{t('error.noData')}</Content>
+        </Content>
       </PageSection>
     );
   }
@@ -293,18 +306,18 @@ export default function DashboardPage() {
     : '0,0 %';
 
   return (
-    <PageSection variant={PageSectionVariants.default}>
+    <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
         <Title headingLevel="h1" size="xl">{t('dashboard.title')}</Title>
         <SyncBadge />
       </div>
       {manuelProducts.length > 0 && <StalePriceWarning manuelProducts={manuelProducts} />}
       {dashboard.last_updated && (
-        <TextContent style={{ marginBottom: '1rem' }}>
-          <Text component={TextVariants.small}>
+        <Content style={{ marginBottom: '1rem' }}>
+          <Content component={ContentVariants.small}>
             {t('dashboard.snapshotDate', { date: dashboard.last_updated })}
-          </Text>
-        </TextContent>
+          </Content>
+        </Content>
       )}
 
       {/* ── Row 1 : KPI cards ── */}
@@ -352,9 +365,9 @@ export default function DashboardPage() {
                 <span style={{
                   fontSize: '1.3rem', fontWeight: 'bold',
                   color: capitalGains.total_unrealized_pv > 0
-                    ? 'var(--pf-v5-global--success-color--100)'
+                    ? 'var(--pf-t--global--text--color--status--success--default)'
                     : capitalGains.total_unrealized_pv < 0
-                    ? 'var(--pf-v5-global--danger-color--100)'
+                    ? 'var(--pf-t--global--text--color--status--danger--default)'
                     : undefined,
                 }}>
                   {capitalGains.total_unrealized_pv > 0 ? '+' : ''}
@@ -370,9 +383,9 @@ export default function DashboardPage() {
                 <span style={{
                   fontSize: '1.3rem', fontWeight: 'bold',
                   color: capitalGains.total_realized_pv > 0
-                    ? 'var(--pf-v5-global--success-color--100)'
+                    ? 'var(--pf-t--global--text--color--status--success--default)'
                     : capitalGains.total_realized_pv < 0
-                    ? 'var(--pf-v5-global--danger-color--100)'
+                    ? 'var(--pf-t--global--text--color--status--danger--default)'
                     : undefined,
                 }}>
                   {capitalGains.total_realized_pv > 0 ? '+' : ''}
@@ -432,9 +445,9 @@ export default function DashboardPage() {
             <CardTitle>{t('dashboard.assetWeightByPool')}</CardTitle>
             <CardBody style={{ paddingTop: 4 }}>
               {treemapData.length === 0 ? (
-                <TextContent>
-                  <Text component={TextVariants.p}>{t('common.loading')}</Text>
-                </TextContent>
+                <Content>
+                  <Content component={ContentVariants.p}>{t('common.loading')}</Content>
+                </Content>
               ) : (
                 <ResponsiveContainer width="100%" height={250}>
                   <Treemap
@@ -490,8 +503,8 @@ export default function DashboardPage() {
                     <Td style={{
                       color: Math.abs(pool.gap_pct) <= 2 ? 'inherit'
                         : pool.gap_pct > 0
-                          ? 'var(--pf-v5-global--success-color--100)'
-                          : 'var(--pf-v5-global--danger-color--100)',
+                          ? 'var(--pf-t--global--text--color--status--success--default)'
+                          : 'var(--pf-t--global--text--color--status--danger--default)',
                       fontWeight: Math.abs(pool.gap_pct) > 5 ? 'bold' : 'normal',
                     }}>
                       {pool.gap_pct > 0 ? '+' : ''}{formatPct1(pool.gap_pct)}
@@ -517,12 +530,13 @@ export default function DashboardPage() {
         return (
           <Modal
             variant={ModalVariant.medium}
-            title={`${t('dashboard.poolPopupTitle', { name: selectedPool })}${poolInfoSuffix}`}
             isOpen
             onClose={() => setSelectedPool(null)}
           >
+            <ModalHeader title={`${t('dashboard.poolPopupTitle', { name: selectedPool })}${poolInfoSuffix}`} />
+            <ModalBody>
             {poolPositions.length === 0 ? (
-              <TextContent><Text>{t('dashboard.noPositionInPool')}</Text></TextContent>
+              <Content><Content component="p">{t('dashboard.noPositionInPool')}</Content></Content>
             ) : (
               <>
                 <Table variant="compact" aria-label={`Positions ${selectedPool}`}>
@@ -561,13 +575,14 @@ export default function DashboardPage() {
                   <div style={{ marginTop: '1rem', fontSize: '0.85rem', color: '#6A6E73', display: 'flex', gap: '2rem' }}>
                     <span>{t('common.target')} : <strong>{formatPct1(poolInfo.target_pct * 100)}</strong></span>
                     <span>{t('common.current')} : <strong>{formatPct1(poolInfo.current_pct)}</strong></span>
-                    <span>{t('common.gap')} : <strong style={{ color: Math.abs(poolInfo.gap_pct) <= 2 ? 'inherit' : poolInfo.gap_pct > 0 ? 'var(--pf-v5-global--success-color--100)' : 'var(--pf-v5-global--danger-color--100)' }}>
+                    <span>{t('common.gap')} : <strong style={{ color: Math.abs(poolInfo.gap_pct) <= 2 ? 'inherit' : poolInfo.gap_pct > 0 ? 'var(--pf-t--global--text--color--status--success--default)' : 'var(--pf-t--global--text--color--status--danger--default)' }}>
                       {poolInfo.gap_pct > 0 ? '+' : ''}{formatPct1(poolInfo.gap_pct)}
                     </strong></span>
                   </div>
                 )}
               </>
             )}
+            </ModalBody>
           </Modal>
         );
       })()}
@@ -581,20 +596,21 @@ export default function DashboardPage() {
           ? (gains.unrealized_pv / gains.cost_basis_eur) * 100
           : null;
         const pvColor = gains && gains.unrealized_pv > 0
-          ? 'var(--pf-v5-global--success-color--100)'
+          ? 'var(--pf-t--global--text--color--status--success--default)'
           : gains && gains.unrealized_pv < 0
-          ? 'var(--pf-v5-global--danger-color--100)'
+          ? 'var(--pf-t--global--text--color--status--danger--default)'
           : undefined;
 
         return (
           <Modal
             variant={ModalVariant.small}
-            title={`${t('dashboard.tickerPopupTitle', { ticker: selectedTicker })}${pos ? ` — ${pos.product_name}` : ''}`}
             isOpen
             onClose={() => setSelectedTicker(null)}
           >
+            <ModalHeader title={`${t('dashboard.tickerPopupTitle', { ticker: selectedTicker })}${pos ? ` — ${pos.product_name}` : ''}`} />
+            <ModalBody>
             {!pos ? (
-              <TextContent><Text>{t('error.notFound')}</Text></TextContent>
+              <Content><Content component="p">{t('error.notFound')}</Content></Content>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem 2rem', fontSize: '0.9rem' }}>
                 <div>
@@ -646,6 +662,7 @@ export default function DashboardPage() {
                 )}
               </div>
             )}
+            </ModalBody>
           </Modal>
         );
       })()}

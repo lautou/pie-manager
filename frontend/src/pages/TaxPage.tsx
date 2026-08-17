@@ -205,24 +205,20 @@ function ExistingRow({
       {/* Actions */}
       <Td>
         {!expired && (
-          <Button
+          <Button icon={<PencilAltIcon />}
             variant="plain"
             aria-label={t('common.edit')}
             onClick={startEdit}
             isDisabled={updateMutation.isPending}
             style={{ marginRight: '0.25rem' }}
-          >
-            <PencilAltIcon />
-          </Button>
+           />
         )}
-        <Button
+        <Button icon={<TrashIcon />}
           variant="plain"
           aria-label={t('common.delete')}
           onClick={handleDelete}
           isDisabled={deleteMutation.isPending}
-        >
-          <TrashIcon />
-        </Button>
+         />
       </Td>
     </Tr>
   );
@@ -348,7 +344,7 @@ export default function TaxPage() {
 
   if (isLoading) {
     return (
-      <PageSection>
+      <PageSection hasBodyWrapper={false}>
         <Spinner aria-label={t('taxation.loading')} />
       </PageSection>
     );
@@ -356,14 +352,14 @@ export default function TaxPage() {
 
   if (isError) {
     return (
-      <PageSection>
+      <PageSection hasBodyWrapper={false}>
         <Alert variant="danger" title={t('taxation.loadError')} />
       </PageSection>
     );
   }
 
   return (
-    <PageSection>
+    <PageSection hasBodyWrapper={false}>
       <Title headingLevel="h1" size="xl" style={{ marginBottom: '1rem' }}>
         {t('taxation.title')}
       </Title>

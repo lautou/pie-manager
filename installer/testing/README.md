@@ -10,9 +10,20 @@ README won't repeat it).
 
 - Fedora with `virt-install`, `swtpm`, and the `virtio-win` package installed, libvirt/KVM set
   up, and your user in the `libvirt` group.
-- A Windows 11 ISO downloaded manually (licensing — not scriptable).
+- A Windows 11 x64 ISO — see step 0 below to fetch it directly from Microsoft, no manual
+  browser download needed.
 
 ## Steps
+
+0. **`./00-download-win11-iso.py [--lang French] [--out win11.iso]`** — downloads the real,
+   official Windows 11 multi-edition x64 ISO straight from Microsoft's own CDN, by replaying
+   the same internal API calls the official download page's own JavaScript makes (session
+   whitelisting + an anti-bot handshake, then the software-download-connector API for the
+   real, time-limited link) — the same technique the well-known open-source tool
+   [Fido](https://github.com/pbatard/Fido) uses, ported to plain Python (no dependencies
+   beyond the standard library) since Fido's own command-line mode explicitly refuses to run
+   on non-Windows platforms. If Microsoft changes this flow and the script starts failing,
+   re-derive the current sequence from Fido's own up-to-date source rather than guessing.
 
 1. **`sudo ./01-create-vm.sh <path-to-win11.iso>`** — creates the VM (NOCOW disk, correct CPU
    model, TPM 2.0, UEFI Secure Boot) and starts it ready for OS installation.

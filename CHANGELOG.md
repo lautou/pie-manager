@@ -2,6 +2,12 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.4.5] - 2026-08-17
+
+### Fixed
+
+- **security:** Pull OS security patches at build time in both Containerfiles
+
 ## [1.4.3] - 2026-08-16
 
 ### Added

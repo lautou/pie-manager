@@ -9,17 +9,6 @@ updates:
     directory: "/frontend"
     schedule:
       interval: "weekly"
-    ignore:
-      # PatternFly core/table/icons must move together (v6 icons render broken without
-      # matching v6 core CSS - see #59). Scoped to these 3 named packages, not a
-      # "@patternfly/*" wildcard - @patternfly/react-charts versions independently (already
-      # on v7 while these are on v5) and isn't part of this coupling.
-      - dependency-name: "@patternfly/react-core"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@patternfly/react-table"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@patternfly/react-icons"
-        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "docker"
     directory: "/backend"

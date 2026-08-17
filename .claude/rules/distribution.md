@@ -46,10 +46,20 @@ pinned version.
 now structurally gone from the backend image via the multi-stage build in #20 (see the root
 `CLAUDE.md`'s "Container architecture" section) rather than suppressed in the scan config.
 
-**Still report-only for now** (`exit-code: 0` + `continue-on-error: true`) — see #21 to flip this
-to a real release gate (`exit-code: 1`, drop `continue-on-error`) once the filtered scan has run
-clean across a handful of releases, mirroring the `test-windows-install`/`test-linux-install`
-progressive-hardening pattern below.
+**Real release gate since #21** (`exit-code: 1`, no `continue-on-error`) — the filtered scan ran
+clean (0 findings) across 6 consecutive releases (v1.3.2 through v1.4.3) before this was flipped,
+mirroring the `test-windows-install`/`test-linux-install` progressive-hardening pattern below.
+
+**Scans happen BEFORE push, not after — this matters, don't revert to post-push scanning.**
+Each image is built, saved to a local tarball (`podman save`), and scanned from that tarball via
+Trivy's `input:` option before any `podman push` runs. The previous layout scanned the
+already-pushed `image-ref:` from the registry — with `exit-code: 1` that would only fail the CI
+run *after* a vulnerable image was already public on Quay.io, since a job failure can't retract a
+push. `input:` (a local tar produced by `podman save`) is the scan path Trivy's own docs actually
+document for a local, unpushed image; `image-ref:`'s registry-vs-local-daemon auto-detection is
+undocumented for Podman specifically, so it isn't relied on. Gating only `:latest` was considered
+and rejected too — `compose-prod.yaml`/the installer always pin the exact version tag, never
+`:latest`, so a real end-user install would never have been protected by that alone.
 
 ### Backend backup/restore smoke test (`smoke-test-backend`, #45)
 

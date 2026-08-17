@@ -549,8 +549,10 @@ export default function DashboardPage() {
                           )}
                         </Td>
                         <Td>{formatEUR(pos.value_eur)}</Td>
-                        <Td>{/* v8 ignore next -- @preserve */
-                          poolTotal > 0 ? `${(pos.value_eur / poolTotal * 100).toFixed(1)} %` : '—'}</Td>
+                        <Td>{
+                          /* v8 ignore next -- @preserve */
+                          poolTotal > 0 ? `${(pos.value_eur / poolTotal * 100).toFixed(1)} %` : '—'
+                        }</Td>
                       </Tr>
                     ))}
                   </Tbody>

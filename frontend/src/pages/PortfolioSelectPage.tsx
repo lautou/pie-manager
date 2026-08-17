@@ -185,8 +185,10 @@ export default function PortfolioSelectPage() {
           <Button key="cancel" variant="link" onClick={() => setRenameTarget(null)}>{t('common.cancel')}</Button>,
         ]}>
         <TextInput value={renameTarget?.name ?? ''}
-          onChange={(_e, v) => setRenameTarget(/* v8 ignore next -- @preserve */
-            t => t ? { ...t, name: v } : t)}
+          onChange={(_e, v) => setRenameTarget(
+            /* v8 ignore next -- @preserve */
+            t => t ? { ...t, name: v } : t,
+          )}
           onKeyDown={(e) => e.key === 'Enter' && handleRename()} />
         {error && <div style={{ color: 'var(--pf-v5-global--danger-color--100)', marginTop: '0.5rem', fontSize: '0.85rem' }}>{error}</div>}
       </Modal>

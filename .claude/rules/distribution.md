@@ -493,9 +493,22 @@ rebuilt via 3 scripts, run in order (see `installer/testing/README.md` for the e
   guessing or patching around symptoms — that project is actively maintained specifically to
   track Microsoft's changes to this flow.
 - **`01-create-vm.sh`** — creates the VM (NOCOW disk, correct CPU model, TPM 2.0, UEFI Secure
-  Boot). Windows Setup itself (driver loading, local-account bypass, guest tools install) is
-  still a manual GUI step as of this writing — automating it via an `autounattend.xml` answer
-  file is tracked in issue #61.
+  Boot, guest-agent virtio-serial channel) and runs a **fully unattended** Windows install via
+  `autounattend.xml` (issue #61, validated live): driver injection (`viostor`), a local account
+  instead of a Microsoft account, a silent `virtio-win-guest-tools` install, and an automatic
+  shutdown — no GUI, no manual clicks, the script itself polls for that shutdown. Idempotent:
+  re-running it tears down any existing VM of the same name (surgically — only the VM's own
+  qcow2 volume, never `--remove-all-storage`, which was confirmed live to delete the *shared*
+  `virtio-win.iso` pool volume too) and rebuilds from scratch. `sudo` is only needed the very
+  first time ever on a host (to prepare the NOCOW directory); every later rebuild runs
+  unprivileged. Two non-obvious fixes baked in after live testing: (1) libvirt's
+  `dynamic_ownership` means the unprivileged `qemu` process needs `x` (search) permission on
+  every ancestor directory of the ISO path, not just read on the file itself — a `710` home
+  directory silently blocked this, fixed via a self-healing ACL loop (`setfacl`, no root
+  needed since it's the invoking user's own directory); (2) Microsoft's `bootmgfw.efi` shows an
+  interactive "press any key to boot from CD or DVD" prompt with a short, easy-to-miss timeout —
+  a single well-timed `send-key` reliably missed it, fixed by spamming `KEY_ENTER` for ~30s
+  right after the domain starts.
 - **`02-tune-and-snapshot.sh`** — pushes and runs **`tune-guest.ps1`** (the "debloat" script:
   disables telemetry/Xbox/Widgets services and scheduled tasks, removes bundled AppX bloat,
   sets the High Performance power plan, adds Windows Defender exclusions for WSL2/Podman
@@ -503,10 +516,19 @@ rebuilt via 3 scripts, run in order (see `installer/testing/README.md` for the e
   interfere with any Defender-related testing of that installer's own first-run behavior),
   then takes a reusable `base-clean-tuned-<date>` snapshot. Untouched by #61's Setup-automation
   work — it only runs after Setup already completes, regardless of how Setup itself gets there.
+  Verified live: this baseline has zero pre-trusted certificates and zero private keys anywhere
+  (`Root`/`TrustedPublisher`/`My`) — the polluted, manually-modified snapshot issue #62
+  originally found is gone for good now that the whole VM is rebuilt from scratch via #61.
 
-Issue #62 (importing a public-cert-only signing certificate into a fresh snapshot) depends on
-#61 landing first — see the backlog-triage reasoning captured for that pairing if picking this
-up (git log / a prior session's notes, not duplicated here).
+Issue #62's other proposal — an opt-in `03-import-signing-cert.sh` to test "what if the user
+already trusts our self-signed cert" (UAC's verified-publisher display) — was considered and
+explicitly **not implemented**: a full-trust MSIX never triggers UAC at all unless it declares
+`allowElevation` + `requireAdministrator` (the native launcher does neither — its bundled
+Postgres refuses to even run elevated), and a locally-trusted self-signed cert does nothing for
+SmartScreen either way (that needs real accumulated download reputation, regardless of cert
+type). The old `launcher.exe`/Podman product this test would have covered has zero real
+deployed users, so there's nothing left for this scenario to actually validate. #60 and #62 were
+closed on this reasoning rather than left open waiting on #84.
 
 ## macOS installation architecture
 

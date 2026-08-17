@@ -11,7 +11,7 @@ i18n.use(initReactI18next).init({
   lng: 'fr',
   fallbackLng: 'en',
   interpolation: { escapeValue: false },
-  initImmediate: false, // synchronous init so t() works before first render in tests
+  initAsync: false, // synchronous init so t() works before first render in tests
 });
 
 export default i18n;

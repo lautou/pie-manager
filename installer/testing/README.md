@@ -10,10 +10,12 @@ maintenance overview (script roles, the ISO-download mechanism's fragility cavea
 
 ## Prerequisites
 
-- Fedora with `virt-install`, `swtpm`, and the `virtio-win` package installed, libvirt/KVM set
-  up, and your user in the `libvirt` group.
+- Fedora with `virt-install`, `swtpm`, `genisoimage`, and the `virtio-win` package installed,
+  libvirt/KVM set up, and your user in the `libvirt` group.
 - A Windows 11 x64 ISO — see step 0 below to fetch it directly from Microsoft, no manual
   browser download needed.
+- `sudo` access **only the very first time ever** on a given host (see step 1) — every
+  subsequent rebuild needs no root at all.
 
 ## Steps
 
@@ -27,24 +29,26 @@ maintenance overview (script roles, the ISO-download mechanism's fragility cavea
    on non-Windows platforms. If Microsoft changes this flow and the script starts failing,
    re-derive the current sequence from Fido's own up-to-date source rather than guessing.
 
-1. **`sudo ./01-create-vm.sh <path-to-win11.iso>`** — creates the VM (NOCOW disk, correct CPU
-   model, TPM 2.0, UEFI Secure Boot) and starts it ready for OS installation.
+1. **`./01-create-vm.sh <path-to-win11.iso>`** — creates the VM (NOCOW disk, correct CPU model,
+   TPM 2.0, UEFI Secure Boot, guest-agent channel) and runs a **fully unattended** Windows
+   install via `autounattend.xml` (issue #61): virtio driver injection, a local account instead
+   of a Microsoft account, a silent `virtio-win-guest-tools` install, and an automatic shutdown
+   once done — no GUI, no manual clicks. The script polls for that shutdown and returns once
+   it happens (20-40+ minutes; several in-between reboots are normal). It's also fully
+   idempotent: re-running it tears down any existing VM of the same name first, so "start over
+   from scratch" is always just this one command. `sudo` is only required the first time ever
+   on a host, to prepare the NOCOW disk directory — every rebuild after that runs unprivileged
+   (libvirtd does the actual privileged work via its own socket).
 
-2. **Manual** — open `virt-manager` (or `virt-viewer win11`) and install Windows yourself:
-   - The disk picker will be empty at first — click **"Load driver"**, browse the attached
-     virtio-win CD, and load the driver from `viostor\w11\amd64` so the 64 GB disk appears.
-   - At the network/account screen, to get a **local account** instead of a Microsoft account:
-     open a command prompt with **Shift+F10**, run `start ms-cxh:localonly`, and continue —
-     despite the window still saying "Microsoft account", this creates a local account form.
-   - Finish OOBE, then run `virtio-win-guest-tools.exe` from the same attached CD — this
-     installs the QXL/virtio drivers, `qemu-ga`, and the SPICE agent, all required for the
-     guest-agent-driven automation this tooling assumes.
-   - Shut down the VM once done.
-
-3. **`./02-tune-and-snapshot.sh`** — applies the hyperv enlightenment set (fixes nested-Hyper-V
+2. **`./02-tune-and-snapshot.sh`** — applies the hyperv enlightenment set (fixes nested-Hyper-V
    crashes under KVM), verifies it landed, boots the VM, pushes and runs `tune-guest.ps1`
    (debloat + Defender exclusions + High Performance power plan), shuts down, and takes a
    `base-clean-tuned-<date>` snapshot — the reusable baseline for future installer test runs.
+   This baseline has zero pre-trusted certificates and zero private keys (verified live via
+   `Get-ChildItem Cert:\LocalMachine\Root, Cert:\LocalMachine\TrustedPublisher, Cert:\
+   LocalMachine\My` — 18 stock Windows root CAs, nothing else) — a genuinely fresh Windows
+   machine's state, not the "PIEManager cert + private key pre-imported" pollution issue #62
+   found on an earlier, undocumented, manually-modified copy of this VM.
 
 ## Notes
 
@@ -52,8 +56,11 @@ maintenance overview (script roles, the ISO-download mechanism's fragility cavea
   `DisableFileSyncNGSC` Group Policy method. This is **not verified** against whatever command
   was actually used originally (not recoverable from session history) — review before relying
   on it.
-- Windows Setup and the local-account bypass are inherently GUI-driven and cannot be
-  scripted — step 2 above is manual by design.
+- `autounattend.xml`'s local-account bypass (`HideOnlineAccountScreens` +
+  `UserAccounts/LocalAccounts`) was validated live on the French x64 multi-edition ISO fetched
+  by step 0 — confirmed via `Get-LocalUser` showing only the `tester` account,
+  `PrincipalSource: Local`. If a future Windows 11 build changes this behavior, re-validate the
+  same way before assuming the answer file still works.
 - Re-running `02-tune-and-snapshot.sh` is safe/idempotent (each edit no-ops if already applied)
   except for the snapshot itself, which always creates a new one — pass a different
   `SNAPSHOT_NAME` or delete the old one first if re-running.

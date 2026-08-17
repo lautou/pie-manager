@@ -42,6 +42,16 @@ closure against a different glibc than the `runtime` stage ships. Verified live:
 old single-stage image, absent here), a ~43% image size reduction (772 MB → 439 MB), and full
 `podman-compose up` smoke tests (see below) on both dev and prod-style stacks.
 
+**Both `Containerfile`s pull OS security patches at build time** (`apt-get upgrade -y` for
+backend/Debian, `apk upgrade --no-cache` for frontend/Alpine), added after #21 turned Trivy into
+a real release-blocking gate. A digest-pinned base image is frozen at whatever OS package
+snapshot existed when that digest was built — real incident: the week #21 shipped, Debian's
+security repo had already published a fix for a HIGH CVE in `util-linux`/`bsdutils` (present in
+the pinned `python:3.14-slim` digest) well before Docker Hub got around to rebuilding that image,
+and the new gate correctly blocked the release on it. `apt-get update && apt-get upgrade`/`apk
+upgrade` pulls whatever's current in the distro's live package repos at build time, decoupled
+from the base digest — standard practice for exactly this scenario, not a one-off patch.
+
 **`backend/Containerfile` runs as a non-root user (`appuser`, UID/GID 1000)** — fixed
 issue #17 (previously ran fully as root). `appuser` never needs write access to the
 application source tree: `pg_dump`/`pg_restore` (admin backup/restore) and the Excel import

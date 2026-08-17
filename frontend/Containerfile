@@ -6,6 +6,11 @@ COPY . .
 
 FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS runtime
 WORKDIR /app
+# Pull OS security patches at build time, independent of when the pinned base digest above was
+# last rebuilt - same reasoning as backend/Containerfile's own apt-get upgrade (see #21: a real
+# fixable HIGH/CRITICAL CVE now fails the release outright, and Alpine's package index can carry
+# a fix well before Docker Hub rebuilds node:24-alpine itself).
+RUN apk upgrade --no-cache
 # npm's own bundled node_modules (not this app's) periodically carries HIGH/CRITICAL CVEs
 # (tar, brace-expansion, ip-address, undici — see #13) — safe to drop since the dev server
 # is invoked via its own binary below, never via `npm run`.

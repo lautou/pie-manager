@@ -23,15 +23,6 @@ vi.mock('@patternfly/react-core', () => ({
       {children}
     </div>
   ),
-  Modal: ({ children, isOpen, title, onClose, actions }: any) =>
-    isOpen ? (
-      <div data-testid="modal" role="dialog">
-        <div>{title}</div>
-        <div>{actions}</div>
-        <button onClick={onClose}>Close</button>
-        {children}
-      </div>
-    ) : null,
   Pagination: ({ onSetPage, onPerPageSelect }: any) => (
     <div data-testid="pagination">
       <button onClick={() => onSetPage(null, 2)}>Page 2</button>
@@ -52,6 +43,19 @@ vi.mock('@patternfly/react-core', () => ({
       <button onClick={onPlus} disabled={isDisabled}>+</button>
     </div>
   ),
+}));
+
+vi.mock('@patternfly/react-core/deprecated', () => ({
+  Modal: ({ children, isOpen, title, onClose, actions }: any) =>
+    isOpen ? (
+      <div data-testid="modal" role="dialog">
+        <div>{title}</div>
+        <div>{actions}</div>
+        <button onClick={onClose}>Close</button>
+        {children}
+      </div>
+    ) : null,
+  ModalVariant: pfCoreStubs.ModalVariant,
 }));
 
 vi.mock('@patternfly/react-table', () => pfTableStubs);

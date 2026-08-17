@@ -20,6 +20,8 @@ vi.mock('@tanstack/react-query', () => ({
 vi.mock('@patternfly/react-core', () => ({
   ...pfCoreStubs,
   ...pfTableStubs,
+}));
+vi.mock('@patternfly/react-core/deprecated', () => ({
   Modal: ({ children, isOpen, actions, onClose, title }: any) =>
     isOpen ? (
       <div data-testid="modal">

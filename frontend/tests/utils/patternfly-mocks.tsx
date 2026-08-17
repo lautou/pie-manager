@@ -55,9 +55,8 @@ export const pfCoreStubs = {
   PageSidebarBody: Stub,
 
   // Typography
-  Text: ({ children }: any) => <span>{children}</span>,
-  TextContent: Stub,
-  TextVariants: { p: 'p', h1: 'h1', h2: 'h2', small: 'small' },
+  Content: ({ children }: any) => <span>{children}</span>,
+  ContentVariants: { p: 'p', h1: 'h1', h2: 'h2', small: 'small' },
   Title: ({ children }: any) => <h1>{children}</h1>,
 
   // Feedback
@@ -79,8 +78,9 @@ export const pfCoreStubs = {
       {children}
     </div>
   ),
-  Button: ({ children, onClick, isLoading, isDisabled }: any) => (
+  Button: ({ children, icon, onClick, isLoading, isDisabled }: any) => (
     <button onClick={onClick} disabled={isDisabled} data-loading={String(!!isLoading)}>
+      {icon}
       {children}
     </button>
   ),
@@ -186,13 +186,15 @@ export const pfCoreStubs = {
   // Masthead
   Masthead: Stub,
   MastheadBrand: Stub,
+  MastheadLogo: Stub,
   MastheadMain: Stub,
   MastheadToggle: Stub,
-  Page: ({ children, sidebar, header }: any) => <div>{header}{sidebar}{children}</div>,
+  Page: ({ children, sidebar, masthead }: any) => <div>{masthead}{sidebar}{children}</div>,
   SkipToContent: () => null,
 
-  // Empty state
-  EmptyState: Stub,
+  // Empty state — v6 moved the title from a child <Title> element to the
+  // titleText prop.
+  EmptyState: ({ children, titleText }: any) => <>{titleText}{children}</>,
   EmptyStateBody: ({ children }: any) => <div>{children}</div>,
 
   // Misc

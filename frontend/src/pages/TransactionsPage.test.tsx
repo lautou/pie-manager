@@ -13,8 +13,7 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => vi.fn(),
 }));
 
-// Mock PatternFly core — override Modal (needs role="dialog" + actions slot) and
-// Pagination (TransactionsPage uses Page 2 / Per Page 20 buttons)
+// Mock PatternFly core — override Pagination (TransactionsPage uses Page 2 / Per Page 20 buttons)
 vi.mock('@patternfly/react-core', () => ({
   ...pfCoreStubs,
   Alert: ({ title, children }: any) => (
@@ -23,15 +22,6 @@ vi.mock('@patternfly/react-core', () => ({
       {children}
     </div>
   ),
-  Modal: ({ children, isOpen, title, onClose, actions }: any) =>
-    isOpen ? (
-      <div data-testid="modal" role="dialog">
-        <div>{title}</div>
-        <div>{actions}</div>
-        <button onClick={onClose}>Close</button>
-        {children}
-      </div>
-    ) : null,
   Pagination: ({ onSetPage, onPerPageSelect }: any) => (
     <div data-testid="pagination">
       <button onClick={() => onSetPage(null, 2)}>Page 2</button>
@@ -54,6 +44,21 @@ vi.mock('@patternfly/react-core', () => ({
       <button onClick={onPlus} disabled={isDisabled}>+</button>
     </div>
   ),
+}));
+
+// Modal overridden (needs role="dialog" + actions slot) — imported from the
+// deprecated subpath since v6.
+vi.mock('@patternfly/react-core/deprecated', () => ({
+  Modal: ({ children, isOpen, title, onClose, actions }: any) =>
+    isOpen ? (
+      <div data-testid="modal" role="dialog">
+        <div>{title}</div>
+        <div>{actions}</div>
+        <button onClick={onClose}>Close</button>
+        {children}
+      </div>
+    ) : null,
+  ModalVariant: pfCoreStubs.ModalVariant,
 }));
 
 // Mock PatternFly table

@@ -18,6 +18,32 @@ handler has a genuinely different shape from every other task registered here: s
 docstring below and `app/tasks/snapshots.py`'s `_run_recompute_snapshots` for why its
 `job_runs` row is created by its caller (`app/api/routers/admin.py`), not by this handler.
 
+**Overlap prevention (issue #67): every schedule handler that has a matching entrypoint now
+enqueues onto that SAME entrypoint instead of calling `_run_tracked` directly, and that
+entrypoint is registered with `concurrency_limit=1`.** A schedule tick and an on-demand/startup
+trigger of the same task used to be two fully independent dispatch paths — `concurrency_limit`
+only throttles concurrent *entrypoint* executions against each other (enforced by the queue
+table's dequeue query), and the scheduler's own `dispatch()` never touches that table at all
+(confirmed from `pgqueuer/core/sm.py`), so a manual click could always run concurrently with a
+cron tick of the same task. Routing every trigger source through the same queue+concurrency-limit
+machinery closes that gap uniformly, using only officially-supported PgQueuer parameters — no new
+schema, no advisory lock. It also protects a slow schedule tick from overlapping the *next* tick
+of itself, a case neither `job_runs` nor a hand-rolled lock would have covered for free.
+Crash recovery is inherited from PgQueuer's own heartbeat-based redelivery (default 30s
+timeout, confirmed in `adapters/persistence/queries.py`'s `dequeue()`): a worker that dies
+mid-handler doesn't need any bespoke staleness logic here, since a stale "picked" job is simply
+re-picked without ever double-counting against `concurrency_limit` (confirmed from the same
+dequeue query's `stale` handling — a recovered row transfers ownership of its already-counted
+slot, it doesn't add a second one). Only 5 of the 6 registered tasks have both a schedule and an
+entrypoint (`refresh_prices_live`/`refresh_etf_holdings`/`refresh_macro_indicators`/
+`refresh_country_performance`/`compute_daily_snapshots_all_users`) —
+`compute_monthly_snapshots_all_users` has no entrypoint to unify onto (nothing to race against,
+see below) and keeps calling `_run_tracked` directly from its schedule handler.
+
+**`_decode_trigger`'s payload contract has one exception: `compute_daily_snapshots_all_users`'s
+entrypoint carries an ISO-date-or-absent payload, not a trigger name — see its own docstring
+below for how the new `b"schedule"` sentinel coexists with that shape.**
+
 **`asyncio.run()`-inside-a-running-loop hazard, fixed in step 4 for the 2 snapshot cores that
 needed it (`_run_fill_missing_snapshots`/`_run_recompute_snapshots` in `snapshots.py`).** Their
 Celery-era bodies called `asyncio.run(...)` per phase/iteration — correct for a *synchronous*
@@ -84,7 +110,7 @@ REFRESH_ETF_HOLDINGS_CRON = "0 4 * * 0"
 REFRESH_MACRO_INDICATORS_CRON = "0 5 * * *"
 REFRESH_COUNTRY_PERFORMANCE_CRON = "15 5 * * *"
 
-_VALID_ENTRYPOINT_TRIGGERS = {"on_demand", "startup"}
+_VALID_ENTRYPOINT_TRIGGERS = {"on_demand", "startup", "schedule"}
 
 
 def _decode_trigger(payload: bytes | None) -> str:
@@ -122,16 +148,17 @@ async def _run_tracked(
 
 
 def _register_schedules(pgq: PgQueuer) -> None:
+    """The 5 tasks with a matching entrypoint enqueue onto it (payload=b"schedule") instead of
+    calling _run_tracked directly — see the module docstring's "Overlap prevention" section for
+    why. compute_monthly_snapshots_all_users has no entrypoint to unify onto, so it keeps the
+    old direct-dispatch shape."""
     @pgq.schedule("refresh_prices_live", REFRESH_PRICES_LIVE_CRON)
     async def _refresh_prices_live_schedule(schedule: Schedule) -> None:
-        await _run_tracked("refresh_prices_live", "schedule", _run_price_refresh)
+        await pgq.queries.enqueue("refresh_prices_live", payload=b"schedule")
 
     @pgq.schedule("compute_daily_snapshots_all_users", COMPUTE_DAILY_SNAPSHOTS_CRON)
     async def _compute_daily_snapshots_schedule(schedule: Schedule) -> None:
-        async def _core() -> dict:
-            await _compute_daily_snapshots_all_users(None)
-            return {"status": "success"}
-        await _run_tracked("compute_daily_snapshots_all_users", "schedule", _core)
+        await pgq.queries.enqueue("compute_daily_snapshots_all_users", payload=b"schedule")
 
     @pgq.schedule("compute_monthly_snapshots_all_users", COMPUTE_MONTHLY_SNAPSHOTS_CRON)
     async def _compute_monthly_snapshots_schedule(schedule: Schedule) -> None:
@@ -142,54 +169,60 @@ def _register_schedules(pgq: PgQueuer) -> None:
 
     @pgq.schedule("refresh_etf_holdings", REFRESH_ETF_HOLDINGS_CRON)
     async def _refresh_etf_holdings_schedule(schedule: Schedule) -> None:
-        await _run_tracked("refresh_etf_holdings", "schedule", _run_etf_holdings_refresh)
+        await pgq.queries.enqueue("refresh_etf_holdings", payload=b"schedule")
 
     @pgq.schedule("refresh_macro_indicators", REFRESH_MACRO_INDICATORS_CRON)
     async def _refresh_macro_indicators_schedule(schedule: Schedule) -> None:
-        await _run_tracked("refresh_macro_indicators", "schedule", _run_macro_indicators_refresh)
+        await pgq.queries.enqueue("refresh_macro_indicators", payload=b"schedule")
 
     @pgq.schedule("refresh_country_performance", REFRESH_COUNTRY_PERFORMANCE_CRON)
     async def _refresh_country_performance_schedule(schedule: Schedule) -> None:
-        await _run_tracked("refresh_country_performance", "schedule", _run_country_performance_refresh)
+        await pgq.queries.enqueue("refresh_country_performance", payload=b"schedule")
 
 
 def _register_entrypoints(pgq: PgQueuer) -> None:
-    @pgq.entrypoint("refresh_prices_live")
+    @pgq.entrypoint("refresh_prices_live", concurrency_limit=1)
     async def _refresh_prices_live_entrypoint(job: Job) -> None:
         await _run_tracked(
             "refresh_prices_live", _decode_trigger(job.payload), _run_price_refresh, pgq_job_id=job.id,
         )
 
-    @pgq.entrypoint("refresh_etf_holdings")
+    @pgq.entrypoint("refresh_etf_holdings", concurrency_limit=1)
     async def _refresh_etf_holdings_entrypoint(job: Job) -> None:
         await _run_tracked(
             "refresh_etf_holdings", _decode_trigger(job.payload), _run_etf_holdings_refresh, pgq_job_id=job.id,
         )
 
-    @pgq.entrypoint("refresh_macro_indicators")
+    @pgq.entrypoint("refresh_macro_indicators", concurrency_limit=1)
     async def _refresh_macro_indicators_entrypoint(job: Job) -> None:
         await _run_tracked(
             "refresh_macro_indicators", _decode_trigger(job.payload), _run_macro_indicators_refresh, pgq_job_id=job.id,
         )
 
-    @pgq.entrypoint("refresh_country_performance")
+    @pgq.entrypoint("refresh_country_performance", concurrency_limit=1)
     async def _refresh_country_performance_entrypoint(job: Job) -> None:
         await _run_tracked(
             "refresh_country_performance", _decode_trigger(job.payload), _run_country_performance_refresh, pgq_job_id=job.id,
         )
 
-    @pgq.entrypoint("compute_daily_snapshots_all_users")
+    @pgq.entrypoint("compute_daily_snapshots_all_users", concurrency_limit=1)
     async def _compute_daily_snapshots_entrypoint(job: Job) -> None:
-        """On-demand payload is a plain ISO date string (or absent → today), unlike the other
-        entrypoints' trigger-name payload — matches _trigger_snapshot_recompute's own encoding
-        in app/api/routers/transactions.py."""
-        target_date_str = job.payload.decode() if job.payload else None
+        """On-demand payload is a plain ISO date string (or absent → today) — matches
+        _trigger_snapshot_recompute's own encoding in app/api/routers/transactions.py. The
+        schedule handler (issue #67) now enqueues here too, using the b"schedule" sentinel
+        (never a valid ISO date string) to signal "trigger=schedule, no date" without
+        colliding with the on-demand shape."""
+        if job.payload == b"schedule":
+            trigger, target_date_str = "schedule", None
+        else:
+            trigger = "on_demand"
+            target_date_str = job.payload.decode() if job.payload else None
 
         async def _core() -> dict:
             await _compute_daily_snapshots_all_users(target_date_str)
             return {"status": "success"}
         await _run_tracked(
-            "compute_daily_snapshots_all_users", "on_demand", _core, pgq_job_id=job.id,
+            "compute_daily_snapshots_all_users", trigger, _core, pgq_job_id=job.id,
         )
     # No entrypoint for compute_monthly_snapshots_all_users — zero on-demand call sites.
 

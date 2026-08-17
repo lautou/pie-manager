@@ -9,13 +9,14 @@ import {
 	Card,
 	CardBody,
 	CardTitle,
+	Modal,
+	ModalBody,
+	ModalFooter,
+	ModalHeader,
+	ModalVariant,
 	PageSection,
 	PageSectionVariants
 } from '@patternfly/react-core';
-import {
-	Modal,
-	ModalVariant
-} from '@patternfly/react-core/deprecated';
 import { PencilAltIcon, PlusCircleIcon, TrashIcon } from '@patternfly/react-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSystemSetting, useSetSystemSetting, useAllBrokers, usePortfolios,
@@ -209,12 +210,9 @@ function CommissionManager() {
     <div>
       {/* Broker modal (new / edit) */}
       <Modal variant={ModalVariant.medium}
-        title={brokerModal === 'new' ? t('brokers.newBroker') : `${t('common.edit')} — ${accounts.find(a => a.id === brokerEditingId)?.name ?? ''}`}
-        isOpen={brokerModal !== null} onClose={closeBrokerModal}
-        actions={[
-          <Button key="save" variant="primary" isLoading={brokerSaving} isDisabled={brokerSaving} onClick={handleSaveBroker}>{t('common.save')}</Button>,
-          <Button key="cancel" variant="link" onClick={closeBrokerModal}>{t('common.cancel')}</Button>,
-        ]}>
+        isOpen={brokerModal !== null} onClose={closeBrokerModal}>
+        <ModalHeader title={brokerModal === 'new' ? t('brokers.newBroker') : `${t('common.edit')} — ${accounts.find(a => a.id === brokerEditingId)?.name ?? ''}`} />
+        <ModalBody>
         {brokerError && <Alert variant="danger" title={brokerError} isInline style={{ marginBottom: '0.75rem' }} />}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           <div>
@@ -246,6 +244,11 @@ function CommissionManager() {
             </div>
           </div>
         </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button key="save" variant="primary" isLoading={brokerSaving} isDisabled={brokerSaving} onClick={handleSaveBroker}>{t('common.save')}</Button>
+          <Button key="cancel" variant="link" onClick={closeBrokerModal}>{t('common.cancel')}</Button>
+        </ModalFooter>
       </Modal>
 
       {/* Top bar */}
@@ -595,9 +598,10 @@ function ProductManager() {
           </tbody>
         </table>
       </div>
-      <Modal variant={ModalVariant.medium} title={modalMode === 'add' ? t('configGenerale.newProduct') : `${t('configGenerale.editProduct')} — ${editingProduct?.ticker}`}
-        isOpen={modalMode !== null} onClose={closeModal}
-        actions={[<Button key="save" variant="primary" onClick={handleSave}>{t('common.save')}</Button>, <Button key="cancel" variant="link" onClick={closeModal}>{t('common.cancel')}</Button>]}>
+      <Modal variant={ModalVariant.medium}
+        isOpen={modalMode !== null} onClose={closeModal}>
+        <ModalHeader title={modalMode === 'add' ? t('configGenerale.newProduct') : `${t('configGenerale.editProduct')} — ${editingProduct?.ticker}`} />
+        <ModalBody>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           <div>
             <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('configGenerale.fields.ticker')} {modalMode === 'add' && <span style={{ color: '#C9190B' }}>*</span>}</label>
@@ -641,6 +645,11 @@ function ProductManager() {
           </div>
           {formError && <div style={{ color: '#C9190B', fontSize: '0.85rem' }}>{formError}</div>}
         </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button key="save" variant="primary" onClick={handleSave}>{t('common.save')}</Button>
+          <Button key="cancel" variant="link" onClick={closeModal}>{t('common.cancel')}</Button>
+        </ModalFooter>
       </Modal>
 
       <ConfirmModal
@@ -791,9 +800,9 @@ function RegionManager() {
         </table>
       </div>
       <Modal variant={ModalVariant.medium}
-        title={modalMode === 'add' ? t('indicators.newRegion') : `${t('indicators.editRegion')} — ${editingRegion?.code}`}
-        isOpen={modalMode !== null} onClose={closeModal}
-        actions={[<Button key="save" variant="primary" onClick={handleSave}>{t('common.save')}</Button>, <Button key="cancel" variant="link" onClick={closeModal}>{t('common.cancel')}</Button>]}>
+        isOpen={modalMode !== null} onClose={closeModal}>
+        <ModalHeader title={modalMode === 'add' ? t('indicators.newRegion') : `${t('indicators.editRegion')} — ${editingRegion?.code}`} />
+        <ModalBody>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           <div>
             <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('indicators.regionCode')} {modalMode === 'add' && <span style={{ color: '#C9190B' }}>*</span>}</label>
@@ -825,6 +834,11 @@ function RegionManager() {
           </div>
           {formError && <div style={{ color: '#C9190B', fontSize: '0.85rem' }}>{formError}</div>}
         </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button key="save" variant="primary" onClick={handleSave}>{t('common.save')}</Button>
+          <Button key="cancel" variant="link" onClick={closeModal}>{t('common.cancel')}</Button>
+        </ModalFooter>
       </Modal>
 
       <ConfirmModal
@@ -970,9 +984,9 @@ function MarketCountryManager() {
         </table>
       </div>
       <Modal variant={ModalVariant.medium}
-        title={modalMode === 'add' ? t('marketPerformance.newCountry') : `${t('marketPerformance.editCountry')} — ${editingCountry?.code}`}
-        isOpen={modalMode !== null} onClose={closeModal}
-        actions={[<Button key="save" variant="primary" onClick={handleSave}>{t('common.save')}</Button>, <Button key="cancel" variant="link" onClick={closeModal}>{t('common.cancel')}</Button>]}>
+        isOpen={modalMode !== null} onClose={closeModal}>
+        <ModalHeader title={modalMode === 'add' ? t('marketPerformance.newCountry') : `${t('marketPerformance.editCountry')} — ${editingCountry?.code}`} />
+        <ModalBody>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           <div>
             <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('marketPerformance.countryCode')} {modalMode === 'add' && <span style={{ color: '#C9190B' }}>*</span>}</label>
@@ -1000,6 +1014,11 @@ function MarketCountryManager() {
           </div>
           {formError && <div style={{ color: '#C9190B', fontSize: '0.85rem' }}>{formError}</div>}
         </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button key="save" variant="primary" onClick={handleSave}>{t('common.save')}</Button>
+          <Button key="cancel" variant="link" onClick={closeModal}>{t('common.cancel')}</Button>
+        </ModalFooter>
       </Modal>
 
       <ConfirmModal

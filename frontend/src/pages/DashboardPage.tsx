@@ -8,6 +8,10 @@ import {
 	CardTitle,
 	Grid,
 	GridItem,
+	Modal,
+	ModalBody,
+	ModalHeader,
+	ModalVariant,
 	PageSection,
 	PageSectionVariants,
 	Spinner,
@@ -15,10 +19,6 @@ import {
 	ContentVariants,
 	Title
 } from '@patternfly/react-core';
-import {
-	Modal,
-	ModalVariant
-} from '@patternfly/react-core/deprecated';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import {
 	ChartDonut,
@@ -530,10 +530,11 @@ export default function DashboardPage() {
         return (
           <Modal
             variant={ModalVariant.medium}
-            title={`${t('dashboard.poolPopupTitle', { name: selectedPool })}${poolInfoSuffix}`}
             isOpen
             onClose={() => setSelectedPool(null)}
           >
+            <ModalHeader title={`${t('dashboard.poolPopupTitle', { name: selectedPool })}${poolInfoSuffix}`} />
+            <ModalBody>
             {poolPositions.length === 0 ? (
               <Content><Content component="p">{t('dashboard.noPositionInPool')}</Content></Content>
             ) : (
@@ -581,6 +582,7 @@ export default function DashboardPage() {
                 )}
               </>
             )}
+            </ModalBody>
           </Modal>
         );
       })()}
@@ -602,10 +604,11 @@ export default function DashboardPage() {
         return (
           <Modal
             variant={ModalVariant.small}
-            title={`${t('dashboard.tickerPopupTitle', { ticker: selectedTicker })}${pos ? ` — ${pos.product_name}` : ''}`}
             isOpen
             onClose={() => setSelectedTicker(null)}
           >
+            <ModalHeader title={`${t('dashboard.tickerPopupTitle', { ticker: selectedTicker })}${pos ? ` — ${pos.product_name}` : ''}`} />
+            <ModalBody>
             {!pos ? (
               <Content><Content component="p">{t('error.notFound')}</Content></Content>
             ) : (
@@ -659,6 +662,7 @@ export default function DashboardPage() {
                 )}
               </div>
             )}
+            </ModalBody>
           </Modal>
         );
       })()}

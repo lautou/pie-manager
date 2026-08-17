@@ -70,6 +70,9 @@ export const pfCoreStubs = {
   // Modal — generic stub that renders nothing (pages needing modal assertions override this)
   Modal: ({ children, isOpen }: any) => (isOpen ? <div data-testid="modal">{children}</div> : null),
   ModalVariant: { medium: 'medium', large: 'large', small: 'small' },
+  ModalHeader: ({ title }: any) => <div>{title}</div>,
+  ModalBody: ({ children }: any) => <>{children}</>,
+  ModalFooter: ({ children }: any) => <div>{children}</div>,
 
   // Form
   Alert: ({ title, variant, children }: any) => (

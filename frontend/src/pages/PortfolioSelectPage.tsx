@@ -8,6 +8,11 @@ import {
 	CardTitle,
 	EmptyState,
 	EmptyStateBody,
+	Modal,
+	ModalBody,
+	ModalFooter,
+	ModalHeader,
+	ModalVariant,
 	PageSection,
 	PageSectionVariants,
 	Spinner,
@@ -16,10 +21,6 @@ import {
 	ContentVariants,
 	Title
 } from '@patternfly/react-core';
-import {
-	Modal,
-	ModalVariant
-} from '@patternfly/react-core/deprecated';
 import { ImportIcon, PencilAltIcon, PlusCircleIcon, TrashIcon } from '@patternfly/react-icons';
 import { usePortfolios, useCreatePortfolio, useRenamePortfolio, useDeletePortfolio } from '../api/queries';
 
@@ -171,25 +172,26 @@ export default function PortfolioSelectPage() {
       )}
 
       {/* Create modal */}
-      <Modal variant={ModalVariant.small} title={t('portfolioSelect.newPortfolio')} isOpen={createOpen}
-        onClose={() => { setCreateOpen(false); setError(''); }}
-        actions={[
-          <Button key="ok" variant="primary" onClick={handleCreate} isLoading={createPortfolio.isPending}>{t('common.create')}</Button>,
-          <Button key="cancel" variant="link" onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button>,
-        ]}>
+      <Modal variant={ModalVariant.small} isOpen={createOpen}
+        onClose={() => { setCreateOpen(false); setError(''); }}>
+        <ModalHeader title={t('portfolioSelect.newPortfolio')} />
+        <ModalBody>
         <TextInput placeholder="Nom du portefeuille" value={newName}
           onChange={(_e, v) => setNewName(v)}
           onKeyDown={(e) => e.key === 'Enter' && handleCreate()} />
         {error && <div style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */, marginTop: '0.5rem', fontSize: '0.85rem' }}>{error}</div>}
+        </ModalBody>
+        <ModalFooter>
+          <Button key="ok" variant="primary" onClick={handleCreate} isLoading={createPortfolio.isPending}>{t('common.create')}</Button>
+          <Button key="cancel" variant="link" onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button>
+        </ModalFooter>
       </Modal>
 
       {/* Rename modal */}
-      <Modal variant={ModalVariant.small} title={t('portfolioSelect.editPortfolio')} isOpen={!!renameTarget}
-        onClose={() => { setRenameTarget(null); setError(''); }}
-        actions={[
-          <Button key="ok" variant="primary" onClick={handleRename} isLoading={renamePortfolio.isPending}>{t('portfolioSelect.rename')}</Button>,
-          <Button key="cancel" variant="link" onClick={() => setRenameTarget(null)}>{t('common.cancel')}</Button>,
-        ]}>
+      <Modal variant={ModalVariant.small} isOpen={!!renameTarget}
+        onClose={() => { setRenameTarget(null); setError(''); }}>
+        <ModalHeader title={t('portfolioSelect.editPortfolio')} />
+        <ModalBody>
         <TextInput value={renameTarget?.name ?? ''}
           onChange={(_e, v) => setRenameTarget(
             /* v8 ignore next -- @preserve */
@@ -197,22 +199,19 @@ export default function PortfolioSelectPage() {
           )}
           onKeyDown={(e) => e.key === 'Enter' && handleRename()} />
         {error && <div style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */, marginTop: '0.5rem', fontSize: '0.85rem' }}>{error}</div>}
+        </ModalBody>
+        <ModalFooter>
+          <Button key="ok" variant="primary" onClick={handleRename} isLoading={renamePortfolio.isPending}>{t('portfolioSelect.rename')}</Button>
+          <Button key="cancel" variant="link" onClick={() => setRenameTarget(null)}>{t('common.cancel')}</Button>
+        </ModalFooter>
       </Modal>
 
       {/* Delete confirmation modal — GitHub-style name confirmation */}
       <Modal variant={ModalVariant.small}
-        title={<span style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */ }}>⚠ Supprimer le portefeuille</span>}
         isOpen={!!deleteTarget}
-        onClose={() => { setDeleteTarget(null); setDeleteConfirmName(''); }}
-        actions={[
-          <Button key="ok" variant="danger"
-            isDisabled={deleteConfirmName !== deleteTarget?.name}
-            onClick={handleDelete}
-            isLoading={deletePortfolio.isPending}>
-            {t('portfolioSelect.deleteConfirmButton')}
-          </Button>,
-          <Button key="cancel" variant="link" onClick={() => { setDeleteTarget(null); setDeleteConfirmName(''); }}>{t('common.cancel')}</Button>,
-        ]}>
+        onClose={() => { setDeleteTarget(null); setDeleteConfirmName(''); }}>
+        <ModalHeader title={<span style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */ }}>⚠ Supprimer le portefeuille</span>} />
+        <ModalBody>
         <div>
           <Content component={ContentVariants.p}>
             Cette action est <strong>irréversible</strong>. Toutes les transactions,
@@ -237,6 +236,16 @@ export default function PortfolioSelectPage() {
             </div>
           </div>
         </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button key="ok" variant="danger"
+            isDisabled={deleteConfirmName !== deleteTarget?.name}
+            onClick={handleDelete}
+            isLoading={deletePortfolio.isPending}>
+            {t('portfolioSelect.deleteConfirmButton')}
+          </Button>
+          <Button key="cancel" variant="link" onClick={() => { setDeleteTarget(null); setDeleteConfirmName(''); }}>{t('common.cancel')}</Button>
+        </ModalFooter>
       </Modal>
     </PageSection>
   );

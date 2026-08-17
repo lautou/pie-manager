@@ -12,7 +12,8 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => vi.fn(),
 }));
 
-// Mock PatternFly core — override Tooltip to render title prop for test assertions
+// Mock PatternFly core — override Tooltip to render title prop for test assertions,
+// and Modal to expose an onClose trigger (generic stub has no close affordance)
 vi.mock('@patternfly/react-core', () => ({
   ...pfCoreStubs,
   Tooltip: ({ children, content }: any) => (
@@ -20,12 +21,6 @@ vi.mock('@patternfly/react-core', () => ({
       {children}
     </div>
   ),
-}));
-
-// Modal overridden to expose an onClose trigger (generic stub has no close
-// affordance) — imported from the deprecated subpath since v6.
-vi.mock('@patternfly/react-core/deprecated', () => ({
-  ModalVariant: pfCoreStubs.ModalVariant,
   Modal: ({ children, isOpen, onClose }: any) =>
     isOpen ? (
       <div data-testid="modal">
@@ -33,6 +28,8 @@ vi.mock('@patternfly/react-core/deprecated', () => ({
         {children}
       </div>
     ) : null,
+  ModalHeader: ({ title }: any) => <div>{title}</div>,
+  ModalBody: ({ children }: any) => <>{children}</>,
 }));
 
 // Mock PatternFly table

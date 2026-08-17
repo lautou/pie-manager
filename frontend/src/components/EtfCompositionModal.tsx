@@ -2,12 +2,12 @@ import { useTranslation } from 'react-i18next';
 import {
 	Spinner,
 	Content,
-	ContentVariants
-} from '@patternfly/react-core';
-import {
+	ContentVariants,
 	Modal,
+	ModalBody,
+	ModalHeader,
 	ModalVariant
-} from '@patternfly/react-core/deprecated';
+} from '@patternfly/react-core';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import { useEtfComposition } from '../api/queries';
 import { formatPct1, formatDate } from '../utils/format';
@@ -25,10 +25,11 @@ export default function EtfCompositionModal({ ticker, onClose }: EtfCompositionM
   return (
     <Modal
       variant={ModalVariant.medium}
-      title={ticker ? t('etfComposition.modalTitle', { ticker }) : ''}
       isOpen={ticker !== null}
       onClose={onClose}
     >
+      <ModalHeader title={ticker ? t('etfComposition.modalTitle', { ticker }) : ''} />
+      <ModalBody>
       {isLoading && <Spinner size="md" />}
 
       {!isLoading && data && !hasComposition && (
@@ -119,6 +120,7 @@ export default function EtfCompositionModal({ ticker, onClose }: EtfCompositionM
           </Content>
         </>
       )}
+      </ModalBody>
     </Modal>
   );
 }

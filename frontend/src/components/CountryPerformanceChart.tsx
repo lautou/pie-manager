@@ -6,7 +6,12 @@ import {
   Spinner,
 } from '@patternfly/react-core';
 import {
-  Chart, ChartAxis, ChartBar, ChartThemeColor, ChartTooltip, ChartVoronoiContainer,
+	Chart,
+	ChartAxis,
+	ChartBar,
+	ChartThemeColor,
+	ChartTooltip,
+	ChartVoronoiContainer
 } from '@patternfly/react-charts';
 import type { CountryPerformanceEntry } from '../types';
 

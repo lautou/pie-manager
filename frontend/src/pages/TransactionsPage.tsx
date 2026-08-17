@@ -2,24 +2,26 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  Alert,
-  Button,
-  FormGroup,
-  FormSelect,
-  FormSelectOption,
-  Modal,
-  ModalVariant,
-  PageSection,
-  Switch,
-  Pagination,
-  Spinner,
-  TextInput,
-  Title,
-  Tooltip,
-  Toolbar,
-  ToolbarContent,
-  ToolbarItem,
+	Alert,
+	Button,
+	FormGroup,
+	FormSelect,
+	FormSelectOption,
+	PageSection,
+	Switch,
+	Pagination,
+	Spinner,
+	TextInput,
+	Title,
+	Tooltip,
+	Toolbar,
+	ToolbarContent,
+	ToolbarItem
 } from '@patternfly/react-core';
+import {
+	Modal,
+	ModalVariant
+} from '@patternfly/react-core/deprecated';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import { PencilAltIcon, TrashIcon } from '@patternfly/react-icons';
 import {
@@ -630,7 +632,7 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
                 <Switch
                   id="tx-fractional"
                   label={t('transactions.fields.fractionalOrder')}
-                  labelOff={t('transactions.fields.fractionalOrder')}
+                  
                   isChecked={form.fractional_order}
                   onChange={(_e, checked) => setForm(prev => ({
                     ...prev,
@@ -1168,7 +1170,7 @@ export default function TransactionsPage() {
   };
 
   return (
-    <PageSection>
+    <PageSection hasBodyWrapper={false}>
       <Title headingLevel="h1" size="xl" style={{ marginBottom: '1rem' }}>
         {t('transactions.title')}
       </Title>
@@ -1236,7 +1238,7 @@ export default function TransactionsPage() {
               onChange={(_e, checked) => setShowDevise(checked)}
             />
           </ToolbarItem>
-          <ToolbarItem align={{ default: 'alignRight' }}>
+          <ToolbarItem align={{ default: "alignEnd" }}>
             <Button variant="primary" onClick={handleAddClick}>
               {t('transactions.newTransaction')}
             </Button>
@@ -1303,7 +1305,7 @@ export default function TransactionsPage() {
             <Tbody>
               {paginated.length === 0 ? (
                 <Tr>
-                  <Td colSpan={showDevise ? 13 : 10} style={{ textAlign: 'center', color: 'var(--pf-v5-global--Color--200)' }}>
+                  <Td colSpan={showDevise ? 13 : 10} style={{ textAlign: 'center', color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--Color--200 */ }}>
                     {t('transactions.noTransactions')}
                   </Td>
                 </Tr>
@@ -1386,22 +1388,18 @@ export default function TransactionsPage() {
                         : '—'}
                     </Td>
                     <Td dataLabel="Actions" modifier="nowrap">
-                      <Button
+                      <Button icon={<PencilAltIcon />}
                         variant="plain"
                         aria-label={t('common.edit')}
                         onClick={() => handleEditClick(tx)}
                         style={{ padding: '0 0.5rem' }}
-                      >
-                        <PencilAltIcon />
-                      </Button>
-                      <Button
+                       />
+                      <Button icon={<TrashIcon />}
                         variant="plain"
                         aria-label={t('common.delete')}
                         onClick={() => handleDeleteClick(tx)}
-                        style={{ padding: '0 0.5rem', color: 'var(--pf-v5-global--danger-color--100)' }}
-                      >
-                        <TrashIcon />
-                      </Button>
+                        style={{ padding: '0 0.5rem', color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */ }}
+                       />
                     </Td>
                   </Tr>
                   );

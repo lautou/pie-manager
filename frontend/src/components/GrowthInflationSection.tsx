@@ -47,7 +47,7 @@ export default function GrowthInflationSection() {
           </FormSelect>
         </div>
         {syncStatus && syncStatus.status !== 'never' && (
-          <span style={{ fontSize: '0.85rem', color: 'var(--pf-v5-global--Color--200)' }}>
+          <span style={{ fontSize: '0.85rem', color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--Color--200 */ }}>
             {t('indicators.lastSync', { time: formatSyncDateTime(syncStatus) })}
           </span>
         )}

@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   Card, CardBody, CardTitle,
   Pagination,
-  Text, TextContent, TextVariants,
+  Content, ContentVariants,
 } from '@patternfly/react-core';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import { formatEUR } from '../utils/format';
@@ -74,9 +74,9 @@ function SnapshotsTable({
       <CardTitle>Snapshots journaliers ({sortedDaily.length})</CardTitle>
       <CardBody>
         {sortedDaily.length === 0 ? (
-          <TextContent>
-            <Text component={TextVariants.p}>Aucun snapshot disponible.</Text>
-          </TextContent>
+          <Content>
+            <Content component={ContentVariants.p}>Aucun snapshot disponible.</Content>
+          </Content>
         ) : (
           <>
             <Table aria-label="Snapshots journaliers" variant="compact">

@@ -4,7 +4,11 @@ import {
   ToggleGroup, ToggleGroupItem,
 } from '@patternfly/react-core';
 import {
-  Chart, ChartAxis, ChartGroup, ChartLine, ChartThemeColor,
+	Chart,
+	ChartAxis,
+	ChartGroup,
+	ChartLine,
+	ChartThemeColor
 } from '@patternfly/react-charts';
 import { VictoryZoomContainer } from 'victory-zoom-container';
 import ChartCrosshair, { type ChartCrosshairSeries, type ChartCrosshairState } from './ChartCrosshair';

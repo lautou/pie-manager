@@ -4,9 +4,9 @@ import {
   Button,
   FormSelect, FormSelectOption,
   Masthead,
-  MastheadBrand,
+  MastheadLogo,
   MastheadMain,
-  MastheadToggle,
+  MastheadToggle, MastheadBrand,
   Nav,
   NavItem,
   NavList,
@@ -15,7 +15,7 @@ import {
   PageSidebar,
   PageSidebarBody,
   SkipToContent,
-  Text, TextContent, TextVariants,
+  Content, ContentVariants,
 } from '@patternfly/react-core';
 import { BarsIcon } from '@patternfly/react-icons';
 import { Component, useState } from 'react';
@@ -50,16 +50,16 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   render() {
     if (this.state.error) {
       return (
-        <PageSection variant={PageSectionVariants.default}>
-          <TextContent>
-            <Text component={TextVariants.h2}>Une erreur est survenue</Text>
-            <Text component={TextVariants.p} style={{ color: 'var(--pf-v5-global--danger-color--100)' }}>
+        <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
+          <Content>
+            <Content component={ContentVariants.h2}>Une erreur est survenue</Content>
+            <Content component={ContentVariants.p} style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */ }}>
               {this.state.error.message}
-            </Text>
+            </Content>
             <Button variant="primary" onClick={() => this.setState({ error: null })}>
               Réessayer
             </Button>
-          </TextContent>
+          </Content>
         </PageSection>
       );
     }
@@ -180,7 +180,8 @@ function PortfolioLayout({ children }: { children: React.ReactNode }) {
 
   const masthead = (
     <Masthead>
-      <MastheadToggle>
+      
+      <MastheadMain><MastheadToggle>
         <Button
           variant="plain"
           onClick={() => setIsSidebarOpen((o) => !o)}
@@ -188,10 +189,9 @@ function PortfolioLayout({ children }: { children: React.ReactNode }) {
           icon={<BarsIcon />}
         />
       </MastheadToggle>
-      <MastheadMain>
-        <MastheadBrand style={{ color: 'white', fontWeight: 'bold', fontSize: '1.2rem' }}>
+        <MastheadBrand data-codemods><MastheadBrand data-codemods><MastheadBrand data-codemods><MastheadLogo data-codemods style={{ color: 'white', fontWeight: 'bold', fontSize: '1.2rem' }}>
           PIE Manager
-        </MastheadBrand>
+        </MastheadLogo></MastheadBrand></MastheadBrand></MastheadBrand>
         <AppVersion />
       </MastheadMain>
     </Masthead>
@@ -201,7 +201,7 @@ function PortfolioLayout({ children }: { children: React.ReactNode }) {
     <>
       <RefreshBanner />
     <Page
-      header={masthead}
+      masthead={masthead}
       sidebar={
         <PageSidebar isSidebarOpen={isSidebarOpen}>
           <PageSidebarBody>
@@ -242,15 +242,15 @@ function RootLayout() {
   const masthead = (
     <Masthead>
       <MastheadMain>
-        <MastheadBrand style={{ color: 'white', fontWeight: 'bold', fontSize: '1.2rem' }}>
+        <MastheadBrand data-codemods><MastheadLogo data-codemods style={{ color: 'white', fontWeight: 'bold', fontSize: '1.2rem' }}>
           PIE Manager
-        </MastheadBrand>
+        </MastheadLogo></MastheadBrand>
         <AppVersion />
       </MastheadMain>
     </Masthead>
   );
   return (
-    <Page header={masthead}>
+    <Page masthead={masthead}>
       <PortfolioSelectPage />
     </Page>
   );
@@ -282,9 +282,9 @@ function GlobalLayout({ title, children }: { title: string; children: React.Reac
           >
             {t('app.back')}
           </button>
-          <MastheadBrand style={{ color: 'white', fontWeight: 'bold', fontSize: '1.1rem', flexShrink: 0 }}>
+          <MastheadBrand data-codemods><MastheadLogo data-codemods style={{ color: 'white', fontWeight: 'bold', fontSize: '1.1rem', flexShrink: 0 }}>
             PIE Manager
-          </MastheadBrand>
+          </MastheadLogo></MastheadBrand>
           <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', flexShrink: 0 }}>
             — {title}
           </span>
@@ -294,7 +294,7 @@ function GlobalLayout({ title, children }: { title: string; children: React.Reac
       </MastheadMain>
     </Masthead>
   );
-  return <Page header={masthead}>{children}</Page>;
+  return <Page masthead={masthead}>{children}</Page>;
 }
 
 function SystemLayout({ children }: { children: React.ReactNode }) {

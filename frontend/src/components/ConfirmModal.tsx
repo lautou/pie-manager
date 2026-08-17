@@ -1,5 +1,13 @@
 import { useTranslation } from 'react-i18next';
-import { Button, Modal, ModalVariant, Text, TextContent, TextVariants } from '@patternfly/react-core';
+import {
+	Button,
+	Content,
+	ContentVariants
+} from '@patternfly/react-core';
+import {
+	Modal,
+	ModalVariant
+} from '@patternfly/react-core/deprecated';
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -30,7 +38,7 @@ export default function ConfirmModal({
   return (
     <Modal
       variant={ModalVariant.small}
-      title={<span style={{ color: 'var(--pf-v5-global--danger-color--100)' }}>⚠ {title}</span>}
+      title={<span style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */ }}>⚠ {title}</span>}
       isOpen={isOpen}
       onClose={onCancel}
       actions={[
@@ -42,11 +50,11 @@ export default function ConfirmModal({
         </Button>,
       ]}
     >
-      <TextContent>
+      <Content>
         {paragraphs.map((p, i) => (
-          <Text key={i} component={TextVariants.p}>{p}</Text>
+          <Content key={i} component={ContentVariants.p}>{p}</Content>
         ))}
-      </TextContent>
+      </Content>
     </Modal>
   );
 }

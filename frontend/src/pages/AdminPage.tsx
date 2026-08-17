@@ -30,9 +30,11 @@ function PoolManager({ portfolioId }: { portfolioId: string }) {
 
   // Sortable pools table
   const { sorted: sortedPools, toggle: togglePool, indicator: poolInd, thStyle: poolTh } =
-    /* v8 ignore next -- @preserve */
-    useSortable<Pool, keyof Pool>({ data: pools, defaultCol: 'name',
-      getValue: (p, col) => col === 'target_pct' ? p.target_pct : col === 'is_active' ? (p.is_active ? 1 : 0) : String(p[col] ?? '') });
+    useSortable<Pool, keyof Pool>({
+      data: pools, defaultCol: 'name',
+      /* v8 ignore next -- @preserve */
+      getValue: (p, col) => col === 'target_pct' ? p.target_pct : col === 'is_active' ? (p.is_active ? 1 : 0) : String(p[col] ?? ''),
+    });
 
   // Pool form state
   const [editingPool, setEditingPool] = useState<Pool | null>(null);

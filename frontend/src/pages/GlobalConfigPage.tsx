@@ -67,8 +67,11 @@ function CommissionManager() {
   const { data: portfolios = [] } = usePortfolios();
 
   const { sorted: sortedAccounts, toggle: toggleAcc, indicator: accInd, thStyle: accTh } =
-    /* v8 ignore next -- @preserve */
-    useSortable<Broker, keyof Broker>({ data: accounts, defaultCol: 'name', getValue: (a, col) => String(a[col] ?? '') });
+    useSortable<Broker, keyof Broker>({
+      data: accounts, defaultCol: 'name',
+      /* v8 ignore next -- @preserve */
+      getValue: (a, col) => String(a[col] ?? ''),
+    });
 
   // ── Broker CRUD state ───────────────────────────────────────────────────
   const [brokerModal, setBrokerModal] = useState<'new' | 'edit' | null>(null);

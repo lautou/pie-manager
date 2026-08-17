@@ -1,7 +1,9 @@
 """
 Tests for app/tasks/pgq_app.py — schedule/entrypoint registration, the shared _run_tracked/
 _decode_trigger glue, all 6 real handlers, and main()'s connect/close lifecycle (issue #66
-steps 3+4).
+steps 3+4). Also covers issue #67's overlap-prevention fix: 5 of the 6 schedule handlers now
+enqueue onto their matching concurrency_limit=1 entrypoint instead of calling _run_tracked
+directly.
 
 Cron-string-level fidelity/timezone checks live in test_pgq_schedules.py. main()'s real
 asyncpg connection was already verified live via a real `pgq run app.tasks.pgq_app:main`
@@ -10,10 +12,13 @@ asyncpg.connect is mocked purely to cover main()'s own connect/close lifecycle a
 """
 
 import json
+import uuid
+from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pgqueuer import PgQueuer
+from pgqueuer.ports.repository import EntrypointExecutionParameter
 
 from app.tasks import job_runs
 from app.tasks.pgq_app import (
@@ -65,6 +70,49 @@ def test_register_entrypoints_registers_exactly_7_of_the_6_tasks():
     assert set(pgq.qm.entrypoint_registry.keys()) == EXPECTED_ENTRYPOINTS
 
 
+def test_entrypoints_with_a_matching_schedule_get_concurrency_limit_one():
+    """Issue #67: refresh_prices_live/refresh_etf_holdings/refresh_macro_indicators/
+    refresh_country_performance/compute_daily_snapshots_all_users each have a schedule that
+    now enqueues onto this same entrypoint (see _register_schedules) — concurrency_limit=1 is
+    what actually stops that enqueued job from running alongside an on-demand/startup trigger
+    already in flight. fill_missing_snapshots and recompute_snapshots_range have no schedule
+    counterpart to race against, so they keep PgQueuer's default of unlimited (0)."""
+    pgq = PgQueuer.in_memory()
+    _register_entrypoints(pgq)
+    limited = {
+        "refresh_prices_live", "refresh_etf_holdings", "refresh_macro_indicators",
+        "refresh_country_performance", "compute_daily_snapshots_all_users",
+    }
+    for name in limited:
+        assert pgq.qm.entrypoint_registry[name].parameters.concurrency_limit == 1, name
+    for name in EXPECTED_ENTRYPOINTS - limited:
+        assert pgq.qm.entrypoint_registry[name].parameters.concurrency_limit == 0, name
+
+
+@pytest.mark.asyncio
+async def test_concurrency_limit_prevents_a_second_dequeue_while_one_is_in_flight():
+    """The actual regression test for issue #67: a schedule-flavoured and an on-demand-flavoured
+    job enqueued for the same concurrency_limit=1 entrypoint must never both be picked at once —
+    the second stays queued until the first's pick is released (finished, or its heartbeat goes
+    stale). This is what makes a cron tick and a manual click of the same task mutually
+    exclusive, closing the gap _decode_trigger/_run_tracked alone can't (see the module
+    docstring's "Overlap prevention" section)."""
+    pgq = PgQueuer.in_memory()
+    _register_entrypoints(pgq)
+
+    await pgq.queries.enqueue("refresh_prices_live", payload=b"schedule")
+    await pgq.queries.enqueue("refresh_prices_live", payload=b"on_demand")
+
+    params = {"refresh_prices_live": EntrypointExecutionParameter(concurrency_limit=1)}
+    worker_id = uuid.uuid4()
+
+    first_batch = await pgq.queries.dequeue(10, params, worker_id, None, timedelta(seconds=30))
+    assert len(first_batch) == 1
+
+    second_batch = await pgq.queries.dequeue(10, params, worker_id, None, timedelta(seconds=30))
+    assert len(second_batch) == 0
+
+
 @pytest.mark.asyncio
 async def test_main_yields_a_pgqueuer_with_schedules_and_entrypoints_and_closes_the_connection():
     mock_conn = AsyncMock()
@@ -92,6 +140,12 @@ def test_decode_trigger_startup_payload():
 
 def test_decode_trigger_on_demand_payload():
     assert _decode_trigger(b"on_demand") == "on_demand"
+
+
+def test_decode_trigger_schedule_payload():
+    """Issue #67: the schedule handlers now enqueue with this payload instead of calling
+    _run_tracked directly — _decode_trigger must accept it, not fall back to on_demand."""
+    assert _decode_trigger(b"schedule") == "schedule"
 
 
 def test_decode_trigger_unknown_payload_falls_back_to_on_demand():
@@ -148,18 +202,17 @@ async def test_run_tracked_core_raises_records_failed_row(engine):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_refresh_prices_live_schedule_handler_calls_the_real_core(engine):
+async def test_refresh_prices_live_schedule_handler_enqueues_onto_its_entrypoint():
+    """Issue #67: the schedule handler no longer calls _run_tracked directly — it enqueues
+    onto the same-named entrypoint so concurrency_limit=1 (see _register_entrypoints) applies
+    uniformly to schedule and on-demand/startup triggers alike."""
     pgq = PgQueuer.in_memory()
     _register_schedules(pgq)
     key = next(k for k in pgq.sm.registry if k.entrypoint == "refresh_prices_live")
-    with patch("app.tasks.pgq_app._run_price_refresh", new_callable=AsyncMock,
-               return_value={"status": "success", "total_tickers": 1, "succeeded": 1, "failed_tickers": []}):
+    with patch.object(pgq.queries, "enqueue", new_callable=AsyncMock) as mock_enqueue:
         await pgq.sm.registry[key].parameters.func(MagicMock())
 
-    run = await job_runs.get_latest("refresh_prices_live")
-    assert run.status == "success"
-    assert run.trigger == "schedule"
-    assert run.pgq_job_id is None
+    mock_enqueue.assert_awaited_once_with("refresh_prices_live", payload=b"schedule")
 
 
 @pytest.mark.asyncio
@@ -179,48 +232,36 @@ async def test_refresh_prices_live_entrypoint_handler_calls_the_real_core(engine
 
 
 @pytest.mark.asyncio
-async def test_refresh_etf_holdings_schedule_handler_calls_the_real_core(engine):
+async def test_refresh_etf_holdings_schedule_handler_enqueues_onto_its_entrypoint():
     pgq = PgQueuer.in_memory()
     _register_schedules(pgq)
     key = next(k for k in pgq.sm.registry if k.entrypoint == "refresh_etf_holdings")
-    with patch("app.tasks.pgq_app._run_etf_holdings_refresh", new_callable=AsyncMock,
-               return_value={"status": "success", "total_tickers": 1, "succeeded": 1, "failed_tickers": []}):
+    with patch.object(pgq.queries, "enqueue", new_callable=AsyncMock) as mock_enqueue:
         await pgq.sm.registry[key].parameters.func(MagicMock())
 
-    run = await job_runs.get_latest("refresh_etf_holdings")
-    assert run.status == "success"
-    assert run.trigger == "schedule"
-    assert run.pgq_job_id is None
+    mock_enqueue.assert_awaited_once_with("refresh_etf_holdings", payload=b"schedule")
 
 
 @pytest.mark.asyncio
-async def test_refresh_macro_indicators_schedule_handler_calls_the_real_core(engine):
+async def test_refresh_macro_indicators_schedule_handler_enqueues_onto_its_entrypoint():
     pgq = PgQueuer.in_memory()
     _register_schedules(pgq)
     key = next(k for k in pgq.sm.registry if k.entrypoint == "refresh_macro_indicators")
-    with patch("app.tasks.pgq_app._run_macro_indicators_refresh", new_callable=AsyncMock,
-               return_value={"status": "success", "total_tickers": 4, "succeeded": 4, "failed_tickers": []}):
+    with patch.object(pgq.queries, "enqueue", new_callable=AsyncMock) as mock_enqueue:
         await pgq.sm.registry[key].parameters.func(MagicMock())
 
-    run = await job_runs.get_latest("refresh_macro_indicators")
-    assert run.status == "success"
-    assert run.trigger == "schedule"
-    assert run.pgq_job_id is None
+    mock_enqueue.assert_awaited_once_with("refresh_macro_indicators", payload=b"schedule")
 
 
 @pytest.mark.asyncio
-async def test_refresh_country_performance_schedule_handler_calls_the_real_core(engine):
+async def test_refresh_country_performance_schedule_handler_enqueues_onto_its_entrypoint():
     pgq = PgQueuer.in_memory()
     _register_schedules(pgq)
     key = next(k for k in pgq.sm.registry if k.entrypoint == "refresh_country_performance")
-    with patch("app.tasks.pgq_app._run_country_performance_refresh", new_callable=AsyncMock,
-               return_value={"status": "success", "total_tickers": 5, "succeeded": 5, "failed_tickers": []}):
+    with patch.object(pgq.queries, "enqueue", new_callable=AsyncMock) as mock_enqueue:
         await pgq.sm.registry[key].parameters.func(MagicMock())
 
-    run = await job_runs.get_latest("refresh_country_performance")
-    assert run.status == "success"
-    assert run.trigger == "schedule"
-    assert run.pgq_job_id is None
+    mock_enqueue.assert_awaited_once_with("refresh_country_performance", payload=b"schedule")
 
 
 @pytest.mark.asyncio
@@ -277,19 +318,14 @@ async def test_refresh_country_performance_entrypoint_handler_failure(engine):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_compute_daily_snapshots_schedule_handler_calls_the_real_core(engine):
+async def test_compute_daily_snapshots_schedule_handler_enqueues_onto_its_entrypoint():
     pgq = PgQueuer.in_memory()
     _register_schedules(pgq)
     key = next(k for k in pgq.sm.registry if k.entrypoint == "compute_daily_snapshots_all_users")
-    with patch("app.tasks.pgq_app._compute_daily_snapshots_all_users",
-               new_callable=AsyncMock) as mock_core:
+    with patch.object(pgq.queries, "enqueue", new_callable=AsyncMock) as mock_enqueue:
         await pgq.sm.registry[key].parameters.func(MagicMock())
 
-    mock_core.assert_awaited_once_with(None)
-    run = await job_runs.get_latest("compute_daily_snapshots_all_users")
-    assert run.status == "success"
-    assert run.trigger == "schedule"
-    assert run.pgq_job_id is None
+    mock_enqueue.assert_awaited_once_with("compute_daily_snapshots_all_users", payload=b"schedule")
 
 
 @pytest.mark.asyncio
@@ -339,6 +375,27 @@ async def test_compute_daily_snapshots_entrypoint_no_payload_defaults_to_today(e
         await handler(fake_job)
 
     mock_core.assert_awaited_once_with(None)
+
+
+@pytest.mark.asyncio
+async def test_compute_daily_snapshots_entrypoint_schedule_sentinel(engine):
+    """Issue #67: the schedule handler now enqueues here with payload=b"schedule" instead of
+    calling _run_tracked directly — must be distinguished from a real on-demand ISO-date
+    payload (never a valid date string) and recorded with trigger=schedule, not on_demand."""
+    pgq = PgQueuer.in_memory()
+    _register_entrypoints(pgq)
+    handler = pgq.qm.entrypoint_registry["compute_daily_snapshots_all_users"].parameters.func
+    fake_job = MagicMock(id=101, payload=b"schedule")
+
+    with patch("app.tasks.pgq_app._compute_daily_snapshots_all_users",
+               new_callable=AsyncMock) as mock_core:
+        await handler(fake_job)
+
+    mock_core.assert_awaited_once_with(None)
+    run = await job_runs.get_latest("compute_daily_snapshots_all_users")
+    assert run.status == "success"
+    assert run.trigger == "schedule"
+    assert run.pgq_job_id == 101
 
 
 @pytest.mark.asyncio

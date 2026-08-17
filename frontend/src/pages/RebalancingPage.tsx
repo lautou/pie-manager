@@ -4,7 +4,7 @@ import {
   Card, CardBody, CardTitle,
   PageSection, PageSectionVariants,
   Spinner,
-  Text, TextContent, TextVariants, Title,
+  Content, ContentVariants, Title,
   ToggleGroup, ToggleGroupItem,
   Tooltip,
 } from '@patternfly/react-core';
@@ -88,7 +88,7 @@ export default function RebalancingPage() {
 
   if (dashLoading) {
     return (
-      <PageSection variant={PageSectionVariants.default}>
+      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
         <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem' }}>
           <Spinner size="xl" aria-label={t('rebalancing.loadingSimulator')} />
         </div>
@@ -98,21 +98,21 @@ export default function RebalancingPage() {
 
   if (dashError || !dashboard) {
     return (
-      <PageSection variant={PageSectionVariants.default}>
-        <TextContent>
-          <Text
-            component={TextVariants.p}
-            style={{ color: 'var(--pf-v5-global--danger-color--100)' }}
+      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
+        <Content>
+          <Content
+            component={ContentVariants.p}
+            style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */ }}
           >
             {t('error.loadingRebalancing')}
-          </Text>
-        </TextContent>
+          </Content>
+        </Content>
       </PageSection>
     );
   }
 
   return (
-    <PageSection variant={PageSectionVariants.default}>
+    <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
         <Title headingLevel="h1" size="xl">{t('rebalancing.title')}</Title>
         <SyncBadge />

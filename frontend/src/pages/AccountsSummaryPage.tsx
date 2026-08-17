@@ -6,7 +6,7 @@ import {
   Grid, GridItem,
   Label,
   PageSection, PageSectionVariants,
-  Spinner, Text, TextContent, TextVariants, Title,
+  Spinner, Content, ContentVariants, Title,
   Tooltip,
 } from '@patternfly/react-core';
 import { ExclamationTriangleIcon } from '@patternfly/react-icons';
@@ -56,7 +56,7 @@ type AccColIndex = typeof ACC_COL[keyof typeof ACC_COL];
 function pvColor(val: number): string {
   if (val > 0) return '#137333';
   if (val < 0) return '#C9190B';
-  return 'var(--pf-v5-global--Color--200)';
+  return "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--Color--200 */;
 }
 
 function computePV(pos: AccountPosition, cump: number | undefined): { pvEur: number; pvPct: number } | null {
@@ -105,12 +105,12 @@ function AccountDetailCard({
       <CardTitle>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
           <span style={{ fontWeight: 'bold' }}>{account.name}</span>
-          <span style={{ marginLeft: 'auto', fontWeight: 'normal', fontSize: '0.95rem', color: 'var(--pf-v5-global--Color--200)' }}>
+          <span style={{ marginLeft: 'auto', fontWeight: 'normal', fontSize: '0.95rem', color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--Color--200 */ }}>
             {t('accountsSummary.cashLabel')} : {formatEUR(account.cash_balance_eur)}
             &nbsp;·&nbsp;
             {t('accountsSummary.securitiesLabel')} : {formatEUR(account.positions_value_eur)}
             &nbsp;·&nbsp;
-            <strong style={{ color: 'var(--pf-v5-global--Color--100)' }}>
+            <strong style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--Color--100 */ }}>
               {t('accountsSummary.totalLabel')} : {formatEUR(account.total_eur)}
             </strong>
             {hasPV && (
@@ -126,11 +126,11 @@ function AccountDetailCard({
       </CardTitle>
       <CardBody>
         {account.positions.length === 0 ? (
-          <TextContent>
-            <Text component={TextVariants.p} style={{ color: 'var(--pf-v5-global--Color--200)', fontStyle: 'italic' }}>
+          <Content>
+            <Content component={ContentVariants.p} style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--Color--200 */, fontStyle: 'italic' }}>
               {t('accountsSummary.noPositions')}
-            </Text>
-          </TextContent>
+            </Content>
+          </Content>
         ) : (
           <Table aria-label={`Positions ${account.name}`} variant="compact">
             <Thead>
@@ -194,7 +194,7 @@ function AccountDetailCard({
                     <Td>
                       {formatEUR(pos.value_eur)}
                       {pos.instrument_type === 'Or physique' && pos.last_price_date && (
-                        <div style={{ fontSize: '0.8rem', color: 'var(--pf-v5-global--Color--200)' }}>
+                        <div style={{ fontSize: '0.8rem', color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--Color--200 */ }}>
                           {pos.last_price_date}
                         </div>
                       )}
@@ -204,14 +204,14 @@ function AccountDetailCard({
                         <span style={{ color: pvColor(pv.pvEur), fontWeight: 500 }}>
                           {pv.pvEur > 0 ? '+' : ''}{formatEUR(pv.pvEur)}
                         </span>
-                      ) : <span style={{ color: 'var(--pf-v5-global--Color--200)' }}>—</span>}
+                      ) : <span style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--Color--200 */ }}>—</span>}
                     </Td>
                     <Td>
                       {pv !== null ? (
                         <span style={{ color: pvColor(pv.pvPct) }}>
                           {formatPct2(pv.pvPct, true)}
                         </span>
-                      ) : <span style={{ color: 'var(--pf-v5-global--Color--200)' }}>—</span>}
+                      ) : <span style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--Color--200 */ }}>—</span>}
                     </Td>
                     <Td>
                       <PriceSourceBadge source={pos.last_price_source} />
@@ -253,7 +253,7 @@ export default function AccountsSummaryPage() {
 
   if (isLoading) {
     return (
-      <PageSection variant={PageSectionVariants.default}>
+      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
         <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem' }}>
           <Spinner size="xl" />
         </div>
@@ -263,12 +263,12 @@ export default function AccountsSummaryPage() {
 
   if (isError || !summaries) {
     return (
-      <PageSection variant={PageSectionVariants.default}>
-        <TextContent>
-          <Text component={TextVariants.p} style={{ color: 'var(--pf-v5-global--danger-color--100)' }}>
+      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
+        <Content>
+          <Content component={ContentVariants.p} style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */ }}>
             {t('accountsSummary.loadError')}
-          </Text>
-        </TextContent>
+          </Content>
+        </Content>
       </PageSection>
     );
   }
@@ -299,7 +299,7 @@ export default function AccountsSummaryPage() {
   const accSortBy  = { index: accSortIndex,  direction: accSortDir  as SortByDirection };
 
   return (
-    <PageSection variant={PageSectionVariants.default}>
+    <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
         <Title headingLevel="h1" size="xl">{t('accountsSummary.pageTitle')}</Title>
         <SyncBadge />
@@ -362,7 +362,7 @@ export default function AccountsSummaryPage() {
                   <Td>{formatEUR(account.cash_balance_eur)}</Td>
                   <Td>{formatEUR(account.positions_value_eur)}</Td>
                   <Td style={{ fontWeight: 'bold' }}>{formatEUR(account.total_eur)}</Td>
-                  <Td style={{ color: 'var(--pf-v5-global--Color--200)' }}>
+                  <Td style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--Color--200 */ }}>
                     {grandTotal > 0
                       ? (account.total_eur / grandTotal * 100).toLocaleString('fr-FR', {
                           minimumFractionDigits: 1,

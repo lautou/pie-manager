@@ -1,5 +1,13 @@
 import { useTranslation } from 'react-i18next';
-import { Modal, ModalVariant, Spinner, TextContent, Text, TextVariants } from '@patternfly/react-core';
+import {
+	Spinner,
+	Content,
+	ContentVariants
+} from '@patternfly/react-core';
+import {
+	Modal,
+	ModalVariant
+} from '@patternfly/react-core/deprecated';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import { useEtfComposition } from '../api/queries';
 import { formatPct1, formatDate } from '../utils/format';
@@ -24,24 +32,24 @@ export default function EtfCompositionModal({ ticker, onClose }: EtfCompositionM
       {isLoading && <Spinner size="md" />}
 
       {!isLoading && data && !hasComposition && (
-        <TextContent>
-          <Text component={TextVariants.p}>{t('etfComposition.noData')}</Text>
-        </TextContent>
+        <Content>
+          <Content component={ContentVariants.p}>{t('etfComposition.noData')}</Content>
+        </Content>
       )}
 
       {!isLoading && data && hasComposition && (
         <>
           {data.top_holdings.length > 0 && (
             <>
-              <TextContent>
-                <Text component={TextVariants.h4}>
+              <Content>
+                <Content component={ContentVariants.h4}>
                   {t('etfComposition.topHoldings')} —{' '}
                   {t('etfComposition.coverageNote', {
                     count: data.top_holdings.length,
                     pct: formatPct1(data.top_holdings_coverage_pct).replace(' %', ''),
                   })}
-                </Text>
-              </TextContent>
+                </Content>
+              </Content>
               <Table variant="compact" aria-label={t('etfComposition.topHoldings')}>
                 <Thead>
                   <Tr>
@@ -65,9 +73,9 @@ export default function EtfCompositionModal({ ticker, onClose }: EtfCompositionM
 
           {data.sector_weightings.length > 0 && (
             <>
-              <TextContent style={{ marginTop: '1rem' }}>
-                <Text component={TextVariants.h4}>{t('etfComposition.sectorWeightings')}</Text>
-              </TextContent>
+              <Content style={{ marginTop: '1rem' }}>
+                <Content component={ContentVariants.h4}>{t('etfComposition.sectorWeightings')}</Content>
+              </Content>
               <Table variant="compact" aria-label={t('etfComposition.sectorWeightings')}>
                 <Thead>
                   <Tr>
@@ -88,27 +96,27 @@ export default function EtfCompositionModal({ ticker, onClose }: EtfCompositionM
           )}
 
           {(data.bond_duration !== null || data.bond_maturity !== null) && (
-            <TextContent style={{ marginTop: '1rem' }}>
+            <Content style={{ marginTop: '1rem' }}>
               {data.bond_duration !== null && (
-                <Text component={TextVariants.p}>
+                <Content component={ContentVariants.p}>
                   {t('etfComposition.bondDuration')}: {data.bond_duration}
-                </Text>
+                </Content>
               )}
               {data.bond_maturity !== null && (
-                <Text component={TextVariants.p}>
+                <Content component={ContentVariants.p}>
                   {t('etfComposition.bondMaturity')}: {data.bond_maturity}
-                </Text>
+                </Content>
               )}
-            </TextContent>
+            </Content>
           )}
 
-          <TextContent style={{ marginTop: '1rem' }}>
-            <Text component={TextVariants.small}>
+          <Content style={{ marginTop: '1rem' }}>
+            <Content component={ContentVariants.small}>
               {data.holdings_updated_at
                 ? t('etfComposition.lastUpdated', { date: formatDate(data.holdings_updated_at.slice(0, 10)) })
                 : t('etfComposition.neverUpdated')}
-            </Text>
-          </TextContent>
+            </Content>
+          </Content>
         </>
       )}
     </Modal>

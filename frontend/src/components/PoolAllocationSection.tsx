@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Tabs, Tab, TabTitleText } from '@patternfly/react-core';
-import { ChartDonut, ChartThemeColor } from '@patternfly/react-charts';
+import {
+	ChartDonut,
+	ChartThemeColor
+} from '@patternfly/react-charts';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import { usePoolAllocation } from '../api/queries';
 import { formatEUR, formatPct1 } from '../utils/format';
@@ -77,7 +80,7 @@ export default function PoolAllocationSection({ portfolioId, poolId }: PoolAlloc
               ))}
               {data.unclassified_eur > 0 && (
                 <Tr>
-                  <Td style={{ color: 'var(--pf-v5-global--Color--200)', fontStyle: 'italic' }}>
+                  <Td style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--Color--200 */, fontStyle: 'italic' }}>
                     {t('holdings.allocationUnclassified')}
                   </Td>
                   <Td>{formatEUR(data.unclassified_eur)}</Td>

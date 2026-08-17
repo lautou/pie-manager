@@ -2,17 +2,24 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-
-  Button,
-  Card, CardBody, CardTitle,
-  EmptyState, EmptyStateBody,
-
-  Modal, ModalVariant,
-  PageSection, PageSectionVariants,
-  Spinner,
-  Text, TextContent, TextInput, TextVariants,
-  Title,
+	Button,
+	Card,
+	CardBody,
+	CardTitle,
+	EmptyState,
+	EmptyStateBody,
+	PageSection,
+	PageSectionVariants,
+	Spinner,
+	Content,
+	TextInput,
+	ContentVariants,
+	Title
 } from '@patternfly/react-core';
+import {
+	Modal,
+	ModalVariant
+} from '@patternfly/react-core/deprecated';
 import { ImportIcon, PencilAltIcon, PlusCircleIcon, TrashIcon } from '@patternfly/react-icons';
 import { usePortfolios, useCreatePortfolio, useRenamePortfolio, useDeletePortfolio } from '../api/queries';
 
@@ -69,11 +76,11 @@ export default function PortfolioSelectPage() {
   };
 
   return (
-    <PageSection variant={PageSectionVariants.default}>
-      <TextContent style={{ marginBottom: '2rem', textAlign: 'center' }}>
+    <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
+      <Content style={{ marginBottom: '2rem', textAlign: 'center' }}>
         <Title headingLevel="h1" size="2xl">{t('app.name')}</Title>
-        <Text component={TextVariants.p}>{t('portfolioSelect.title')}</Text>
-      </TextContent>
+        <Content component={ContentVariants.p}>{t('portfolioSelect.title')}</Content>
+      </Content>
 
       {isLoading && (
         <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem' }}>
@@ -82,15 +89,14 @@ export default function PortfolioSelectPage() {
       )}
 
       {isError && (
-        <TextContent style={{ textAlign: 'center', color: 'var(--pf-v5-global--danger-color--100)' }}>
-          <Text>Erreur lors du chargement.</Text>
-        </TextContent>
+        <Content style={{ textAlign: 'center', color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */ }}>
+          <Content component="p">Erreur lors du chargement.</Content>
+        </Content>
       )}
 
       {/* Empty state */}
       {!isLoading && !isError && portfolios?.length === 0 && (
-        <EmptyState>
-          <Title headingLevel="h2" size="lg">{t('portfolioSelect.noPortfolios')}</Title>
+        <EmptyState titleText={<Title headingLevel="h2" size="lg">{t('portfolioSelect.noPortfolios')}</Title>}>
           <EmptyStateBody>
             Commencez par créer votre premier portefeuille,<br />
             ou restaurez une sauvegarde depuis Administration système.
@@ -112,10 +118,10 @@ export default function PortfolioSelectPage() {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', justifyContent: 'center', marginBottom: '2rem' }}>
             {portfolios.map((portfolio) => (
               <div key={portfolio.id} style={{ width: '300px', flexShrink: 0 }}>
-                <Card isSelectableRaised style={{ cursor: 'default', height: '100%' }}>
+                <Card  style={{ cursor: 'default', height: '100%' }}>
                   <CardTitle>
                     <span
-                      style={{ cursor: 'pointer', color: 'var(--pf-v5-global--link--Color)', fontSize: '1.1rem', fontWeight: 'bold' }}
+                      style={{ cursor: 'pointer', color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--link--Color */, fontSize: '1.1rem', fontWeight: 'bold' }}
                       onClick={() => navigate(`/portfolio/${portfolio.id}/dashboard`)}
                     >
                       {portfolio.name}
@@ -174,7 +180,7 @@ export default function PortfolioSelectPage() {
         <TextInput placeholder="Nom du portefeuille" value={newName}
           onChange={(_e, v) => setNewName(v)}
           onKeyDown={(e) => e.key === 'Enter' && handleCreate()} />
-        {error && <div style={{ color: 'var(--pf-v5-global--danger-color--100)', marginTop: '0.5rem', fontSize: '0.85rem' }}>{error}</div>}
+        {error && <div style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */, marginTop: '0.5rem', fontSize: '0.85rem' }}>{error}</div>}
       </Modal>
 
       {/* Rename modal */}
@@ -190,12 +196,12 @@ export default function PortfolioSelectPage() {
             t => t ? { ...t, name: v } : t,
           )}
           onKeyDown={(e) => e.key === 'Enter' && handleRename()} />
-        {error && <div style={{ color: 'var(--pf-v5-global--danger-color--100)', marginTop: '0.5rem', fontSize: '0.85rem' }}>{error}</div>}
+        {error && <div style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */, marginTop: '0.5rem', fontSize: '0.85rem' }}>{error}</div>}
       </Modal>
 
       {/* Delete confirmation modal — GitHub-style name confirmation */}
       <Modal variant={ModalVariant.small}
-        title={<span style={{ color: 'var(--pf-v5-global--danger-color--100)' }}>⚠ Supprimer le portefeuille</span>}
+        title={<span style={{ color: "var(--pf-t--temp--dev--tbd)"/* CODEMODS: original v5 color was --pf-v5-global--danger-color--100 */ }}>⚠ Supprimer le portefeuille</span>}
         isOpen={!!deleteTarget}
         onClose={() => { setDeleteTarget(null); setDeleteConfirmName(''); }}
         actions={[
@@ -208,11 +214,11 @@ export default function PortfolioSelectPage() {
           <Button key="cancel" variant="link" onClick={() => { setDeleteTarget(null); setDeleteConfirmName(''); }}>{t('common.cancel')}</Button>,
         ]}>
         <div>
-          <Text component={TextVariants.p}>
+          <Content component={ContentVariants.p}>
             Cette action est <strong>irréversible</strong>. Toutes les transactions,
             snapshots et données associées au portefeuille{' '}
             <strong>{deleteTarget?.name}</strong> seront définitivement supprimés.
-          </Text>
+          </Content>
           <div style={{ marginTop: '1.25rem' }}>
             <div style={{ fontSize: '0.85rem', marginBottom: '0.4rem', color: '#6A6E73' }}>
               Saisissez <strong>{deleteTarget?.name}</strong> pour confirmer :

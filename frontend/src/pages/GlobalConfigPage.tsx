@@ -4,12 +4,18 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Alert,
-  Button,
-  Card, CardBody, CardTitle,
-  Modal, ModalVariant,
-  PageSection, PageSectionVariants,
+	Alert,
+	Button,
+	Card,
+	CardBody,
+	CardTitle,
+	PageSection,
+	PageSectionVariants
 } from '@patternfly/react-core';
+import {
+	Modal,
+	ModalVariant
+} from '@patternfly/react-core/deprecated';
 import { PencilAltIcon, PlusCircleIcon, TrashIcon } from '@patternfly/react-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSystemSetting, useSetSystemSetting, useAllBrokers, usePortfolios,
@@ -1032,7 +1038,7 @@ export default function GlobalConfigPage() {
   };
 
   return (
-    <PageSection variant={PageSectionVariants.default}>
+    <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
 
 
       {/* ── TTF Rate ── */}

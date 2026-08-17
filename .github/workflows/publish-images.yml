@@ -20,43 +20,67 @@ jobs:
       - name: Log in to quay.io
         run: echo "${{ secrets.QUAY_TOKEN }}" | podman login quay.io -u "${{ secrets.QUAY_ROBOT }}" --password-stdin
 
-      - name: Build and push backend
+      # Build -> scan -> push, in that order, for both images: a Trivy failure below must
+      # stop the push, not just the workflow run after the fact. Scanning after push (the
+      # previous layout) let an image with a real fixable HIGH/CRITICAL CVE reach Quay.io
+      # before the scan result was even known - failing the job at that point couldn't undo
+      # the publish, and compose-prod.yaml always pins the exact version tag (never
+      # `:latest`), so gating only `:latest` would have protected nothing real either (see
+      # #21). Trivy scans a local `podman save` tarball via `input:`, not `image-ref:`
+      # against the registry - `input:` is the one local-scan path Trivy's own docs actually
+      # document (registry vs. local Docker-daemon auto-detection for `image-ref:` is
+      # undocumented for Podman specifically), so this avoids relying on unconfirmed behavior.
+      - name: Build backend
         run: |
           podman build -t quay.io/ltourreau/pie-manager-backend:$VERSION -f ./backend/Containerfile ./backend
-          podman push quay.io/ltourreau/pie-manager-backend:$VERSION
           podman tag quay.io/ltourreau/pie-manager-backend:$VERSION quay.io/ltourreau/pie-manager-backend:latest
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+
+      - name: Save backend image for local scanning
+        run: podman save -o backend-image.tar quay.io/ltourreau/pie-manager-backend:${{ steps.version.outputs.version }}
+
+      - name: Scan backend image (Trivy)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          input: backend-image.tar
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
+
+      - name: Push backend
+        run: |
+          podman push quay.io/ltourreau/pie-manager-backend:$VERSION
           podman push quay.io/ltourreau/pie-manager-backend:latest
         env:
           VERSION: ${{ steps.version.outputs.version }}
 
-      - name: Build and push frontend
+      - name: Build frontend
         run: |
           podman build -t quay.io/ltourreau/pie-manager-frontend:$VERSION -f ./frontend/Containerfile ./frontend
-          podman push quay.io/ltourreau/pie-manager-frontend:$VERSION
           podman tag quay.io/ltourreau/pie-manager-frontend:$VERSION quay.io/ltourreau/pie-manager-frontend:latest
-          podman push quay.io/ltourreau/pie-manager-frontend:latest
         env:
           VERSION: ${{ steps.version.outputs.version }}
 
-      - name: Scan backend image (Trivy)
-        uses: aquasecurity/trivy-action@v0.36.0
-        continue-on-error: true
-        with:
-          image-ref: quay.io/ltourreau/pie-manager-backend:${{ steps.version.outputs.version }}
-          format: table
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: 0
+      - name: Save frontend image for local scanning
+        run: podman save -o frontend-image.tar quay.io/ltourreau/pie-manager-frontend:${{ steps.version.outputs.version }}
 
       - name: Scan frontend image (Trivy)
         uses: aquasecurity/trivy-action@v0.36.0
-        continue-on-error: true
         with:
-          image-ref: quay.io/ltourreau/pie-manager-frontend:${{ steps.version.outputs.version }}
+          input: frontend-image.tar
           format: table
           severity: HIGH,CRITICAL
           ignore-unfixed: true
-          exit-code: 0
+          exit-code: 1
+
+      - name: Push frontend
+        run: |
+          podman push quay.io/ltourreau/pie-manager-frontend:$VERSION
+          podman push quay.io/ltourreau/pie-manager-frontend:latest
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
 
   # Real backup/restore round-trip against the just-published backend image — #20's
   # multi-stage build hand-copies pg_dump/pg_restore's shared-library closure instead of

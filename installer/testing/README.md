@@ -2,9 +2,11 @@
 
 Scripts to recreate the libvirt/QEMU Windows 11 VM used to test the PIE Manager Windows
 installer end-to-end, from a fresh Fedora host. Built from the actual working configuration
-reached after extensive live debugging (see the global `CLAUDE.md`'s "libvirt/QEMU VM
-investigation and automation" section for the *why* behind each tuning choice below — this
-README won't repeat it).
+reached after extensive live debugging — the *why* behind each tuning choice is inlined as
+comments directly in `01-create-vm.sh` (NOCOW disk placement, the specific CPU model) rather
+than referenced externally, so this stays reproducible from a fresh clone alone. See also the
+root repo's `.claude/rules/distribution.md` "Local win11 test VM" section for the higher-level
+maintenance overview (script roles, the ISO-download mechanism's fragility caveat).
 
 ## Prerequisites
 

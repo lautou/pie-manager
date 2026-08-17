@@ -472,6 +472,42 @@ then falls back to checking whether `wrapper.py` is in the process list via `pgr
 The desktop entry (`Exec=<install-dir>/pie-manager start`) always invokes `pie-manager start`,
 which handles the case where containers have stopped after a reboot.
 
+### Local win11 test VM (`installer/testing/`) — maintenance notes
+
+A local libvirt/QEMU Windows 11 VM (separate from `test-windows-install`'s GitHub-hosted CI
+runner above) is used for hands-on, real-hardware-adjacent testing of the Windows installer —
+UAC prompts, Smart App Control, the native launcher's MSIX install/launch, etc. Built and
+rebuilt via 3 scripts, run in order (see `installer/testing/README.md` for the exact commands):
+
+- **`00-download-win11-iso.py`** — fetches the real, official Windows 11 x64 multi-edition ISO
+  directly from Microsoft's own CDN, replaying the same internal API calls the official
+  download page's own JavaScript makes (session whitelisting via `vlscppe.microsoft.com`, an
+  anti-bot handshake via `ov-df.microsoft.com`, then the software-download-connector API for
+  the real, time-limited download link). Same technique as the well-known open-source tool
+  [Fido](https://github.com/pbatard/Fido), ported to plain Python (stdlib only) because Fido's
+  own command-line mode explicitly refuses to run on non-Windows platforms, even though none
+  of the underlying HTTP calls are Windows-specific. **This is inherently fragile** — it relies
+  on Microsoft's undocumented internal API, which has already changed shape once (an
+  `ov-df.microsoft.com` anti-bot step was added after the flow's simpler original form). If it
+  starts failing, re-derive the current sequence from Fido's own up-to-date source rather than
+  guessing or patching around symptoms — that project is actively maintained specifically to
+  track Microsoft's changes to this flow.
+- **`01-create-vm.sh`** — creates the VM (NOCOW disk, correct CPU model, TPM 2.0, UEFI Secure
+  Boot). Windows Setup itself (driver loading, local-account bypass, guest tools install) is
+  still a manual GUI step as of this writing — automating it via an `autounattend.xml` answer
+  file is tracked in issue #61.
+- **`02-tune-and-snapshot.sh`** — pushes and runs **`tune-guest.ps1`** (the "debloat" script:
+  disables telemetry/Xbox/Widgets services and scheduled tasks, removes bundled AppX bloat,
+  sets the High Performance power plan, adds Windows Defender exclusions for WSL2/Podman
+  paths — NOT the native launcher's own `%USERPROFILE%\PieManager\` path, so it doesn't
+  interfere with any Defender-related testing of that installer's own first-run behavior),
+  then takes a reusable `base-clean-tuned-<date>` snapshot. Untouched by #61's Setup-automation
+  work — it only runs after Setup already completes, regardless of how Setup itself gets there.
+
+Issue #62 (importing a public-cert-only signing certificate into a fresh snapshot) depends on
+#61 landing first — see the backlog-triage reasoning captured for that pairing if picking this
+up (git log / a prior session's notes, not duplicated here).
+
 ## macOS installation architecture
 
 **Apple Silicon (arm64) only — no Intel/amd64 build.** Apple Silicon is now the dominant Mac

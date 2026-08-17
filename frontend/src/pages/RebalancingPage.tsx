@@ -86,6 +86,12 @@ export default function RebalancingPage() {
     }
   };
 
+  useEffect(() => {
+    return () => {
+      if (rebalTimerRef.current) clearTimeout(rebalTimerRef.current);
+    };
+  }, []);
+
   if (dashLoading) {
     return (
       <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>

@@ -18,6 +18,16 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "@vitejs/plugin-react"
         update-types: ["version-update:semver-major"]
+      # PatternFly core/table/icons must move together (v6 icons render broken without
+      # matching v6 core CSS - see #59). Scoped to these 3 named packages, not a
+      # "@patternfly/*" wildcard - @patternfly/react-charts versions independently (already
+      # on v7 while these are on v5) and isn't part of this coupling.
+      - dependency-name: "@patternfly/react-core"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@patternfly/react-table"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@patternfly/react-icons"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "docker"
     directory: "/backend"
@@ -33,6 +43,18 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # PostgreSQL 16->18 needs a real migration plan (mount layout + client bump, see
+      # #58) - not a routine bump. An open-ended "versions" range, not
+      # "update-types: semver-major": Postgres's Docker tags ("16-alpine", "17-alpine")
+      # aren't clean x.y.z semver, and semver-major ignore rules are documented as
+      # unreliable for that tag shape (dependabot-core has open bug reports on exactly
+      # this). Confirmed by the previous per-PR ignore condition on this same dependency
+      # (">= 18.pre.alpine.a, < 19") being a version range too, not a semver-major type -
+      # that closed range only blocked one major version and silently let 17 through
+      # unevaluated (see #86); ">= 17" blocks this and every future major indefinitely.
+      - dependency-name: "postgres"
+        versions: [">= 17"]
 
   - package-ecosystem: "github-actions"
     directory: "/"

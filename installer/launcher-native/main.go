@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"html"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,7 +62,13 @@ const loadingHTMLTpl = `<!DOCTYPE html>
 </body>
 </html>`
 
-const errorHTMLTpl = `<!DOCTYPE html><html><body style="font-family:Segoe UI;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#1a1a2e;color:#e0e0e0;flex-direction:column"><h2>PIE Manager</h2><p style="margin-top:16px;color:#ff6b6b;text-align:center;max-width:600px">{{MESSAGE}}</p></body></html>`
+// A plain <p> with no white-space handling used to be enough when this only ever showed a
+// short one-line message. It now also carries a failed command's full log tail (see
+// postgres.go's runCapturedCommandIn) — a real multi-line Python traceback — so this needs a
+// scrollable, monospace, whitespace-preserving container instead, or that content collapses
+// into one unreadable run-on line (confirmed live: this exact gap is why issue #82's
+// certification failures only ever showed a bare "exit status N" with no way to see why).
+const errorHTMLTpl = `<!DOCTYPE html><html><body style="font-family:Segoe UI;margin:0;background:#1a1a2e;color:#e0e0e0;padding:24px;box-sizing:border-box;height:100vh;overflow:hidden;display:flex;flex-direction:column"><h2 style="flex-shrink:0">PIE Manager</h2><pre style="color:#ff6b6b;white-space:pre-wrap;word-break:break-word;overflow-y:auto;font-family:Consolas,monospace;font-size:13px;margin-top:16px">{{MESSAGE}}</pre></body></html>`
 
 // focusExistingWindow brings the existing PIE Manager window to the foreground.
 // Returns true if a window was found. Identical to installer/launcher/main.go's own
@@ -86,8 +93,13 @@ func setStatus(w webview2.WebView, msg string) {
 }
 
 func showError(w webview2.WebView, message string) {
-	html := strings.Replace(errorHTMLTpl, "{{MESSAGE}}", message, 1)
-	w.Dispatch(func() { w.SetHtml(html) })
+	// Escaped, unlike the loading screen's {{VERSION}}/{{STATUS}} substitutions elsewhere in
+	// this file — those only ever carry this app's own version string or fixed status text,
+	// but this carries a failed command's real log output (see postgres.go's
+	// runCapturedCommandIn), which can contain "<"/">"/"&" (Python type reprs like
+	// "<class '...'>" are common in a traceback) that would otherwise corrupt the HTML.
+	page := strings.Replace(errorHTMLTpl, "{{MESSAGE}}", html.EscapeString(message), 1)
+	w.Dispatch(func() { w.SetHtml(page) })
 }
 
 func main() {

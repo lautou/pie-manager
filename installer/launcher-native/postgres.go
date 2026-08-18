@@ -88,7 +88,6 @@ func runCapturedCommandIn(dir string, extraEnv []string, timeout time.Duration, 
 	if err != nil {
 		return fmt.Errorf("creating log file %s: %w", logPath, err)
 	}
-	defer out.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -100,10 +99,36 @@ func runCapturedCommandIn(dir string, extraEnv []string, timeout time.Duration, 
 	}
 	cmd.Stdout = out
 	cmd.Stderr = out
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s failed (see %s): %w", filepath.Base(exe), logPath, err)
+	runErr := cmd.Run()
+	out.Close()
+	if runErr != nil {
+		// Include the log's own content directly in the returned error, not just its path.
+		// Microsoft Store certification reports never provide log file access (confirmed live,
+		// issue #82: two rejections in a row, neither with a usable "Supporting files" ZIP) —
+		// main.go's on-screen fatal error is the ONLY diagnostic surface a reviewer's own
+		// screenshot can capture, so the real failure needs to already be in that message.
+		return fmt.Errorf("%s failed: %w\n\n%s", filepath.Base(exe), runErr, tailLogFile(logPath, maxErrorLogTail))
 	}
 	return nil
+}
+
+// maxErrorLogTail caps how much of a failed command's log is surfaced in the on-screen error —
+// generous enough for a full Python traceback (typically well under this), small enough to
+// stay readable in a fixed-size window.
+const maxErrorLogTail = 4000
+
+// tailLogFile returns up to maxBytes of logPath's tail, or a placeholder if it can't be read.
+// Reads the file back after the writer has already closed it (see runCapturedCommandIn), so
+// there's no cross-platform concern about reading a still-open file.
+func tailLogFile(logPath string, maxBytes int) string {
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		return fmt.Sprintf("(could not read %s: %v)", logPath, err)
+	}
+	if len(data) > maxBytes {
+		return "...(truncated)...\n" + string(data[len(data)-maxBytes:])
+	}
+	return string(data)
 }
 
 // runInitdb initializes a fresh Postgres data directory. Only ever called when isFirstRun

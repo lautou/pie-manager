@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from croniter import croniter
 
 from app.tasks.pgq_app import (
+    CHECK_GITHUB_UPDATE_CRON,
     COMPUTE_DAILY_SNAPSHOTS_CRON,
     COMPUTE_MONTHLY_SNAPSHOTS_CRON,
     REFRESH_COUNTRY_PERFORMANCE_CRON,
@@ -39,7 +40,15 @@ ALL_CRONS = [
     REFRESH_ETF_HOLDINGS_CRON,
     REFRESH_MACRO_INDICATORS_CRON,
     REFRESH_COUNTRY_PERFORMANCE_CRON,
+    CHECK_GITHUB_UPDATE_CRON,
 ]
+
+
+def test_check_github_update_fires_every_6_hours_utc_no_paris_shift():
+    """Unlike the 5 hour-specific crons above, this one is intentionally NOT Paris-shifted —
+    checking for a new release doesn't depend on wall-clock time of day (see pgq_app.py's
+    module docstring)."""
+    assert CHECK_GITHUB_UPDATE_CRON == "0 */6 * * *"
 
 
 def test_every_cron_expression_is_valid():

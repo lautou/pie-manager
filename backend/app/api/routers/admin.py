@@ -251,6 +251,15 @@ async def get_version():
               → APP_VERSION env var (fallback)
               → "UNKNOWN" (installer did not run or env not injected)
     """
-    import os
-    version = os.getenv("INSTALLER_VERSION") or os.getenv("APP_VERSION") or "UNKNOWN"
-    return {"version": version}
+    from app.tasks.github_update import get_current_version
+    return {"version": get_current_version()}
+
+
+@router.get("/github-update-status")
+async def get_github_update_status(db: AsyncSession = Depends(get_db)):
+    """Compares the running version against the latest GitHub release (issue #113). The
+    actual GitHub API call happens periodically via app/tasks/pgq_app.py's scheduled
+    check_github_update task; this endpoint only reads that cached result and computes the
+    up_to_date/update_available verdict live against the current version."""
+    from app.tasks.github_update import compute_github_update_status
+    return await compute_github_update_status(db)

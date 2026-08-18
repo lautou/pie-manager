@@ -22,6 +22,7 @@ from pgqueuer.ports.repository import EntrypointExecutionParameter
 
 from app.tasks import job_runs
 from app.tasks.pgq_app import (
+    CHECK_GITHUB_UPDATE_CRON,
     COMPUTE_DAILY_SNAPSHOTS_CRON,
     COMPUTE_MONTHLY_SNAPSHOTS_CRON,
     REFRESH_COUNTRY_PERFORMANCE_CRON,
@@ -42,6 +43,7 @@ EXPECTED_SCHEDULE_REGISTRATIONS = {
     ("refresh_etf_holdings", REFRESH_ETF_HOLDINGS_CRON),
     ("refresh_macro_indicators", REFRESH_MACRO_INDICATORS_CRON),
     ("refresh_country_performance", REFRESH_COUNTRY_PERFORMANCE_CRON),
+    ("check_github_update", CHECK_GITHUB_UPDATE_CRON),
 }
 
 EXPECTED_ENTRYPOINTS = {
@@ -262,6 +264,31 @@ async def test_refresh_country_performance_schedule_handler_enqueues_onto_its_en
         await pgq.sm.registry[key].parameters.func(MagicMock())
 
     mock_enqueue.assert_awaited_once_with("refresh_country_performance", payload=b"schedule")
+
+
+@pytest.mark.asyncio
+async def test_check_github_update_schedule_handler_calls_the_real_core():
+    """No entrypoint to enqueue onto (unlike the 5 tasks above) — this schedule calls
+    run_github_update_check directly, matching compute_monthly_snapshots_all_users's shape."""
+    pgq = PgQueuer.in_memory()
+    _register_schedules(pgq)
+    key = next(k for k in pgq.sm.registry if k.entrypoint == "check_github_update")
+    with patch("app.tasks.pgq_app.run_github_update_check", new_callable=AsyncMock) as mock_check:
+        await pgq.sm.registry[key].parameters.func(MagicMock())
+
+    mock_check.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_check_github_update_schedule_handler_logs_and_swallows_errors():
+    """A failed check must never crash the scheduler tick — logged and swallowed, unlike the
+    5 tasks above whose failures are recorded in job_runs instead (not applicable here)."""
+    pgq = PgQueuer.in_memory()
+    _register_schedules(pgq)
+    key = next(k for k in pgq.sm.registry if k.entrypoint == "check_github_update")
+    with patch("app.tasks.pgq_app.run_github_update_check",
+               new_callable=AsyncMock, side_effect=RuntimeError("boom")):
+        await pgq.sm.registry[key].parameters.func(MagicMock())  # must not raise
 
 
 @pytest.mark.asyncio

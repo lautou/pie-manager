@@ -7,6 +7,7 @@ paths:
   - "backend/app/utils/datetime_utils.py"
   - "backend/app/tasks/snapshots.py"
   - "backend/app/tasks/prices.py"
+  - "backend/app/tasks/github_update.py"
   - "backend/app/api/routers/admin.py"
   - "backend/app/main.py"
   - "frontend/src/hooks/useAutoRefresh.ts"
@@ -180,4 +181,23 @@ prevent overlapping runs of the same sync task — separate, not yet implemented
 
 This makes Dashboard/Rebalancing refresh right when a price sync actually completes, instead
 of waiting for the next blind interval tick.
+
+## GitHub release update check (issue #113)
+
+Backend implementation of a feature the frontend had fully built (badge, tests) since before
+this repo's public squash, but had no server-side route at all — confirmed via grep, a
+permanent 404 in production until this was added.
+
+- `app/tasks/github_update.py`'s `check_github_update` PgQueuer schedule (every 6h, no
+  Paris/DST shift — release timing doesn't depend on wall-clock time of day) calls the public,
+  unauthenticated `api.github.com/repos/lautou/pie-manager/releases/latest` and caches
+  `latest_version`/`release_url`/`checked_at`/`error` in `system_settings` (key
+  `github_update.cache`). A failed check never clobbers a previously successful result — only
+  `error`/`checked_at` update, so a transient GitHub hiccup can't regress a working badge.
+- `GET /api/admin/github-update-status` always compares the cached `latest_version` against
+  the **live** current version (never cached) — so the reported status is correct immediately
+  after an app upgrade, not stale until the next 6h tick.
+- No token, no entrypoint (no on-demand trigger site), no `job_runs` row — this is a
+  lightweight internal cache refresh, not a user-visible "sync," and the repo is public so an
+  unauthenticated call is all that's ever needed at this check frequency.
 

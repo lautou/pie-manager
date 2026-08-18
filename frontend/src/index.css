@@ -7,3 +7,64 @@ input[type='number']::-webkit-inner-spin-button {
 input[type='number'] {
   -moz-appearance: textfield;
 }
+
+/* Dark portfolio-switcher FormSelect (sidebar). PatternFly v6's FormSelect wraps the
+   <select> in its own styled container with the dropdown chevron as a separate
+   overlapping sibling — an opaque background on the <select> itself (as opposed to
+   the wrapper) paints over that chevron. Style the wrapper via className instead of
+   inline style on FormSelect, and keep the <select> itself transparent. */
+.pf-v6-c-form-control.portfolio-switcher-select {
+  background-color: #1b1d21;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  color: white;
+}
+.pf-v6-c-form-control.portfolio-switcher-select::before,
+.pf-v6-c-form-control.portfolio-switcher-select::after {
+  border-color: transparent;
+}
+.pf-v6-c-form-control.portfolio-switcher-select select {
+  background-color: transparent;
+  color: white;
+}
+.pf-v6-c-form-control.portfolio-switcher-select .pf-v6-c-form-control__toggle-icon {
+  color: white;
+}
+
+/* Dark sidebar container. v6's PageSidebar defaults to a light gray background
+   (rgb(242,242,242) — confirmed via computed styles), unlike v5's dark default.
+   Nothing else in the ancestor chain up to <html> ever sets a background, so the
+   white/near-white nav link text below was rendering on light gray with no
+   contrast at all until this is set explicitly (the same dark chrome established
+   for Masthead/the portfolio-switcher select above). */
+.pf-v6-c-page__sidebar.dark-sidebar-container {
+  background-color: #1b1d21;
+}
+
+/* Dark sidebar nav. v6's default Nav link color token targets light backgrounds
+   (a subtle gray), and its "current page" indicator is a light pill meant for a
+   light background too — both need overriding to stay legible/consistent against
+   this app's dark sidebar (the same dark chrome established for Masthead/the
+   portfolio-switcher select above). */
+.pf-v6-c-nav.dark-sidebar-nav {
+  --pf-v6-c-nav__link--Color: rgba(255, 255, 255, 0.85);
+  --pf-v6-c-nav__link--hover--Color: #ffffff;
+  --pf-v6-c-nav__link--hover--BackgroundColor: rgba(255, 255, 255, 0.08);
+  --pf-v6-c-nav__link--m-current--Color: #ffffff;
+  --pf-v6-c-nav__link--m-current--BackgroundColor: rgba(255, 255, 255, 0.12);
+  --pf-v6-c-nav__link--m-current--BorderColor: #73bcf7;
+  --pf-v6-c-nav__link-icon--Color: rgba(255, 255, 255, 0.65);
+  --pf-v6-c-nav__link--m-current__link-icon--Color: #ffffff;
+}
+/* These are real <a href> links, not buttons — the browser's own default :visited
+   color (independent of any custom property above, and never revealed accurately
+   via getComputedStyle for privacy reasons) otherwise shows through once a link
+   has been navigated to, washing it out against the dark background. */
+.pf-v6-c-nav.dark-sidebar-nav .pf-v6-c-nav__link:link,
+.pf-v6-c-nav.dark-sidebar-nav .pf-v6-c-nav__link:visited {
+  color: rgba(255, 255, 255, 0.85);
+}
+.pf-v6-c-nav.dark-sidebar-nav .pf-v6-c-nav__link.pf-m-current:link,
+.pf-v6-c-nav.dark-sidebar-nav .pf-v6-c-nav__link.pf-m-current:visited {
+  color: #ffffff;
+}

@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, useNavigate, useParams, useSearchParams, NavLink as RouterNavLink } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams, NavLink as RouterNavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Button,
@@ -87,43 +87,45 @@ import IndicatorsPage from './pages/IndicatorsPage';
 
 function AppNav({ portfolioId }: { portfolioId: string }) {
   const { t } = useTranslation();
+  const location = useLocation();
   const { data: updateStatus } = useGitHubUpdateStatus();
   const hasUpdate = updateStatus?.status === 'update_available';
+  const isPath = (path: string) => location.pathname === path;
 
   return (
-    <Nav>
+    <Nav className="dark-sidebar-nav">
       <NavList>
-        <NavItem>
+        <NavItem isActive={isPath(`/portfolio/${portfolioId}/dashboard`)}>
           <RouterNavLink to={`/portfolio/${portfolioId}/dashboard`}>{t('nav.dashboard')}</RouterNavLink>
         </NavItem>
-        <NavItem>
+        <NavItem isActive={isPath(`/portfolio/${portfolioId}/positions`)}>
           <RouterNavLink to={`/portfolio/${portfolioId}/positions`}>{t('nav.positions')}</RouterNavLink>
         </NavItem>
-        <NavItem>
+        <NavItem isActive={isPath(`/portfolio/${portfolioId}/rebalancing`)}>
           <RouterNavLink to={`/portfolio/${portfolioId}/rebalancing`}>{t('nav.rebalancing')}</RouterNavLink>
         </NavItem>
-        <NavItem>
+        <NavItem isActive={isPath(`/portfolio/${portfolioId}/synthese`)}>
           <RouterNavLink to={`/portfolio/${portfolioId}/synthese`}>{t('nav.accounts')}</RouterNavLink>
         </NavItem>
-        <NavItem>
+        <NavItem isActive={isPath(`/portfolio/${portfolioId}/transactions`)}>
           <RouterNavLink to={`/portfolio/${portfolioId}/transactions`}>{t('nav.transactions')}</RouterNavLink>
         </NavItem>
-        <NavItem>
+        <NavItem isActive={isPath(`/portfolio/${portfolioId}/import`)}>
           <RouterNavLink to={`/portfolio/${portfolioId}/import`}>{t('nav.import')}</RouterNavLink>
         </NavItem>
-        <NavItem>
+        <NavItem isActive={isPath(`/portfolio/${portfolioId}/performance`)}>
           <RouterNavLink to={`/portfolio/${portfolioId}/performance`}>{t('nav.performance')}</RouterNavLink>
         </NavItem>
-        <NavItem>
+        <NavItem isActive={isPath(`/portfolio/${portfolioId}/prices`)}>
           <RouterNavLink to={`/portfolio/${portfolioId}/prices`}>{t('nav.manualPrices')}</RouterNavLink>
         </NavItem>
-        <NavItem>
+        <NavItem isActive={isPath(`/portfolio/${portfolioId}/pv`)}>
           <RouterNavLink to={`/portfolio/${portfolioId}/pv`}>{t('nav.capitalGains')}</RouterNavLink>
         </NavItem>
-        <NavItem>
+        <NavItem isActive={isPath(`/portfolio/${portfolioId}/fiscalite`)}>
           <RouterNavLink to={`/portfolio/${portfolioId}/fiscalite`}>{t('nav.taxation')}</RouterNavLink>
         </NavItem>
-        <NavItem>
+        <NavItem isActive={isPath(`/portfolio/${portfolioId}/admin`)}>
           <RouterNavLink to={`/portfolio/${portfolioId}/admin`}>{t('nav.portfolioConfig')}</RouterNavLink>
         </NavItem>
 
@@ -140,13 +142,13 @@ function AppNav({ portfolioId }: { portfolioId: string }) {
           }}>{t('nav.global')}</span>
         </li>
 
-        <NavItem>
+        <NavItem isActive={isPath('/config')}>
           <RouterNavLink to={`/config?from=${portfolioId}`}>{t('nav.globalConfig')}</RouterNavLink>
         </NavItem>
-        <NavItem>
+        <NavItem isActive={isPath('/indicators')}>
           <RouterNavLink to={`/indicators?from=${portfolioId}`}>{t('nav.indicators')}</RouterNavLink>
         </NavItem>
-        <NavItem>
+        <NavItem isActive={isPath('/system')}>
           <RouterNavLink to={`/system?from=${portfolioId}`}>
             {t('nav.systemAdmin')}
             {hasUpdate && (
@@ -203,7 +205,7 @@ function PortfolioLayout({ children }: { children: React.ReactNode }) {
     <Page
       masthead={masthead}
       sidebar={
-        <PageSidebar isSidebarOpen={isSidebarOpen}>
+        <PageSidebar isSidebarOpen={isSidebarOpen} className="dark-sidebar-container">
           <PageSidebarBody>
             {/* Portfolio switcher at top of sidebar */}
             <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.15)' }}>
@@ -214,7 +216,7 @@ function PortfolioLayout({ children }: { children: React.ReactNode }) {
                 value={portfolioId}
                 onChange={(_e, val) => val !== portfolioId && navigate(`/portfolio/${val}/dashboard`)}
                 aria-label="Changer de portefeuille"
-                style={{ background: '#1b1d21', color: 'white', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 4, width: '100%' }}
+                className="portfolio-switcher-select"
               >
                 {allPortfolios.map(p => (
                   <FormSelectOption key={p.id} value={String(p.id)} label={p.name}

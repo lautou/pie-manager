@@ -23,6 +23,7 @@ vi.mock('react-router-dom', () => ({
   Route: ({ element }: any) => element ?? null,
   Navigate: ({ to }: any) => <div data-testid="navigate" data-to={to} />,
   useParams: () => ({ portfolioId: '1' }),
+  useLocation: () => ({ pathname: '/portfolio/1/dashboard' }),
   useNavigate: () => mockNavigate,
   useSearchParams: (...args: any[]) => mockUseSearchParams(...args),
   NavLink: ({ children, to }: any) => <a href={to}>{children}</a>,

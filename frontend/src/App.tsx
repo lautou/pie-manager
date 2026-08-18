@@ -189,6 +189,7 @@ function PortfolioLayout({ children }: { children: React.ReactNode }) {
             onClick={() => setIsSidebarOpen((o) => !o)}
             aria-label="Toggle sidebar"
             icon={<BarsIcon />}
+            style={{ color: 'white' }}
           />
         </MastheadToggle>
         <MastheadBrand><MastheadLogo style={{ color: 'white', fontWeight: 'bold', fontSize: '1.2rem' }}>

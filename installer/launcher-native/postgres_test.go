@@ -125,6 +125,27 @@ func TestRunCapturedCommand_NonZeroExit(t *testing.T) {
 	}
 }
 
+// TestRunCapturedCommand_ErrorIncludesLogContent guards against issue #82's second
+// certification failure: a bare "python.exe failed (see alembic.log): exit status 1" told the
+// on-screen error nothing, and Microsoft Store certification never provides log file access —
+// the real failure has to already be inside the returned error, not just its log path.
+func TestRunCapturedCommand_ErrorIncludesLogContent(t *testing.T) {
+	shExe := "/bin/sh"
+	if _, err := os.Stat(shExe); err != nil {
+		t.Skip("/bin/sh not available on this platform")
+	}
+	home := t.TempDir()
+	logPath := filepath.Join(home, "logs", "test.log")
+
+	err := runCapturedCommand(shExe, logPath, "-c", "echo boom-diagnostic-marker; exit 1")
+	if err == nil {
+		t.Fatal("expected an error for a non-zero exit command")
+	}
+	if !strings.Contains(err.Error(), "boom-diagnostic-marker") {
+		t.Errorf("expected the returned error to include the command's own log output, got %q", err.Error())
+	}
+}
+
 func TestRunCapturedCommand_MissingExecutable(t *testing.T) {
 	home := t.TempDir()
 	logPath := filepath.Join(home, "logs", "test.log")
@@ -213,5 +234,40 @@ func TestRunCapturedCommand_ErrorWhenLogDirBlockedByFile(t *testing.T) {
 
 	if err := runCapturedCommand("/bin/echo", logPath, "hi"); err == nil {
 		t.Error("expected an error when the log directory path is blocked by an existing file")
+	}
+}
+
+func TestTailLogFile_ReturnsFullContentWhenUnderLimit(t *testing.T) {
+	home := t.TempDir()
+	logPath := filepath.Join(home, "test.log")
+	if err := os.WriteFile(logPath, []byte("short content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := tailLogFile(logPath, 4000)
+	if got != "short content" {
+		t.Errorf("tailLogFile() = %q, want %q", got, "short content")
+	}
+}
+
+func TestTailLogFile_TruncatesOversizedContent(t *testing.T) {
+	home := t.TempDir()
+	logPath := filepath.Join(home, "test.log")
+	content := strings.Repeat("a", 100) + "TAIL_MARKER"
+	if err := os.WriteFile(logPath, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := tailLogFile(logPath, 20)
+	if !strings.HasPrefix(got, "...(truncated)...\n") {
+		t.Errorf("expected truncated output to start with the truncation marker, got %q", got)
+	}
+	if !strings.HasSuffix(got, "TAIL_MARKER") {
+		t.Errorf("expected truncated output to keep the tail end of the content, got %q", got)
+	}
+}
+
+func TestTailLogFile_MissingFile(t *testing.T) {
+	got := tailLogFile("/does/not/exist.log", 100)
+	if !strings.Contains(got, "could not read") {
+		t.Errorf("expected a placeholder message for a missing file, got %q", got)
 	}
 }

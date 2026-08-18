@@ -69,6 +69,7 @@ no containers).
 | refresh_etf_holdings                 | hour=6, minute=0, day_of_week="0"   | 0 4 * * 0              |
 | refresh_macro_indicators             | hour=7, minute=0                    | 0 5 * * *              |
 | refresh_country_performance          | hour=7, minute=15                   | 15 5 * * *             |
+| check_github_update (issue #113, no Celery equivalent) | —                  | 0 */6 * * *            |
 
 PgQueuer's `SchedulerManager` computes cron next-run times by seeding `croniter` with
 `datetime.now(timezone.utc)` (confirmed from `pgqueuer/core/executors.py`) — cron hour/minute
@@ -77,6 +78,16 @@ hour-specific expressions above are hand-shifted for Europe/Paris's current CEST
 (UTC+2); during CET (UTC+1, roughly late Oct-late Mar) these fire 1 hour earlier than the
 intended Paris wall-clock time. Accepted, documented drift — not worth dynamic DST-aware
 scheduling for a personal single-user app.
+
+A 7th schedule, `check_github_update` (issue #113), is registered below too — unrelated to
+issue #66's Celery migration above, so it's not part of the "6 registered tasks" framing this
+docstring otherwise uses. It has no matching entrypoint (no on-demand trigger site exists) and
+doesn't go through `_run_tracked`/`job_runs` — that machinery exists for user-visible "last
+sync" status on real data-refresh tasks, which doesn't apply to this internal update-check
+cache. Its own core (`app.tasks.github_update.run_github_update_check`) catches and logs its
+own exceptions, so the schedule handler here doesn't need `_run_tracked`'s try/except either.
+Hour-agnostic and not Paris-shifted like the table above — checking for a new release doesn't
+depend on wall-clock time of day.
 """
 
 import json
@@ -92,6 +103,7 @@ from app.core.pgq import asyncpg_dsn as _asyncpg_dsn
 from app.tasks import job_runs
 from app.tasks.country_performance import _run_country_performance_refresh
 from app.tasks.etf_holdings import _run_etf_holdings_refresh
+from app.tasks.github_update import run_github_update_check
 from app.tasks.macro_indicators import _run_macro_indicators_refresh
 from app.tasks.prices import _run_price_refresh
 from app.tasks.snapshots import (
@@ -109,6 +121,7 @@ COMPUTE_MONTHLY_SNAPSHOTS_CRON = "0 6 1 * *"
 REFRESH_ETF_HOLDINGS_CRON = "0 4 * * 0"
 REFRESH_MACRO_INDICATORS_CRON = "0 5 * * *"
 REFRESH_COUNTRY_PERFORMANCE_CRON = "15 5 * * *"
+CHECK_GITHUB_UPDATE_CRON = "0 */6 * * *"
 
 _VALID_ENTRYPOINT_TRIGGERS = {"on_demand", "startup", "schedule"}
 
@@ -178,6 +191,13 @@ def _register_schedules(pgq: PgQueuer) -> None:
     @pgq.schedule("refresh_country_performance", REFRESH_COUNTRY_PERFORMANCE_CRON)
     async def _refresh_country_performance_schedule(schedule: Schedule) -> None:
         await pgq.queries.enqueue("refresh_country_performance", payload=b"schedule")
+
+    @pgq.schedule("check_github_update", CHECK_GITHUB_UPDATE_CRON)
+    async def _check_github_update_schedule(schedule: Schedule) -> None:
+        try:
+            await run_github_update_check()
+        except Exception:
+            logger.exception("pgq task failed: check_github_update")
 
 
 def _register_entrypoints(pgq: PgQueuer) -> None:

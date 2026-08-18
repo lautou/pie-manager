@@ -554,6 +554,62 @@ async def test_version_endpoint_from_app_version_fallback():
 
 
 # ---------------------------------------------------------------------------
+# GitHub update status — GET /api/admin/github-update-status (issue #113)
+# ---------------------------------------------------------------------------
+# Router-wiring-level checks only — compute_github_update_status's own branches (never/
+# error/up_to_date/update_available) are exhaustively unit-tested in test_github_update.py.
+
+@pytest.mark.asyncio
+async def test_github_update_status_endpoint_never_checked():
+    from app.core.database import get_db
+
+    mock_db = _make_async_db(scalar_return=None)
+
+    async def override_get_db():
+        yield mock_db
+
+    fastapi_app.dependency_overrides[get_db] = override_get_db
+    try:
+        with patch.dict("os.environ", {"APP_VERSION": "1.4.6"}):
+            async with _client() as client:
+                r = await client.get("/api/admin/github-update-status")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["status"] == "never"
+        assert body["current_version"] == "1.4.6"
+    finally:
+        fastapi_app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.mark.asyncio
+async def test_github_update_status_endpoint_update_available():
+    from app.core.database import get_db
+    from app.models.system_setting import SystemSetting
+    from app.tasks.github_update import CACHE_KEY
+
+    cached = {"latest_version": "1.4.6", "release_url": "https://github.com/x/releases/tag/v1.4.6",
+              "checked_at": "2026-08-18T00:00:00+00:00", "error": None}
+    setting = SystemSetting(key=CACHE_KEY, value=json.dumps(cached))
+    mock_db = _make_async_db(scalar_return=setting)
+
+    async def override_get_db():
+        yield mock_db
+
+    fastapi_app.dependency_overrides[get_db] = override_get_db
+    try:
+        with patch.dict("os.environ", {"APP_VERSION": "1.4.2"}):
+            async with _client() as client:
+                r = await client.get("/api/admin/github-update-status")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["status"] == "update_available"
+        assert body["latest_version"] == "1.4.6"
+        assert body["release_url"] == "https://github.com/x/releases/tag/v1.4.6"
+    finally:
+        fastapi_app.dependency_overrides.pop(get_db, None)
+
+
+# ---------------------------------------------------------------------------
 # Health — GET /api/admin/health
 # ---------------------------------------------------------------------------
 

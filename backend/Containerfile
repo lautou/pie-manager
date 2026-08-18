@@ -2,9 +2,11 @@ FROM python:3.14-slim@sha256:ce40764625a4ff50df3548277632e7f96c4e77fe75fa848aae9
 
 WORKDIR /app
 
-# Install pg_dump/pg_restore matching the server version (PostgreSQL 16).
-# Using a mismatched client version (e.g. pg17 on a pg16 server) creates dumps
-# that the server's own pg_restore cannot read, breaking manual CLI restores.
+# Install pg_dump/pg_restore matching the server version (PostgreSQL 18).
+# Using a mismatched client version (e.g. an older client than the server) creates dumps
+# that the server's own pg_restore cannot read, breaking manual CLI restores — and worse,
+# an OLDER client outright refuses to dump a NEWER server at all ("aborting because of
+# server version mismatch") — see issue #58.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
     && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
@@ -13,7 +15,7 @@ RUN apt-get update \
        https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo $VERSION_CODENAME)-pgdg main" \
        > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends build-essential postgresql-client-16 \
+    && apt-get install -y --no-install-recommends build-essential postgresql-client-18 \
     && rm -rf /var/lib/apt/lists/*
 
 # Installed into an isolated prefix (not the image's own site-packages) so the
@@ -27,10 +29,10 @@ RUN pip install --no-cache-dir --root-user-action=ignore --prefix=/install -r re
 # (via ldd, not a hand-maintained .so list) into a clean tree mirroring their
 # real absolute paths, so the runtime stage below can reconstruct them with a
 # single COPY --from without needing apt/curl/gnupg/the pgdg repo at all.
-RUN mkdir -p /pg-runtime/usr/lib/postgresql/16/bin \
-    && cp /usr/lib/postgresql/16/bin/pg_dump /usr/lib/postgresql/16/bin/pg_restore \
-       /pg-runtime/usr/lib/postgresql/16/bin/ \
-    && for f in /usr/lib/postgresql/16/bin/pg_dump /usr/lib/postgresql/16/bin/pg_restore; do ldd "$f"; done \
+RUN mkdir -p /pg-runtime/usr/lib/postgresql/18/bin \
+    && cp /usr/lib/postgresql/18/bin/pg_dump /usr/lib/postgresql/18/bin/pg_restore \
+       /pg-runtime/usr/lib/postgresql/18/bin/ \
+    && for f in /usr/lib/postgresql/18/bin/pg_dump /usr/lib/postgresql/18/bin/pg_restore; do ldd "$f"; done \
        | awk '{print $3 ? $3 : $1}' \
        | grep '^/' \
        | sort -u \
@@ -63,7 +65,7 @@ RUN python -m pip uninstall -y pip setuptools wheel
 
 COPY --from=builder /install /usr/local
 COPY --from=builder /pg-runtime/ /
-ENV PATH="/usr/lib/postgresql/16/bin:${PATH}"
+ENV PATH="/usr/lib/postgresql/18/bin:${PATH}"
 
 # Non-root user (#17): uvicorn/pgq (this same image serves both the `backend` and
 # `pgq-worker` compose services) have no reason to run as root at runtime — this also

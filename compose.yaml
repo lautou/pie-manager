@@ -1,10 +1,16 @@
 services:
   postgres:
-    image: docker.io/library/postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    image: docker.io/library/postgres:18-alpine@sha256:63bdc97d67b5133bf0e5ebd500bec6d046fa851dc81340d838f0347e616107e8
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-pie}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pie_password}
       POSTGRES_DB: ${POSTGRES_DB:-pie_db}
+      # PostgreSQL 18's official image defaults PGDATA to a version-scoped subdirectory
+      # under a new /var/lib/postgresql VOLUME (issue #58) — pinning it back to the pre-18
+      # single-directory convention avoids restructuring every existing data volume.
+      # Verified empirically: postgres:18-alpine starts cleanly on a fresh volume mounted
+      # exactly like this, and a real dump/restore round-trip preserved all data.
+      PGDATA: /var/lib/postgresql/data
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:

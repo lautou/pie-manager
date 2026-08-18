@@ -150,7 +150,7 @@ rm -f ~/Library/LaunchAgents/com.pie-manager.podman-start.plist
 |--------|-------------|
 | Frontend | React 18 + TypeScript + PatternFly 5 |
 | Backend | Python FastAPI + SQLAlchemy 2.0 async + PgQueuer |
-| Base de données | PostgreSQL 16 |
+| Base de données | PostgreSQL 18 |
 | Déploiement | Podman Compose + HAProxy |
 | Installateur | Go (binaire statique, aucun prérequis) |
 

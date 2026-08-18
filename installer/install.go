@@ -45,6 +45,26 @@ func runInstall() {
 
 	existingVersion := readInstalledVersion(target)
 	if existingVersion != "" && existingVersion != Version {
+		if volumeName := pgDataVolumeName(); volumeName != "" {
+			existingPGMajor := pgVersionMajor(volumeName)
+			targetPGMajor := composePostgresMajor(composeProd)
+			if postgresMajorMismatch(existingPGMajor, targetPGMajor) {
+				fmt.Printf("\n✗ PostgreSQL major version mismatch: your data is on PostgreSQL %s, "+
+					"but PIE Manager %s requires PostgreSQL %s.\n", existingPGMajor, Version, targetPGMajor)
+				fmt.Println("  A direct upgrade is not possible — PostgreSQL major versions are not")
+				fmt.Println("  binary-compatible, and the new database container would simply refuse")
+				fmt.Println("  to start against your existing data. Nothing has been changed.")
+				fmt.Println("\n  Manual migration required:")
+				fmt.Printf("    1. If PIE Manager %s is still running, open it now and go to\n", existingVersion)
+				fmt.Println("       Administration système → Télécharger une sauvegarde. Keep the file safe.")
+				fmt.Println("    2. Stop PIE Manager, then remove the old database:")
+				fmt.Printf("         podman volume rm %s\n", volumeName)
+				fmt.Printf("    3. Re-run this installer — it will start fresh on PostgreSQL %s.\n", targetPGMajor)
+				fmt.Println("    4. Once running, go to Administration système → Restaurer une sauvegarde")
+				fmt.Println("       and select the file you downloaded in step 1.")
+				os.Exit(1)
+			}
+		}
 		fmt.Printf("Updating: %s → %s\n\n", existingVersion, Version)
 		fmt.Println("⚠  Backup recommended before upgrading.")
 		fmt.Println("   Open PIE Manager → Administration système → Télécharger une sauvegarde")
@@ -61,7 +81,7 @@ func runInstall() {
 	images := []string{
 		"quay.io/ltourreau/pie-manager-backend:" + Version,
 		"quay.io/ltourreau/pie-manager-frontend:" + Version,
-		"docker.io/library/postgres:16-alpine",
+		"docker.io/library/postgres:18-alpine",
 		"docker.io/library/haproxy:alpine",
 	}
 	for _, img := range images {

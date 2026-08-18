@@ -237,6 +237,64 @@ func extractZipEntryBySuffix(zipPath, suffix, dest string) error {
 	return fmt.Errorf("no entry ending in %q found in %s", suffix, zipPath)
 }
 
+// pgDataVolumeName finds the app's Postgres data volume by suffix rather than
+// reconstructing podman-compose's project-name-derivation algorithm from the install
+// directory's basename — that algorithm differs subtly between podman-compose and podman's
+// own native `compose` subcommand, and this project has never needed to reproduce it until
+// now (see issue #58). In practice exactly one local volume ends in "_postgres_data" per
+// install. Returns "" if no such volume exists yet (fresh install).
+func pgDataVolumeName() string {
+	out, err := exec.Command("podman", "volume", "ls", "--format", "{{.Name}}").Output()
+	if err != nil {
+		return ""
+	}
+	for _, name := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if strings.HasSuffix(name, "_postgres_data") {
+			return name
+		}
+	}
+	return ""
+}
+
+// pgVersionMajor reads the PG_VERSION file from a named Postgres data volume via a
+// throwaway alpine reader — it never starts postgres itself, so this is safe to call
+// before deciding whether starting a newer major version against the volume is even safe
+// (issue #58). Every Postgres data directory contains this plain-text major-version marker
+// regardless of major version. Returns "" if the volume can't be read for any reason;
+// callers treat that as "nothing to compare against," never as a hard error.
+func pgVersionMajor(volumeName string) string {
+	out, err := exec.Command("podman", "run", "--rm",
+		"-v", volumeName+":/mnt:ro",
+		"docker.io/library/alpine", "cat", "/mnt/PG_VERSION").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// composePostgresMajor extracts the target Postgres major version from an embedded
+// compose-prod.yaml's image tag (e.g. "postgres:18-alpine" -> "18"), parsed directly rather
+// than hardcoded as a separate constant so it can never drift from what's actually
+// embedded.
+func composePostgresMajor(compose []byte) string {
+	m := regexp.MustCompile(`docker\.io/library/postgres:(\d+)-alpine`).FindSubmatch(compose)
+	if m == nil {
+		return ""
+	}
+	return string(m[1])
+}
+
+// postgresMajorMismatch reports whether an existing data volume's Postgres major version
+// differs from the version a new compose file is about to start. PostgreSQL major versions
+// are not binary-compatible — starting a newer major against an older on-disk format
+// crashes the container outright rather than failing gracefully, so this must be checked
+// BEFORE any image pull or forceRecreate, not discovered from a crash loop afterward (issue
+// #58). "" on either side (nothing detected, e.g. a fresh install with no existing volume)
+// never counts as a mismatch.
+func postgresMajorMismatch(existing, target string) bool {
+	return existing != "" && target != "" && existing != target
+}
+
 // isAppxAlreadyNewerError reports whether an Add-AppxPackage failure message
 // indicates the package is already satisfied by an equal-or-newer version
 // already installed (HRESULT 0x80073D06) — a benign outcome, not a real

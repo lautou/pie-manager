@@ -301,7 +301,7 @@ L'option `--volumes` supprime également les volumes de données (base de donné
 ```bash
 podman rmi quay.io/ltourreau/pie-manager-backend:latest
 podman rmi quay.io/ltourreau/pie-manager-frontend:latest
-podman rmi postgres:16-alpine haproxy:alpine
+podman rmi postgres:18-alpine haproxy:alpine
 ```
 
 ### Supprimer les fichiers installés

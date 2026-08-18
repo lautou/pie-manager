@@ -66,7 +66,9 @@ and rejected too — `compose-prod.yaml`/the installer always pin the exact vers
 `publish-images.yml`'s `smoke-test-backend` job (`needs: publish`, `continue-on-error: true` —
 same progressive-hardening pattern as `test-windows-install`/`test-linux-install`) runs a real
 `pg_dump`/`pg_restore` round-trip against the just-published backend image: starts a real
-`postgres:16-alpine` GitHub Actions service, runs the image via
+`postgres:18-alpine` GitHub Actions service (no volume mount at all — a GitHub Actions service
+container uses its own ephemeral storage, so the PGDATA/mount-layout fix documented in the
+root `CLAUDE.md`'s "Database backup" section doesn't apply here), runs the image via
 `podman run --network host` (so `localhost:5432` inside the container reaches the
 service's host-published port) with the same `alembic upgrade head && uvicorn ...` command as
 `compose-prod.yaml`, waits for `/api/admin/health`, seeds one portfolio, downloads
@@ -642,6 +644,16 @@ behavior, so `install_darwin.go`/`start_darwin.go` reuse them directly instead o
 them, the same way `main_windows.go` does *not* reuse them (Windows's flow genuinely differs
 enough — WSL2, winget, reboot handling — that duplication there is warranted; macOS's flow is
 close enough to Linux's that sharing is the better call).
+
+**PostgreSQL major-version mismatch guard (issue #58), Linux + macOS only.** Before
+`runInstall` pulls any new image on an upgrade, it checks whether the existing data volume's
+Postgres major version differs from the one the new `compose-prod.yaml` is about to start —
+see the root `CLAUDE.md`'s "Database backup" section for the full mechanism and why this
+exists. Not added to `main_windows.go`: its upgrade flow has no equivalent
+existing-version-detection logic to hook this into at all (unlike Linux/macOS, which already
+had the near-identical `existingVersion`/backup-reminder block this guard extends), and that
+whole WSL2/Podman install path is slated for full replacement by the native launcher (#84) —
+not worth building parallel detection logic for a path being retired.
 
 ## Full install-flow CI testing (all 3 platforms)
 

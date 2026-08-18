@@ -8,6 +8,19 @@ input[type='number'] {
   -moz-appearance: textfield;
 }
 
+/* Masthead sidebar-toggle icon. A plain Button's icon color comes from the
+   --pf-v6-c-button__icon--Color custom property set directly on the icon's own
+   span (#151515 by default), not an inherited `color` — a plain `style={{ color:
+   'white' }}` on the Button has no effect since that's a different, non-inherited
+   declaration on a child element. Override the variable itself instead. Needs the
+   compound .pf-m-plain selector for higher specificity than PatternFly's own
+   .pf-v6-c-button.pf-m-plain rule — Vite's CSS bundling doesn't guarantee this
+   stylesheet loads after PatternFly's, so equal specificity isn't enough (same
+   gotcha as the portfolio-switcher-select fix below). */
+.pf-v6-c-button.pf-m-plain.sidebar-toggle-button {
+  --pf-v6-c-button__icon--Color: white;
+}
+
 /* Dark portfolio-switcher FormSelect (sidebar). PatternFly v6's FormSelect wraps the
    <select> in its own styled container with the dropdown chevron as a separate
    overlapping sibling — an opaque background on the <select> itself (as opposed to

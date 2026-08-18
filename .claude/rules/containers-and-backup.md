@@ -108,7 +108,7 @@ must be bumped to the same digest together** on a future base-image update.
 
 ```
 compose.yaml
-├── postgres (PostgreSQL 16)
+├── postgres (PostgreSQL 18)
 ├── backend (FastAPI)
 ├── pgq-worker (PgQueuer, `pgq run app.tasks.pgq_app:main`)
 └── frontend (Vite dev server, port 5173)
@@ -118,7 +118,7 @@ compose.yaml
 
 ```
 compose-prod.yaml
-├── postgres (PostgreSQL 16)             restart: unless-stopped
+├── postgres (PostgreSQL 18)             restart: unless-stopped
 ├── backend (FastAPI)                    restart: unless-stopped, no exposed ports
 ├── pgq-worker (PgQueuer)                restart: unless-stopped
 ├── frontend (Vite dev server)           restart: unless-stopped, no exposed ports
@@ -147,22 +147,63 @@ The `.env` file also holds `APP_VERSION=<n>`. Both variables are consumed by `co
 - Endpoint `POST /api/admin/restore` → `pg_restore --clean --if-exists --no-owner --no-privileges`
   — deliberately **no** `--single-transaction`: it would fail the whole restore on a
   non-critical `transaction_timeout` error emitted by dumps taken with a pg_dump newer than
-  PostgreSQL 16 (a documented pg_restore quirk, not something to "fix" by adding the flag back)
+  the target server (a documented pg_restore quirk, not something to "fix" by adding the flag back)
 - Format `.dump` (custom binary pg_dump, compressed)
-- `backend/Containerfile` pins `postgresql-client-16` to match the server (PostgreSQL 16) — a
-  mismatched client version produces dumps the server's own pg_restore can't read
+- `backend/Containerfile` pins `postgresql-client-18` to match the server (PostgreSQL 18) — a
+  mismatched client version produces dumps the server's own pg_restore can't read, and an
+  OLDER client outright refuses to dump a NEWER server at all
 
-**A PostgreSQL major-version bump (e.g. 16→18) is not a simple image-tag swap — do not merge
-one via Dependabot without a real migration plan (tracked in #58).** Confirmed live: `postgres:18-alpine`'s
-official image changed its volume mount convention (a single mount at `/var/lib/postgresql`
-with a version-scoped subdirectory, instead of today's direct mount at
-`/var/lib/postgresql/data`) — it refuses to even start on a **fresh, empty** volume under the
-current `compose.yaml`/`compose-prod.yaml` mount layout, let alone an existing data volume.
-A v16 `pg_dump` client also flatly refuses to dump a v18 server (`aborting because of server
-version mismatch`), so the pinned client above must be bumped in lockstep. A dump/restore
-migration path (matching-version dump, then restore into a fresh volume under the new mount
-layout with a matching-or-newer client) was verified to work end-to-end on a throwaway volume
-— but treat any future postgres major bump as its own migration project (compose changes +
-client bump + a tested, documented upgrade path for existing installs, including real
-end-users of the published installer), never a routine dependency bump.
+## PostgreSQL major-version bumps (16→18 done in #58 — template for any future bump)
+
+**A PostgreSQL major-version bump is never a simple image-tag swap — never merge one via
+Dependabot without redoing this whole exercise** (the `.github/dependabot.yml` `postgres`
+ignore rule blocks the next major version specifically so this can't happen by accident).
+Three independent problems, confirmed empirically (not just from docs) during #58, each
+needing its own fix:
+
+1. **Mount/PGDATA convention change.** `postgres:18-alpine`'s official image defaults
+   `PGDATA` to a version-scoped subdirectory (`/var/lib/postgresql/18/docker`) under a new
+   `/var/lib/postgresql` `VOLUME` — it refuses to start on a **fresh, empty** volume mounted
+   the old way (`/var/lib/postgresql/data` directly), let alone an existing data volume. **Fix
+   verified empirically, not just read from docs:** pinning `PGDATA: /var/lib/postgresql/data`
+   explicitly in both compose files (a plain Postgres env var, honored regardless of the
+   image's own new default) lets `postgres:18-alpine` start cleanly under the *exact same*
+   mount layout `compose.yaml`/`compose-prod.yaml` already used for 16 — no volume
+   restructuring needed at all. This trades away the new layout's own benefit (enabling
+   `pg_upgrade --link` for a near-instant *future* major bump) in exchange for a much simpler
+   *this* bump — a deliberate choice for a personal single-user app, revisit if that trade-off
+   ever stops making sense.
+2. **Client compatibility.** An older `pg_dump`/`pg_restore` client flatly refuses to touch a
+   newer server (`aborting because of server version mismatch` — a hard PostgreSQL rule, not
+   a bug) — `backend/Containerfile`'s pinned `postgresql-client-16` → `postgresql-client-18`
+   bump above must happen in lockstep with the server bump, never independently.
+3. **Existing installs.** Even with (1) fixed, a v18 binary still cannot read v16's on-disk
+   catalog format — some data migration is mandatory. **`installer/common.go`'s
+   `pgDataVolumeName`/`pgVersionMajor`/`composePostgresMajor`/`postgresMajorMismatch`
+   implement a hard-stop guard**, wired into `install.go`/`install_darwin.go`'s upgrade path
+   (Linux/macOS only — Windows's legacy WSL2/Podman installer has no equivalent
+   existing-version-detection logic to hook into, and is slated for full replacement by the
+   native launcher, #84): before pulling any new image, it reads the existing volume's
+   `PG_VERSION` file (found via `podman volume ls`, matched by a `_postgres_data` suffix —
+   deliberately NOT reconstructing podman-compose's project-name-derivation algorithm from
+   the install directory's basename, which differs across platforms/compose implementations
+   and this project has never needed to pin down) via a throwaway read-only `alpine` reader
+   that never starts postgres itself, and compares it against the target major version parsed
+   directly out of the embedded `compose-prod.yaml`'s image tag. On a real mismatch, it prints
+   step-by-step manual migration instructions (back up via the still-running old version's
+   Administration système page, remove the old volume, re-run the installer fresh, restore)
+   and exits **before** touching anything — never a blind image swap that would otherwise
+   crash the new postgres container against old-format data with no warning.
+
+**A full dump/restore round-trip was verified end-to-end with real production data** (not
+just an empty schema): restore a real backup into a throwaway v16 container, `pg_dump` with
+the v16 client, `pg_restore` into a throwaway v18 container (with the `PGDATA` fix) using the
+v18 client bundled in `postgres:18-alpine` itself, then ran the real FastAPI backend directly
+against the restored v18 database and confirmed the dashboard/transactions/portfolios
+endpoints all computed correct figures from the real, restored data — not just that row
+counts matched.
+
+Treat any future postgres major bump (19+) as its own project repeating this same exercise
+(mount/PGDATA compatibility check, client bump, installer guard re-verification, a real
+dump/restore test against production-shaped data), never a routine dependency bump.
 

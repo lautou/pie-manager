@@ -25,17 +25,22 @@ updates:
     schedule:
       interval: "weekly"
     ignore:
-      # PostgreSQL 16->18 needs a real migration plan (mount layout + client bump, see
-      # #58) - not a routine bump. An open-ended "versions" range, not
-      # "update-types: semver-major": Postgres's Docker tags ("16-alpine", "17-alpine")
+      # PostgreSQL 16->18 was done as a real migration project (#58): PGDATA pinned to the
+      # pre-18 single-directory convention (avoids restructuring existing data volumes),
+      # client bumped in lockstep, an installer guard added to hard-stop and give manual
+      # migration instructions on a detected major-version mismatch, and a real dump/restore
+      # round-trip verified end-to-end against production data. Any FUTURE postgres major
+      # bump (19+) needs the same treatment, not a routine dependency bump — this ignore
+      # rule now blocks 19 onward instead of 17 onward. An open-ended "versions" range, not
+      # "update-types: semver-major": Postgres's Docker tags ("18-alpine", "19-alpine")
       # aren't clean x.y.z semver, and semver-major ignore rules are documented as
       # unreliable for that tag shape (dependabot-core has open bug reports on exactly
-      # this). Confirmed by the previous per-PR ignore condition on this same dependency
+      # this). Confirmed by an earlier per-PR ignore condition on this same dependency
       # (">= 18.pre.alpine.a, < 19") being a version range too, not a semver-major type -
       # that closed range only blocked one major version and silently let 17 through
-      # unevaluated (see #86); ">= 17" blocks this and every future major indefinitely.
+      # unevaluated (see #86) - an open-ended ">= N" avoids repeating that mistake.
       - dependency-name: "postgres"
-        versions: [">= 17"]
+        versions: [">= 19"]
 
   - package-ecosystem: "github-actions"
     directory: "/"

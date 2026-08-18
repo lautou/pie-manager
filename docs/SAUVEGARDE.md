@@ -10,6 +10,7 @@
 6. [Sauvegarde de la machine Podman — macOS](#6-sauvegarde-de-la-machine-podman--macos)
 7. [Restauration depuis l'interface](#7-restauration-depuis-linterface)
 8. [Restauration manuelle en ligne de commande](#8-restauration-manuelle-en-ligne-de-commande)
+9. [Migration entre versions majeures de PostgreSQL](#9-migration-entre-versions-majeures-de-postgresql)
 
 ---
 
@@ -48,7 +49,7 @@ Voir les sections [Sauvegarde de la machine Podman — Windows](#5-sauvegarde-de
 
 ## 2. Où sont stockées les données
 
-Toutes les données de PIE Manager sont dans la base de données PostgreSQL 16, stockée dans le volume Podman `pie-manager_postgres_data`.
+Toutes les données de PIE Manager sont dans la base de données PostgreSQL 18, stockée dans le volume Podman `pie-manager_postgres_data`.
 
 Ce volume est géré par Podman et persiste indépendamment du cycle de vie des containers :
 
@@ -114,7 +115,7 @@ podman cp pie-manager_backend_1:/tmp/backup.dump \
   ~/Downloads/pie-backup-$(date +%Y-%m-%d).dump
 ```
 
-> Note : utiliser le container **backend** (qui dispose de `pg_dump` v16) et non le container postgres directement.
+> Note : utiliser le container **backend** (qui dispose de `pg_dump` v18) et non le container postgres directement.
 
 ---
 
@@ -228,7 +229,7 @@ curl -X POST "http://localhost:${PORT}/api/admin/restore" \
 ### Directement via pg_restore
 
 ```bash
-# Copier le fichier dans le container backend (qui a pg_restore v16)
+# Copier le fichier dans le container backend (qui a pg_restore v18)
 podman cp ~/Downloads/pie-backup-2026-01-15.dump \
   pie-manager_backend_1:/tmp/backup.dump
 
@@ -244,3 +245,34 @@ podman exec -e PGPASSWORD=pie_password pie-manager_backend_1 \
 1. Installer PIE Manager sur la nouvelle machine (voir [INSTALLATION.md](INSTALLATION.md))
 2. Attendre que les services démarrent
 3. Restaurer la sauvegarde via l'interface ou l'API
+
+---
+
+## 9. Migration entre versions majeures de PostgreSQL
+
+Une mise à jour de PIE Manager peut, occasionnellement, changer la version majeure de PostgreSQL utilisée (par exemple 16 → 18). Contrairement à une mise à jour normale, **PostgreSQL refuse de démarrer directement sur des données écrites par une version majeure différente** — ce n'est pas un bug, c'est une règle stricte de compatibilité de PostgreSQL lui-même.
+
+**Bonne nouvelle : l'installateur détecte cette situation automatiquement** et refuse de procéder tant que la migration n'a pas été faite manuellement — il ne touche jamais à vos données existantes sans confirmation.
+
+### Ce qui se passe concrètement
+
+Si vous lancez une mise à jour qui nécessite une nouvelle version majeure de PostgreSQL, l'installateur affiche un message du type :
+
+```
+✗ PostgreSQL major version mismatch: your data is on PostgreSQL 16, but PIE Manager
+  X.Y.Z requires PostgreSQL 18.
+```
+
+et s'arrête immédiatement, sans rien modifier.
+
+### Procédure de migration
+
+1. **Si l'ancienne version de PIE Manager tourne encore**, ouvrez-la et allez dans **Administration système → Télécharger une sauvegarde**. Conservez précieusement le fichier `.dump` téléchargé (voir [Sauvegarde depuis l'interface](#3-sauvegarde-depuis-linterface)).
+2. Arrêtez PIE Manager, puis supprimez l'ancien volume de données indiqué dans le message de l'installateur :
+   ```bash
+   podman volume rm pie-manager_postgres_data
+   ```
+3. Relancez l'installateur — il démarre alors sur une base neuve, avec la nouvelle version de PostgreSQL.
+4. Une fois l'application démarrée, allez dans **Administration système → Restaurer une sauvegarde** et sélectionnez le fichier `.dump` de l'étape 1 (voir [Restauration depuis l'interface](#7-restauration-depuis-linterface)).
+
+Cette procédure garantit qu'aucune donnée n'est perdue — le volume supprimé à l'étape 2 n'est retiré qu'après confirmation que la sauvegarde de l'étape 1 est bien en votre possession.

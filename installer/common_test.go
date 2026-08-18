@@ -319,6 +319,45 @@ func writeRawZipEntry(t *testing.T, path, name string, method uint16, crc32 uint
 	}
 }
 
+// --- composePostgresMajor ---
+
+func TestComposePostgresMajor_ExtractsVersion(t *testing.T) {
+	compose := []byte("services:\n  postgres:\n    image: docker.io/library/postgres:18-alpine\n")
+	if got := composePostgresMajor(compose); got != "18" {
+		t.Errorf("got %q, want %q", got, "18")
+	}
+}
+
+func TestComposePostgresMajor_NoMatchReturnsEmpty(t *testing.T) {
+	compose := []byte("services:\n  postgres:\n    image: docker.io/library/haproxy:alpine\n")
+	if got := composePostgresMajor(compose); got != "" {
+		t.Errorf("got %q, want empty", got)
+	}
+}
+
+// --- postgresMajorMismatch ---
+
+func TestPostgresMajorMismatch(t *testing.T) {
+	cases := []struct {
+		name             string
+		existing, target string
+		want             bool
+	}{
+		{"both empty", "", "", false},
+		{"existing empty (fresh install)", "", "18", false},
+		{"target empty (unparseable compose)", "16", "", false},
+		{"equal versions", "18", "18", false},
+		{"real mismatch", "16", "18", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := postgresMajorMismatch(c.existing, c.target); got != c.want {
+				t.Errorf("postgresMajorMismatch(%q, %q) = %v, want %v", c.existing, c.target, got, c.want)
+			}
+		})
+	}
+}
+
 // writeTestZip creates a zip file at path containing the given entries.
 func writeTestZip(t *testing.T, path string, files map[string]string) {
 	t.Helper()

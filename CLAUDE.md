@@ -38,7 +38,10 @@ The Go installer (`installer/`) has two categories of functions:
 
 **Fully testable (must be 100% covered):** `findAvailablePort`, `readAppPort`,
 `readInstalledVersion`, `updateEnvPort`, `detectComposeCmd`, `copyFile`,
-`githubLatestAssetURL`, `downloadFile`, `extractZipEntryBySuffix`.
+`githubLatestAssetURL`, `downloadFile`, `extractZipEntryBySuffix`,
+`composePostgresMajor`, `postgresMajorMismatch` (issue #58's PostgreSQL major-version
+mismatch guard — see `.claude/rules/containers-and-backup.md`'s "PostgreSQL major-version
+bumps" section for what this protects against).
 These pure utility functions all live in `common.go` (no build constraint — shared by
 Linux/Windows/macOS, see `.claude/rules/distribution.md`'s "Shared refactor enabling this"
 in the macOS section), tested in `install_test.go`/`common_test.go`.
@@ -49,6 +52,8 @@ untestable bucket just because their caller lives in `main_windows.go`.
 
 **Intentionally untestable:** `runInstall`, `runStartWithCompose`, `forceRecreate`,
 `notify`, `podmanImageExists`, `focusExistingWindow`, `openBrowser`,
+`pgDataVolumeName`, `pgVersionMajor` (both exec `podman` directly, same class as
+`podmanImageExists` — issue #58),
 all functions in `main_windows.go`, and all functions in `install_darwin.go`/
 `start_darwin.go`/`main_darwin.go` (Podman `.pkg` install, Podman Machine setup,
 `launchd` agent, `.app` bundle writing — same class of system-interaction code as
@@ -125,7 +130,7 @@ create-transaction code path as manual UI entry.
 |-------|-----------|
 | Frontend | React 18 + TypeScript + PatternFly 6 + TanStack Query v5 + Vite |
 | Backend | Python FastAPI + SQLAlchemy 2.0 async + PgQueuer |
-| Database | PostgreSQL 16 |
+| Database | PostgreSQL 18 |
 | Deployment | **Podman** Compose (never Docker) |
 | Containerfiles | `Containerfile` (never `Dockerfile`) |
 
@@ -196,7 +201,7 @@ services reach by name) instead of relying on `podman-compose`'s implicit shared
 `podman image prune -af`, which would delete images from other projects on the machine.
 
 **Fedora/RHEL short image names** — always use fully qualified names
-(`docker.io/library/postgres:16-alpine`) to avoid "short-name resolution enforced" errors in
+(`docker.io/library/postgres:18-alpine`) to avoid "short-name resolution enforced" errors in
 non-interactive contexts.
 
 **Ad hoc container smoke tests (`podman run -p ...` outside compose) — see the global
@@ -517,7 +522,7 @@ volume ls`) — since both directories share the basename `pie-manager` and neit
 explicit project name. Testing against it risks mounting the **real personal-data database**,
 and `conftest.py`'s `engine` fixture does `drop_all()`/`create_all()`/`drop_all()`
 unconditionally, which would wipe it. Use CI (`ci.yml`'s `integration-tests` job, fully
-isolated) or a manually-named, differently-ported throwaway `postgres:16-alpine` container.
+isolated) or a manually-named, differently-ported throwaway `postgres:18-alpine` container.
 
 **Match CI's Python version (3.14) when testing locally in a container — mismatches
 silently under-report coverage, they don't fail.** Verified: running the exact same tests
@@ -574,7 +579,7 @@ system locales were found` (Alpine ships no locale data, Postgres falls back to 
 no locale-sensitive collation in this app's schema/queries) and `initdb: warning: enabling
 "trust" authentication for local connections` (initdb's default for local Unix-socket
 connections when only `POSTGRES_PASSWORD` is set; the ephemeral, network-isolated CI container
-is torn down at job end, never exposed). Both come from `postgres:16-alpine`'s own `initdb`
+is torn down at job end, never exposed). Both come from `postgres:18-alpine`'s own `initdb`
 bootstrap, not this repo's config — not something to fix.
 
 Also expected: `ERROR: duplicate key value violates unique constraint

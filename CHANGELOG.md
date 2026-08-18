@@ -2,6 +2,12 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.4.8] - 2026-08-18
+
+### Fixed
+
+- **launcher-native:** Surface a failed command's real log content on-screen (#82)
+
 ## [1.4.7] - 2026-08-18
 
 ### Added

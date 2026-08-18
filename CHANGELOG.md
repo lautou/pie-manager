@@ -2,6 +2,16 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.4.7] - 2026-08-18
+
+### Added
+
+- **db:** Migrate to PostgreSQL 18 with a safe upgrade path (#58)
+
+### Fixed
+
+- **backend:** Implement missing /api/admin/github-update-status endpoint (#113)
+
 ## [1.4.6] - 2026-08-18
 
 ### Added

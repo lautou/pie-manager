@@ -2,6 +2,28 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.4.6] - 2026-08-18
+
+### Added
+
+- **testing:** Add script to fetch the Windows 11 ISO directly from Microsoft
+- **testing:** Fully automate win11 test VM install via autounattend.xml (issue #61)
+
+### Changed
+
+- **frontend:** Migrate Modal to the v6 ModalHeader/ModalBody/ModalFooter composition (#99)
+
+### Fixed
+
+- **background-jobs:** Prevent overlapping schedule/manual sync task runs (issue #67)
+- **frontend:** Flatten codemod's triple-nested Masthead + strip review markers (#100)
+- **frontend:** Migrate hardcoded var(--pf-v5-global--*) tokens to v6 (#101)
+- **frontend:** Fix 2 real visual regressions found during #104 QA pass
+- **frontend:** Clear RebalancingPage's debounce timer on unmount (#109)
+- **frontend:** Restore dark sidebar theme lost in v5→v6 migration
+- **frontend:** Make masthead sidebar-toggle icon white for legibility
+- **frontend:** Actually fix masthead sidebar-toggle icon color
+
 ## [1.4.5] - 2026-08-17
 
 ### Fixed

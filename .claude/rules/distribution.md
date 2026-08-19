@@ -532,6 +532,66 @@ type). The old `launcher.exe`/Podman product this test would have covered has ze
 deployed users, so there's nothing left for this scenario to actually validate. #60 and #62 were
 closed on this reasoning rather than left open waiting on #84.
 
+#### Automating win11 test VM checks: `virsh`/guest-agent is the default, RDP is a last resort
+
+**Default for essentially all non-regression testing: `virsh qemu-agent-command` (the
+guest-agent channel already configured on this VM, see the channel device in its domain XML) —
+transferring files, running installers, checking process/service state, reading logs, polling a
+health endpoint. This needs no extra host packages and stays the standing approach going
+forward.** Confirmed live (issue #82's Store-install verification, 2026-08-19): guest-agent
+alone drove snapshot revert, boot-readiness polling, chunked file transfer (`guest-file-open`/
+`guest-file-write`/`guest-file-close` — small chunks, ~48 KiB; a 512 KiB chunk hit the host
+shell's own `ARG_MAX` via `subprocess.run`'s argument list, not a QGA limit), PowerShell
+execution, and process/log inspection, entirely unattended.
+
+**The one thing guest-agent structurally cannot do: answer any question that requires a real,
+visible GUI session.** Two independent, unrelated Windows OS restrictions make this a hard wall,
+not a scripting gap to work around:
+1. `Add-AppxPackage` (installing a Store app's MSIX, or any AppX operation) refuses outright
+   under the SYSTEM account guest-agent always runs as — confirmed live, "le compte Système
+   local n'est pas autorisé à effectuer cette opération."
+2. SYSTEM's guest-agent process runs in **Session 0**, which is deliberately isolated from the
+   interactive user's session (Session 1) for security reasons — confirmed both live (a
+   SYSTEM-side `EnumWindows` Win32 call returned zero windows despite windows visibly on
+   screen) and via external sources: Microsoft's own Session 0 Isolation documentation, and a
+   real production CI engineering write-up (SEP, testing Windows desktop GUI apps) hitting this
+   exact wall and confirming modern Windows additionally **strips keyboard/mouse input from
+   Session 0 entirely** — not just window enumeration, input itself is dead there. Their
+   production fix was RDP + PsExec-style session injection — same shape of solution as below,
+   independently arrived at.
+
+**Two escalation tiers below full RDP, try both first:**
+- **`virsh screenshot <vm> out.png`** reads the emulated video device's framebuffer directly —
+  this is *not* subject to Session 0 isolation at all, since it's a hypervisor-level capture, not
+  a Windows API call. Sufficient for "does the expected screen/dialog look right" checks with no
+  interactive control needed.
+- **A guest-agent-written Startup-folder script** (`%USERPROFILE%\...\Startup\*.cmd`, one-shot,
+  runs automatically when the target user's session starts) combined with **`virsh send-key`**
+  to log that user in (numeric/PIN-style password strongly recommended — see the keyboard-layout
+  gotcha below) gets a script running as a *real interactive user* without ever needing mouse
+  control or an RDP client. This is exactly how the Store/`winget` install verification worked
+  (issue #82) — no RDP involved at all for that part. **Requires explicit, specifically-scoped
+  user authorization each time** — Claude Code's own permission classifier correctly treats
+  writing to a Startup folder (or a scheduled task with embedded credentials) as a persistence
+  mechanism, not something to reuse silently just because a similar action was approved before.
+
+**Full RDP (`xfreerdp` + a throwaway `Xvfb` display + `xdotool` for mouse/keyboard) is the
+last-resort tier — reach for it only when a check genuinely requires interactive, unpredictable
+GUI navigation (clicking through multiple screens) that a fixed Startup-folder script can't
+express as a fixed sequence.** Not part of the standing toolchain: `freerdp`, `xorg-x11-server-
+Xvfb`, and `xdotool` were installed on the dev host ad hoc for the one investigation that needed
+real visual confirmation of window visibility (issue #82's console-window bug) and are not a
+CI/pipeline dependency — don't provision them preemptively for routine testing.
+
+**Keyboard-layout gotcha, hits both `virsh send-key` and `xdotool type` identically:** both send
+scancodes/keysyms based on the *local host's* keymap; the *guest's* active layout (French/AZERTY
+on this VM) then reinterprets them, silently corrupting any typed text containing letters that
+differ in position between AZERTY and QWERTY (confirmed live: "powershell" → "pozershell", a
+password typed via top-row digits needing Shift on AZERTY silently mismatching). Two fixes, use
+either: (1) type only numpad digits (`KEY_KP0`-`KEY_KP9` — layout-independent, requires NumLock
+on first) for anything password-like; (2) switch the guest's active input method to en-US via
+`Set-WinUserLanguageList` over guest-agent before typing anything with letters.
+
 ## macOS installation architecture
 
 **Apple Silicon (arm64) only — no Intel/amd64 build.** Apple Silicon is now the dominant Mac

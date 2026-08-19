@@ -79,20 +79,54 @@ acceptable for a system-interaction binary.
   under `AppData`/`LocalAppData` — confirmed live in #76/#82 that MSIX transparently redirects
   any write under `AppData`, even a fully hardcoded path, to a location wiped on uninstall),
   `ports.go` (dynamic port selection, never the #76 poc's hardcoded 5432/8123), all arg-builder
-  functions in `postgres.go`/`backend.go` (`buildInitdbArgs`, `buildPgCtlStartArgs`,
+  functions in `postgres.go`/`backend.go` (`buildInitdbArgs`, `buildPostgresArgs`,
   `buildPgCtlStopArgs`, `buildCreateDbArgs`, `databaseURL`, `buildUvicornArgs`, `healthURL`),
   `runCapturedCommand`, `stopBackend`, `waitForHealth` (fully exercised via `httptest.Server` and
-  real short-lived subprocesses, not just argument-building), and `readPostmasterPid`.
+  real short-lived subprocesses, not just argument-building), `readPostmasterPid`, and
+  `hideWindow` (`hidewindow_windows.go`/`hidewindow_other.go` — suppresses the console window
+  Windows otherwise pops up per spawned subprocess for a windowless GUI app, confirmed live via
+  #82's Store verification: 2 visible CMD windows, one per long-lived child process (Postgres,
+  uvicorn). Sets `CreationFlags: CREATE_NO_WINDOW` (a raw `0x08000000` — not exported by Go's
+  `syscall` package on Windows), not just `SysProcAttr.HideWindow` alone — `HideWindow` only
+  hides a console *after* Windows allocates one, it doesn't stop the allocation, which matters
+  specifically for Postgres: its Windows `EXEC_BACKEND` architecture (no `fork()`) has the
+  postmaster relaunch itself via its own internal `CreateProcess` calls for every background
+  worker (confirmed live: 7 separate `postgres.exe` processes for one idle server), and a
+  `HideWindow`-only parent still leaves each of those internal children to allocate their own
+  fresh, visible console. `CREATE_NO_WINDOW` means the parent never has a console for any child
+  to inherit from in the first place. The non-Windows no-op branch needs a real statement
+  (`_ = cmd`), not an empty body, or `go tool cover` reports a permanent false-negative 0.0% for
+  it regardless of test coverage.
+  **`startPostgres` moved into this fully-tested bucket** (was previously classified alongside
+  `startBackend` as an untestable real process spawn) — it now launches `postgres.exe` directly
+  instead of going through `pg_ctl start`, specifically because `pg_ctl` internally spawns
+  `postgres.exe` via its own Windows `CreateProcess` call with its own new console window that
+  `hideWindow()` on the `pg_ctl.exe` process has zero influence over (confirmed live: hiding
+  `pg_ctl.exe`'s own window left `postgres.exe`'s separately-created console visible for the
+  server's entire lifetime). Fully testable this way (100% covered) via a fake shebang-script
+  executable written directly at `postgresExePath(home)`'s computed path, real short-lived
+  subprocesses for the error branches (same technique as `runCapturedCommandIn`'s own
+  directory-blocked-by-file tests), matching `startBackend`'s own real-process-spawn style rather
+  than accepting it as untestable — the "real Windows service" alternative (which would also
+  avoid the console entirely) was researched and rejected: Windows SCM's `CreateService`, and
+  PostgreSQL's own `pg_ctl register` wrapper around it, both hard-require admin elevation with no
+  unprivileged exception, conflicting with this launcher's no-elevation design constraint (see
+  `startPostgres`'s own doc comment for sources). The former `pg_ctl -w start`'s built-in
+  readiness wait is now `waitForPostgresReady` (also 100% covered) — polls a raw TCP dial against
+  the selected port, detects early process exit via `cmd.Wait()` in a background goroutine
+  (deliberately not `isPidRunning`, which is only a real liveness check on Windows — see its own
+  doc comment — reusing it here would make the early-exit branch untestable on Linux for a
+  platform-quirk reason unrelated to `cmd.Wait()` itself, which works correctly everywhere).
   **Intentionally untestable** (real process spawns/OS liveness checks, same class as the
-  Podman-based installer's own untestable bucket) — `runInitdb`, `startPostgres`, `stopPostgres`,
+  Podman-based installer's own untestable bucket) — `runInitdb`, `stopPostgres`,
   `createAppDatabase`, `startBackend`, `isPidRunning`, `recoverFromPreviousSession`,
   `startupSequence` (the top-level orchestrator — every decision it makes is already covered by
   testing the pure functions it calls; the function itself is thin sequencing glue), and all of
   `main.go` (WebView2/window glue). Covered instead by the CI install+launch smoke test in
   `build-installer.yml`'s `package-native-launcher-msix` job (issue #82) — `Add-AppxPackage` +
   launch via `shell:AppsFolder`, then poll `/api/admin/version` — confirmed live: the full
-  first-run bootstrap (stage bundled files, `initdb`, `pg_ctl start`, `createdb`, Alembic
-  migrations, spawn `uvicorn`) runs inside a real installed MSIX package on a real
+  first-run bootstrap (stage bundled files, `initdb`, start postgres directly, `createdb`,
+  Alembic migrations, spawn `uvicorn`) runs inside a real installed MSIX package on a real
   GitHub-hosted Windows runner, and the backend answers its health check. This also confirms
   `main.go`'s WebView2 window itself initializes there (the backend-spawning goroutine only
   runs once `webview2.NewWithOptions` succeeds). Packaging assets (`AppxManifest.xml`,

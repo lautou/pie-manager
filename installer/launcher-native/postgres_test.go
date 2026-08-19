@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
+	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -45,8 +49,8 @@ func TestBuildInitdbArgs(t *testing.T) {
 	}
 }
 
-func TestBuildPgCtlStartArgs(t *testing.T) {
-	args := buildPgCtlStartArgs(`C:\Users\pie`, 15432)
+func TestBuildPostgresArgs(t *testing.T) {
+	args := buildPostgresArgs(`C:\Users\pie`, 15432)
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "-p 15432") {
 		t.Errorf("expected port 15432 in args, got %v", args)
@@ -269,5 +273,169 @@ func TestTailLogFile_MissingFile(t *testing.T) {
 	got := tailLogFile("/does/not/exist.log", 100)
 	if !strings.Contains(got, "could not read") {
 		t.Errorf("expected a placeholder message for a missing file, got %q", got)
+	}
+}
+
+// writeFakeExecutable creates an executable shell script at path - a stand-in for postgres.exe
+// in tests that need a real process exec.Command can start and later observe exiting (or not),
+// without a real Postgres binary. postgresExePath(home) is a pure function of home, so writing
+// directly to that computed path lets startPostgres itself run unmodified against it.
+func writeFakeExecutable(t *testing.T, path, script string) {
+	t.Helper()
+	if _, err := os.Stat("/bin/sh"); err != nil {
+		t.Skip("/bin/sh not available on this platform")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+script+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestStartPostgres_Success(t *testing.T) {
+	home := t.TempDir()
+	writeFakeExecutable(t, postgresExePath(home), "sleep 30")
+
+	cmd, err := startPostgres(home, 15432)
+	if err != nil {
+		t.Fatalf("startPostgres failed: %v", err)
+	}
+	defer func() {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	}()
+	if cmd.Process == nil {
+		t.Fatal("expected a started process")
+	}
+	if _, err := os.Stat(postgresLogPath(home)); err != nil {
+		t.Errorf("expected the postgres log file to exist: %v", err)
+	}
+}
+
+func TestStartPostgres_MissingExecutable(t *testing.T) {
+	home := t.TempDir()
+	if _, err := startPostgres(home, 15432); err == nil {
+		t.Error("expected an error when postgres.exe does not exist")
+	}
+}
+
+func TestStartPostgres_ErrorWhenLogDirBlockedByFile(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(dataDir(home), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(logDir(home), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := startPostgres(home, 15432); err == nil {
+		t.Error("expected an error when the log directory path is blocked by an existing file")
+	}
+}
+
+func TestStartPostgres_ErrorWhenLogPathIsDirectory(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(postgresLogPath(home), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := startPostgres(home, 15432); err == nil {
+		t.Error("expected an error when the postgres log path is itself a directory")
+	}
+}
+
+// listenerPort extracts the numeric port net.Listen bound to, mirroring backend_test.go's
+// serverPort helper for httptest.Server.
+func listenerPort(t *testing.T, ln net.Listener) int {
+	t.Helper()
+	addr := ln.Addr().String()
+	idx := strings.LastIndex(addr, ":")
+	if idx == -1 {
+		t.Fatalf("could not parse port from %q", addr)
+	}
+	port, err := strconv.Atoi(addr[idx+1:])
+	if err != nil {
+		t.Fatalf("could not parse port from %q: %v", addr, err)
+	}
+	return port
+}
+
+func TestWaitForPostgresReady_SucceedsWhenPortAlreadyOpen(t *testing.T) {
+	sleepExe := "/bin/sleep"
+	if _, err := os.Stat(sleepExe); err != nil {
+		t.Skip("/bin/sleep not available on this platform")
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to open test listener: %v", err)
+	}
+	defer ln.Close()
+
+	cmd := exec.Command(sleepExe, "30")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("failed to start test process: %v", err)
+	}
+	defer func() {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := waitForPostgresReady(ctx, cmd, t.TempDir(), listenerPort(t, ln)); err != nil {
+		t.Errorf("expected success, got %v", err)
+	}
+}
+
+func TestWaitForPostgresReady_TimesOutWhenUnreachable(t *testing.T) {
+	sleepExe := "/bin/sleep"
+	if _, err := os.Stat(sleepExe); err != nil {
+		t.Skip("/bin/sleep not available on this platform")
+	}
+	cmd := exec.Command(sleepExe, "30")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("failed to start test process: %v", err)
+	}
+	defer func() {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	// Port 1 - nothing listens there. The process stays alive the whole time (still sleeping),
+	// so this exercises the ctx-deadline branch specifically, not the early-exit branch below.
+	if err := waitForPostgresReady(ctx, cmd, t.TempDir(), 1); err == nil {
+		t.Error("expected a timeout error for an unreachable port")
+	}
+}
+
+func TestWaitForPostgresReady_ReturnsErrorWhenProcessExitsEarly(t *testing.T) {
+	shExe := "/bin/sh"
+	if _, err := os.Stat(shExe); err != nil {
+		t.Skip("/bin/sh not available on this platform")
+	}
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Dir(postgresLogPath(home)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(postgresLogPath(home), []byte("boom-diagnostic-marker"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(shExe, "-c", "exit 1")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("failed to start test process: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	// Port 1 - nothing listens there, so the only way this returns before the 5s deadline is via
+	// the early-exit branch, proving it's real and not just theoretically reachable.
+	err := waitForPostgresReady(ctx, cmd, home, 1)
+	if err == nil {
+		t.Fatal("expected an error when the process exits before becoming ready")
+	}
+	if !strings.Contains(err.Error(), "boom-diagnostic-marker") {
+		t.Errorf("expected the error to include the process's own log content, got %q", err.Error())
 	}
 }

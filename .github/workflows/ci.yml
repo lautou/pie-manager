@@ -46,11 +46,13 @@ jobs:
           pip install ruff
           ruff check app/ --select E,W,F --ignore E501,E712,F821
 
-      - name: Setup Go (installer smoke test)
+      - name: Setup Go (installer + launcher-native smoke tests)
         uses: actions/setup-go@v7.0.0
         with:
           go-version: '1.22'
-          cache-dependency-path: installer/go.sum
+          cache-dependency-path: |
+            installer/go.sum
+            installer/launcher-native/go.sum
 
       - name: Go installer — build smoke test
         run: |
@@ -91,6 +93,37 @@ jobs:
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o /dev/null ./...
           GOOS=darwin GOARCH=arm64 go vet ./...
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o /dev/null ./...
+
+      # installer/launcher-native (issue #82's native Windows port) is a separate Go module
+      # with its own extensive test suite (see CLAUDE.md's "launcher-native/" coverage policy)
+      # that, until issue #114, never ran in CI at all — only build-installer.yml's release-time
+      # MSIX packaging job touched it, and that job only ever ran `go build`, never `go vet`/
+      # `go test`. Added here (not build-installer.yml) so a regression is caught on every
+      # push/PR, not just at release time (build-installer.yml only triggers on tag pushes).
+      - name: Go launcher-native — vet, test
+        run: |
+          cd installer/launcher-native
+          # Not chained with `&&` — see the installer smoke test step above for why a
+          # non-final command's failure would otherwise be silently exempt from `set -e`.
+          go mod tidy
+          go vet ./...
+          go test ./...
+
+      - name: Go launcher-native — cross-compile check (Windows)
+        run: |
+          cd installer/launcher-native
+          # main.go is `//go:build windows`-only, so a bare `go build ./...` on this
+          # (Linux) runner fails at link time ("function main is undeclared in the main
+          # package") — go vet/go test don't hit this since neither links. This step is
+          # the real target-platform check. Building `.` specifically, not `./...`:
+          # `gen-assets` is a second, separate `package main` in this module (an
+          # MSIX-icon-rendering helper), so `./...` would try to write two binaries to
+          # one -o path and fail differently. No placeholder assets needed here (unlike
+          # the installer/ cross-compile check above) — this module has no `go:embed`
+          # directives, and its Windows resource file (main_windows_amd64.syso) is
+          # already checked into the repo.
+          GOOS=windows GOARCH=amd64 go vet ./...
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o /dev/null .
 
       - name: Run frontend unit tests + coverage
         working-directory: frontend

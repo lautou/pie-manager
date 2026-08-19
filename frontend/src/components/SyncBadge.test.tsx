@@ -9,7 +9,7 @@
  * - Mock PatternFly Tooltip to render its children directly (avoids jsdom issues).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import '../../src/i18n';
 import type { SyncStatus } from '../hooks/useSyncStatus';
 import SyncBadge from './SyncBadge';
@@ -22,9 +22,13 @@ vi.mock('@patternfly/react-core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@patternfly/react-core')>();
   return {
     ...actual,
-    // Render children directly so we can inspect the badge span
-    Tooltip: ({ children }: { children: React.ReactNode; content?: React.ReactNode }) => (
-      <>{children}</>
+    // Render children directly, plus the tooltip content in a queryable node — real PatternFly
+    // only shows content on hover, but tests need to inspect it without simulating that.
+    Tooltip: ({ children, content }: { children: React.ReactNode; content?: React.ReactNode }) => (
+      <>
+        {children}
+        <div data-testid="tooltip-content">{content}</div>
+      </>
     ),
   };
 });
@@ -73,15 +77,17 @@ describe('SyncBadge', () => {
   it('shows the running icon and message when status is "running"', () => {
     mockUseSyncStatus.mockReturnValue({ data: makeSync({ status: 'running' }) });
     render(<SyncBadge />);
-    expect(screen.getByText(/Synchronisation en cours/i)).toBeDefined();
-    expect(screen.getByText(/🔄/)).toBeDefined();
+    const badge = within(screen.getByTestId('sync-badge'));
+    expect(badge.getByText(/Synchronisation en cours/i)).toBeDefined();
+    expect(badge.getByText(/🔄/)).toBeDefined();
   });
 
   it('shows "Jamais synchronisé" when status is "never"', () => {
     mockUseSyncStatus.mockReturnValue({ data: makeSync({ status: 'never' }) });
     render(<SyncBadge />);
-    expect(screen.getByText(/Jamais synchronisé/i)).toBeDefined();
-    expect(screen.getByText(/⚪/)).toBeDefined();
+    const badge = within(screen.getByTestId('sync-badge'));
+    expect(badge.getByText(/Jamais synchronisé/i)).toBeDefined();
+    expect(badge.getByText(/⚪/)).toBeDefined();
   });
 
   it('shows green icon and synchro label when status is "success"', () => {
@@ -89,8 +95,9 @@ describe('SyncBadge', () => {
       data: makeSync({ status: 'success', finished_at: new Date().toISOString() }),
     });
     render(<SyncBadge />);
-    expect(screen.getByText(/Synchro/i)).toBeDefined();
-    expect(screen.getByText(/🟢/)).toBeDefined();
+    const badge = within(screen.getByTestId('sync-badge'));
+    expect(badge.getByText(/Synchro/i)).toBeDefined();
+    expect(badge.getByText(/🟢/)).toBeDefined();
   });
 
   it('shows yellow/orange icon when status is "partial"', () => {
@@ -131,6 +138,40 @@ describe('SyncBadge', () => {
     render(<SyncBadge />);
     const span = screen.getByText(/🟢/).closest('span');
     expect(span!.style.cursor).toBe('default');
+  });
+
+  it('includes the background-sync note in the tooltip when status is "success" (issue #83)', () => {
+    mockUseSyncStatus.mockReturnValue({
+      data: makeSync({ status: 'success', finished_at: new Date().toISOString() }),
+    });
+    render(<SyncBadge />);
+    expect(screen.getByTestId('tooltip-content').textContent).toContain(
+      "la synchronisation ne s'exécute que lorsque l'application est ouverte",
+    );
+  });
+
+  it('does NOT include the background-sync note when status is "failed"', () => {
+    mockUseSyncStatus.mockReturnValue({
+      data: makeSync({ status: 'failed', finished_at: new Date().toISOString() }),
+    });
+    render(<SyncBadge />);
+    expect(screen.getByTestId('tooltip-content').textContent).not.toContain(
+      "la synchronisation ne s'exécute que lorsque l'application est ouverte",
+    );
+  });
+
+  it('does NOT include the background-sync note when status is "partial"', () => {
+    mockUseSyncStatus.mockReturnValue({
+      data: makeSync({
+        status: 'partial',
+        finished_at: new Date().toISOString(),
+        failed_tickers: ['AAPL'],
+      }),
+    });
+    render(<SyncBadge />);
+    expect(screen.getByTestId('tooltip-content').textContent).not.toContain(
+      "la synchronisation ne s'exécute que lorsque l'application est ouverte",
+    );
   });
 
   it('uses fallback color #6A6E73 and fallback icon ⚪ for unknown status (lines 25-26)', () => {

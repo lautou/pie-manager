@@ -2,11 +2,9 @@ package main
 
 import (
 	"context"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -343,32 +341,56 @@ func TestStartPostgres_ErrorWhenLogPathIsDirectory(t *testing.T) {
 	}
 }
 
-// listenerPort extracts the numeric port net.Listen bound to, mirroring backend_test.go's
-// serverPort helper for httptest.Server.
-func listenerPort(t *testing.T, ln net.Listener) int {
-	t.Helper()
-	addr := ln.Addr().String()
-	idx := strings.LastIndex(addr, ":")
-	if idx == -1 {
-		t.Fatalf("could not parse port from %q", addr)
+func TestPgIsReadyExePath(t *testing.T) {
+	got := pgIsReadyExePath(`C:\Users\pie`)
+	want := filepath.Join(`C:\Users\pie`, "PieManager", "pgsql", "bin", "pg_isready.exe")
+	if got != want {
+		t.Errorf("pgIsReadyExePath() = %q, want %q", got, want)
 	}
-	port, err := strconv.Atoi(addr[idx+1:])
-	if err != nil {
-		t.Fatalf("could not parse port from %q: %v", addr, err)
-	}
-	return port
 }
 
-func TestWaitForPostgresReady_SucceedsWhenPortAlreadyOpen(t *testing.T) {
+func TestBuildPgIsReadyArgs(t *testing.T) {
+	args := buildPgIsReadyArgs(15432)
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "-p 15432") {
+		t.Errorf("expected port 15432 in args, got %v", args)
+	}
+	if !strings.Contains(joined, "-d postgres") {
+		t.Errorf("expected the maintenance database 'postgres' in args, got %v", args)
+	}
+	if !strings.Contains(joined, pgSuperuser) {
+		t.Errorf("expected superuser %q in args, got %v", pgSuperuser, args)
+	}
+}
+
+func TestPostgresAcceptingConnections_True(t *testing.T) {
+	home := t.TempDir()
+	writeFakeExecutable(t, pgIsReadyExePath(home), "exit 0")
+	if !postgresAcceptingConnections(home, 15432) {
+		t.Error("expected true when pg_isready exits 0")
+	}
+}
+
+func TestPostgresAcceptingConnections_False(t *testing.T) {
+	home := t.TempDir()
+	writeFakeExecutable(t, pgIsReadyExePath(home), "exit 1")
+	if postgresAcceptingConnections(home, 15432) {
+		t.Error("expected false when pg_isready exits non-zero")
+	}
+}
+
+// TestWaitForPostgresReady_SucceedsWhenPgIsReadyReportsReady guards against issue #83's live
+// functional-pass finding: a bare TCP dial succeeds before Postgres can actually complete a real
+// connection handshake, which broke runMigrations with "connection was closed in the middle of
+// operation". Using a fake pg_isready removes the race entirely - readiness is deterministic
+// (its exit code), not timing-dependent on an actual server.
+func TestWaitForPostgresReady_SucceedsWhenPgIsReadyReportsReady(t *testing.T) {
 	sleepExe := "/bin/sleep"
 	if _, err := os.Stat(sleepExe); err != nil {
 		t.Skip("/bin/sleep not available on this platform")
 	}
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("failed to open test listener: %v", err)
-	}
-	defer ln.Close()
+	home := t.TempDir()
+	writeFakeExecutable(t, pgIsReadyExePath(home), "exit 0")
 
 	cmd := exec.Command(sleepExe, "30")
 	if err := cmd.Start(); err != nil {
@@ -381,16 +403,19 @@ func TestWaitForPostgresReady_SucceedsWhenPortAlreadyOpen(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	if err := waitForPostgresReady(ctx, cmd, t.TempDir(), listenerPort(t, ln)); err != nil {
+	if err := waitForPostgresReady(ctx, cmd, home, 15432); err != nil {
 		t.Errorf("expected success, got %v", err)
 	}
 }
 
-func TestWaitForPostgresReady_TimesOutWhenUnreachable(t *testing.T) {
+func TestWaitForPostgresReady_TimesOutWhenNeverReady(t *testing.T) {
 	sleepExe := "/bin/sleep"
 	if _, err := os.Stat(sleepExe); err != nil {
 		t.Skip("/bin/sleep not available on this platform")
 	}
+	home := t.TempDir()
+	writeFakeExecutable(t, pgIsReadyExePath(home), "exit 1")
+
 	cmd := exec.Command(sleepExe, "30")
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("failed to start test process: %v", err)
@@ -402,10 +427,11 @@ func TestWaitForPostgresReady_TimesOutWhenUnreachable(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
-	// Port 1 - nothing listens there. The process stays alive the whole time (still sleeping),
-	// so this exercises the ctx-deadline branch specifically, not the early-exit branch below.
-	if err := waitForPostgresReady(ctx, cmd, t.TempDir(), 1); err == nil {
-		t.Error("expected a timeout error for an unreachable port")
+	// The process stays alive the whole time (still sleeping) but pg_isready always reports
+	// not-ready, so this exercises the ctx-deadline branch specifically, not the early-exit
+	// branch below.
+	if err := waitForPostgresReady(ctx, cmd, home, 15432); err == nil {
+		t.Error("expected a timeout error when pg_isready never reports ready")
 	}
 }
 

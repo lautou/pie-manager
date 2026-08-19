@@ -15,15 +15,17 @@ type nativeSession struct {
 	home       string
 	ports      ports
 	backendCmd *exec.Cmd
+	workerCmd  *exec.Cmd
 }
 
 // startupSequence runs the full launch orchestration: data-directory setup, staging the
 // package's bundled pgsql/python from its own read-only install directory, first-run detection,
 // crash recovery, Postgres init/start, database creation on first run, and spawning the
-// backend.
+// backend and the PgQueuer worker (issue #83).
 //
-// It composes runInitdb/startPostgres/createAppDatabase/startBackend/recoverFromPreviousSession
-// - already-documented, intentionally-untestable process-spawning functions (see
+// It composes runInitdb/startPostgres/createAppDatabase/startBackend/startWorker/
+// recoverFromPreviousSession - already-documented, intentionally-untestable process-spawning
+// functions (see
 // postgres.go/backend.go/crash_recovery.go) - so this function is itself not meaningfully
 // unit-testable and is covered instead by the CI install+launch smoke test planned for this MVP
 // (see issue #82's sequencing). This matches this project's own established policy for the
@@ -95,22 +97,34 @@ func startupSequence(pkgRoot, home string) (*nativeSession, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), healthTimeout)
 	defer cancel()
 	if err := waitForHealth(ctx, p.Backend); err != nil {
-		_ = stopBackend(backendCmd)
+		_ = stopChildProcess(backendCmd)
 		_ = stopPostgres(home)
 		return nil, fmt.Errorf("waiting for backend to become healthy: %w", err)
 	}
 
-	return &nativeSession{home: home, ports: p, backendCmd: backendCmd}, nil
+	// Started only once the backend is confirmed healthy - the worker's own schema/DB
+	// dependency is already satisfied by runMigrations above regardless, but gating it on a
+	// healthy backend means a worker-start failure is reported against a known-good baseline
+	// rather than compounding with an already-uncertain backend state.
+	workerCmd, err := startWorker(home, p.Postgres)
+	if err != nil {
+		_ = stopChildProcess(backendCmd)
+		_ = stopPostgres(home)
+		return nil, fmt.Errorf("starting worker: %w", err)
+	}
+
+	return &nativeSession{home: home, ports: p, backendCmd: backendCmd, workerCmd: workerCmd}, nil
 }
 
-// shutdown gracefully stops the backend then Postgres, in that order - the backend should stop
-// accepting new requests before its database connection is torn out from under it. Called on
-// window close. Safe to call on a nil session (e.g. if startupSequence itself failed before a
-// session was ever created).
+// shutdown gracefully stops the worker and backend, then Postgres, in that order - both child
+// processes should stop accepting/processing work before their database connection is torn out
+// from under them. Called on window close. Safe to call on a nil session (e.g. if
+// startupSequence itself failed before a session was ever created).
 func (s *nativeSession) shutdown() {
 	if s == nil {
 		return
 	}
-	_ = stopBackend(s.backendCmd)
+	_ = stopChildProcess(s.workerCmd)
+	_ = stopChildProcess(s.backendCmd)
 	_ = stopPostgres(s.home)
 }

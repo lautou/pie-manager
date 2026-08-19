@@ -550,7 +550,8 @@
     "syncing": "Synchronisation en cours…",
     "synced": "Prix à jour",
     "failed": "Échec de la synchronisation",
-    "lastSync": "Dernière synchro : {{time}}"
+    "lastSync": "Dernière synchro : {{time}}",
+    "backgroundNote": "la synchronisation ne s'exécute que lorsque l'application est ouverte"
   },
   "refreshBanner": {
     "newDataAvailable": "Actualisation des données en cours",

@@ -34,17 +34,25 @@ export default function SyncBadge() {
     ? 'Jamais synchronisé'
     : t('syncBadge.lastSync', { time: timeLabel });
 
+  // Only the "success" tooltip gets the background-sync note: a stale-looking timestamp next
+  // to "Prices up to date" is the one case that could otherwise read as broken rather than as
+  // "the app just wasn't open" (issue #83's native-launcher trade-off — the bundled worker only
+  // runs while the app itself is running). "partial"/"failed" already convey a real problem on
+  // their own and shouldn't be diluted with an unrelated note.
   const tooltipContent = sync.status === 'partial' && sync.failed_tickers.length > 0
     ? `${t('syncBadge.failed')} : ${sync.failed_tickers.join(', ')}`
     : sync.status === 'failed'
     ? t('syncBadge.failed')
     : sync.status === 'success'
-    ? t('syncBadge.synced')
+    ? `${t('syncBadge.synced')} (${t('syncBadge.backgroundNote')})`
     : label;
 
   return (
     <Tooltip content={tooltipContent}>
-      <span style={{ fontSize: '0.78rem', color, cursor: 'default', whiteSpace: 'nowrap' }}>
+      <span
+        data-testid="sync-badge"
+        style={{ fontSize: '0.78rem', color, cursor: 'default', whiteSpace: 'nowrap' }}
+      >
         {icon} {label}
       </span>
     </Tooltip>

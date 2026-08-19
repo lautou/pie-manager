@@ -539,7 +539,8 @@
     "syncing": "Syncing…",
     "synced": "Prices up to date",
     "failed": "Sync failed",
-    "lastSync": "Last synchro: {{time}}"
+    "lastSync": "Last synchro: {{time}}",
+    "backgroundNote": "sync only runs while the app is open"
   },
   "refreshBanner": {
     "newDataAvailable": "Data refresh in progress",

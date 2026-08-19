@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,7 +21,11 @@ const pgSuperuser = "pie"
 const pgDatabaseName = "pie_db"
 
 // processTimeout bounds every short-lived native Postgres process this file spawns (initdb,
-// pg_ctl start, createdb). Not a workaround for a known Go-specific hang (the #76 poc's
+// pg_ctl stop, createdb), and separately doubles as orchestrator.go's budget for
+// waitForPostgresReady now that startPostgres bypasses "pg_ctl start" (see startPostgres's own
+// comment for why) — reused rather than a dedicated constant since both represent the same
+// underlying concern: how long a locked-down environment might delay Postgres becoming usable.
+// Not a workaround for a known Go-specific hang (the #76 poc's
 // Start-Process -Wait hang was a PowerShell/.NET-specific behavior tied to how that API waits on
 // redirected output streams, not a general Windows process-handle-inheritance problem — Go's
 // os/exec, given real *os.File values for Stdout/Stderr rather than pipes, does not set up that
@@ -43,13 +48,16 @@ func buildInitdbArgs(home string) []string {
 	return []string{"-D", pgDataDir(home), "-U", pgSuperuser, "--auth=trust"}
 }
 
-// buildPgCtlStartArgs binds Postgres to 127.0.0.1 only, on the dynamically selected port -
-// never the default 5432 unconditionally (see ports.go).
-func buildPgCtlStartArgs(home string, port int) []string {
+// buildPostgresArgs binds Postgres to 127.0.0.1 only, on the dynamically selected port - never
+// the default 5432 unconditionally (see ports.go). Used to launch postgres.exe directly (see
+// startPostgres) rather than via "pg_ctl start" - pg_ctl accepts the same two settings through
+// its own "-o" passthrough flag, but direct invocation takes them as top-level postgres.exe
+// arguments instead.
+func buildPostgresArgs(home string, port int) []string {
 	return []string{
 		"-D", pgDataDir(home),
-		"-w", "start",
-		"-o", fmt.Sprintf("-p %d -c listen_addresses=127.0.0.1", port),
+		"-p", fmt.Sprintf("%d", port),
+		"-c", "listen_addresses=127.0.0.1",
 	}
 }
 
@@ -93,6 +101,7 @@ func runCapturedCommandIn(dir string, extraEnv []string, timeout time.Duration, 
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, exe, args...)
+	hideWindow(cmd)
 	cmd.Dir = dir
 	if len(extraEnv) > 0 {
 		cmd.Env = append(os.Environ(), extraEnv...)
@@ -140,10 +149,90 @@ func runInitdb(home string) error {
 	return runCapturedCommand(initdbExePath(home), filepath.Join(logDir(home), "initdb.log"), buildInitdbArgs(home)...)
 }
 
-// startPostgres starts (or restarts) the Postgres server bound to 127.0.0.1:port. pg_ctl
-// start's own -w flag waits for readiness before returning.
-func startPostgres(home string, port int) error {
-	return runCapturedCommand(pgCtlExePath(home), filepath.Join(logDir(home), "pgctl-start.log"), buildPgCtlStartArgs(home, port)...)
+// postgresLogPath is postgres.exe's own direct stdout/stderr capture - distinct from
+// pgctl-stop.log, which is pg_ctl's own output for the (still pg_ctl-based) stop path.
+func postgresLogPath(home string) string { return filepath.Join(logDir(home), "postgres.log") }
+
+// startPostgres launches postgres.exe directly, bypassing "pg_ctl start" - not unit-testable
+// (a real external process spawn), same documented policy as startBackend/runInitdb. Not
+// idempotent restart-safe on its own: unlike pg_ctl -w, there's no built-in readiness wait here,
+// which is why waitForPostgresReady is a separate, explicit step the caller must run afterward.
+//
+// Why not pg_ctl start: pg_ctl internally spawns postgres.exe via its own Windows CreateProcess
+// call, with its own new console - confirmed live (issue #82's Store verification): hiding
+// pg_ctl.exe's own window via hideWindow() had zero effect on postgres.exe's separately-created
+// console, which stayed visible for the server's entire lifetime. Spawning postgres.exe
+// ourselves puts it under our own exec.Cmd, where hideWindow() actually applies. Registering
+// Postgres as a real Windows service was considered as an alternative fix and rejected: it
+// requires admin privileges to register (Windows SCM's CreateService, and PostgreSQL's own
+// "pg_ctl register" wrapper around it, both require elevation - confirmed, no unprivileged
+// exception exists), which conflicts with this launcher's hard no-elevation design constraint.
+func startPostgres(home string, port int) (*exec.Cmd, error) {
+	if err := os.MkdirAll(logDir(home), 0o755); err != nil {
+		return nil, fmt.Errorf("creating log directory: %w", err)
+	}
+	out, err := os.Create(postgresLogPath(home))
+	if err != nil {
+		return nil, fmt.Errorf("creating postgres log: %w", err)
+	}
+	cmd := exec.Command(postgresExePath(home), buildPostgresArgs(home, port)...)
+	hideWindow(cmd)
+	cmd.Stdout = out
+	cmd.Stderr = out
+	if err := cmd.Start(); err != nil {
+		out.Close()
+		return nil, fmt.Errorf("starting postgres: %w", err)
+	}
+	return cmd, nil
+}
+
+// postgresReadyPollInterval bounds how often waitForPostgresReady retries its TCP dial - short
+// enough that a fast-starting Postgres isn't held up waiting on the previous poll's sleep, long
+// enough not to busy-loop.
+const postgresReadyPollInterval = 100 * time.Millisecond
+
+// waitForPostgresReady polls until Postgres accepts TCP connections on 127.0.0.1:port, cmd's
+// process exits early (a real startup failure - reads its own log content back into the error,
+// same #82-driven philosophy as runCapturedCommandIn: Microsoft Store certification screenshots
+// are the only diagnostic surface available, so the real failure has to already be in the
+// message), or ctx's deadline passes. Replaces "pg_ctl start"'s own built-in "-w" readiness wait
+// now that startPostgres bypasses pg_ctl (see startPostgres's own comment for why).
+//
+// Detects early exit via cmd.Wait() in a background goroutine, not crash_recovery.go's
+// isPidRunning - isPidRunning's own doc comment already notes it's only a real liveness check on
+// Windows (os.FindProcess always succeeds on POSIX regardless of whether the pid exists), which
+// would make this function's early-exit path untestable on Linux for the wrong reason (a
+// platform quirk of a helper picked for convenience, not because cmd.Wait() itself is
+// platform-limited - it isn't). cmd.Wait() is safe to call exactly once per *exec.Cmd; nothing
+// else ever waits on postgresCmd (stopPostgres shuts it down via a separate "pg_ctl stop"
+// signal, not this handle), so this is the only consumer.
+func waitForPostgresReady(ctx context.Context, cmd *exec.Cmd, home string, port int) error {
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+
+	exited := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(exited)
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("postgres did not become ready before the deadline: %w\n\n%s",
+				ctx.Err(), tailLogFile(postgresLogPath(home), maxErrorLogTail))
+		case <-exited:
+			return fmt.Errorf("postgres exited unexpectedly before becoming ready\n\n%s",
+				tailLogFile(postgresLogPath(home), maxErrorLogTail))
+		default:
+		}
+
+		if conn, err := net.DialTimeout("tcp", addr, postgresReadyPollInterval); err == nil {
+			conn.Close()
+			return nil
+		}
+
+		time.Sleep(postgresReadyPollInterval)
+	}
 }
 
 // stopPostgres gracefully stops the server. Called on window close, and defensively before a

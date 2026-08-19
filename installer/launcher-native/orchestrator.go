@@ -60,8 +60,15 @@ func startupSequence(pkgRoot, home string) (*nativeSession, error) {
 		}
 	}
 
-	if err := startPostgres(home, p.Postgres); err != nil {
+	postgresCmd, err := startPostgres(home, p.Postgres)
+	if err != nil {
 		return nil, fmt.Errorf("starting postgres: %w", err)
+	}
+
+	pgReadyCtx, pgReadyCancel := context.WithTimeout(context.Background(), processTimeout)
+	defer pgReadyCancel()
+	if err := waitForPostgresReady(pgReadyCtx, postgresCmd, home, p.Postgres); err != nil {
+		return nil, fmt.Errorf("waiting for postgres to become ready: %w", err)
 	}
 
 	if firstRun {

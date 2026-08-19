@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,10 +38,11 @@ const pgDatabaseName = "pie_db"
 // runCapturedCommandIn call, and killed a slow-but-legitimate first-run migration mid-flight).
 const processTimeout = 60 * time.Second
 
-func initdbExePath(home string) string   { return filepath.Join(pgBinDir(home), "initdb.exe") }
-func pgCtlExePath(home string) string    { return filepath.Join(pgBinDir(home), "pg_ctl.exe") }
-func postgresExePath(home string) string { return filepath.Join(pgBinDir(home), "postgres.exe") }
-func createdbExePath(home string) string { return filepath.Join(pgBinDir(home), "createdb.exe") }
+func initdbExePath(home string) string    { return filepath.Join(pgBinDir(home), "initdb.exe") }
+func pgCtlExePath(home string) string     { return filepath.Join(pgBinDir(home), "pg_ctl.exe") }
+func postgresExePath(home string) string  { return filepath.Join(pgBinDir(home), "postgres.exe") }
+func createdbExePath(home string) string  { return filepath.Join(pgBinDir(home), "createdb.exe") }
+func pgIsReadyExePath(home string) string { return filepath.Join(pgBinDir(home), "pg_isready.exe") }
 
 func buildInitdbArgs(home string) []string {
 	return []string{"-D", pgDataDir(home), "-U", pgSuperuser, "--auth=trust"}
@@ -72,6 +72,13 @@ func buildPgCtlStopArgs(home string) []string {
 // buildCreateDbArgs targets the same dynamically-selected port startPostgres just bound to.
 func buildCreateDbArgs(port int) []string {
 	return []string{"-h", "127.0.0.1", "-p", fmt.Sprintf("%d", port), "-U", pgSuperuser, pgDatabaseName}
+}
+
+// buildPgIsReadyArgs targets the "postgres" maintenance database explicitly, not pgDatabaseName —
+// pg_isready must succeed even on the very first run, before createAppDatabase has created
+// pie_db, and "postgres" always exists post-initdb.
+func buildPgIsReadyArgs(port int) []string {
+	return []string{"-h", "127.0.0.1", "-p", fmt.Sprintf("%d", port), "-U", pgSuperuser, "-d", "postgres"}
 }
 
 // runCapturedCommand runs exe with args, bounded by processTimeout, capturing combined
@@ -186,17 +193,35 @@ func startPostgres(home string, port int) (*exec.Cmd, error) {
 	return cmd, nil
 }
 
-// postgresReadyPollInterval bounds how often waitForPostgresReady retries its TCP dial - short
+// postgresReadyPollInterval bounds how often waitForPostgresReady retries pg_isready - short
 // enough that a fast-starting Postgres isn't held up waiting on the previous poll's sleep, long
-// enough not to busy-loop.
+// enough not to busy-loop or flood the log directory with pg_isready's own short-lived spawns.
 const postgresReadyPollInterval = 100 * time.Millisecond
 
-// waitForPostgresReady polls until Postgres accepts TCP connections on 127.0.0.1:port, cmd's
-// process exits early (a real startup failure - reads its own log content back into the error,
-// same #82-driven philosophy as runCapturedCommandIn: Microsoft Store certification screenshots
-// are the only diagnostic surface available, so the real failure has to already be in the
-// message), or ctx's deadline passes. Replaces "pg_ctl start"'s own built-in "-w" readiness wait
-// now that startPostgres bypasses pg_ctl (see startPostgres's own comment for why).
+// postgresAcceptingConnections runs the bundled pg_isready against 127.0.0.1:port, reporting
+// true only on exit code 0 ("the server is accepting connections normally" per pg_isready's own
+// documented exit codes - 1 means rejecting connections, e.g. still starting up, 2 means no
+// response at all). Deliberately not a raw TCP dial: issue #83's live functional-pass testing
+// found a real race - a bare net.Dial succeeds as soon as postgres.exe's listener socket is
+// bound, which is measurably earlier than the server can actually complete a real connection
+// handshake, and runMigrations's asyncpg connection attempt failed with
+// "ConnectionDoesNotExistError: connection was closed in the middle of operation" as a direct
+// result. pg_isready performs a real, lightweight libpq-level connection attempt - the same
+// class of check pg_ctl's own "-w" flag relies on internally - so it cannot report ready before
+// Postgres genuinely can handle one.
+func postgresAcceptingConnections(home string, port int) bool {
+	cmd := exec.Command(pgIsReadyExePath(home), buildPgIsReadyArgs(port)...)
+	hideWindow(cmd)
+	return cmd.Run() == nil
+}
+
+// waitForPostgresReady polls until Postgres genuinely accepts connections on 127.0.0.1:port
+// (see postgresAcceptingConnections), cmd's process exits early (a real startup failure - reads
+// its own log content back into the error, same #82-driven philosophy as runCapturedCommandIn:
+// Microsoft Store certification screenshots are the only diagnostic surface available, so the
+// real failure has to already be in the message), or ctx's deadline passes. Replaces
+// "pg_ctl start"'s own built-in "-w" readiness wait now that startPostgres bypasses pg_ctl (see
+// startPostgres's own comment for why).
 //
 // Detects early exit via cmd.Wait() in a background goroutine, not crash_recovery.go's
 // isPidRunning - isPidRunning's own doc comment already notes it's only a real liveness check on
@@ -207,8 +232,6 @@ const postgresReadyPollInterval = 100 * time.Millisecond
 // else ever waits on postgresCmd (stopPostgres shuts it down via a separate "pg_ctl stop"
 // signal, not this handle), so this is the only consumer.
 func waitForPostgresReady(ctx context.Context, cmd *exec.Cmd, home string, port int) error {
-	addr := fmt.Sprintf("127.0.0.1:%d", port)
-
 	exited := make(chan struct{})
 	go func() {
 		_ = cmd.Wait()
@@ -226,8 +249,7 @@ func waitForPostgresReady(ctx context.Context, cmd *exec.Cmd, home string, port 
 		default:
 		}
 
-		if conn, err := net.DialTimeout("tcp", addr, postgresReadyPollInterval); err == nil {
-			conn.Close()
+		if postgresAcceptingConnections(home, port) {
 			return nil
 		}
 

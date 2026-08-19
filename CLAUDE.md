@@ -115,11 +115,17 @@ acceptable for a system-interaction binary.
   PostgreSQL's own `pg_ctl register` wrapper around it, both hard-require admin elevation with no
   unprivileged exception, conflicting with this launcher's no-elevation design constraint (see
   `startPostgres`'s own doc comment for sources). The former `pg_ctl -w start`'s built-in
-  readiness wait is now `waitForPostgresReady` (also 100% covered) — polls a raw TCP dial against
-  the selected port, detects early process exit via `cmd.Wait()` in a background goroutine
-  (deliberately not `isPidRunning`, which is only a real liveness check on Windows — see its own
-  doc comment — reusing it here would make the early-exit branch untestable on Linux for a
-  platform-quirk reason unrelated to `cmd.Wait()` itself, which works correctly everywhere).
+  readiness wait is now `waitForPostgresReady` (also 100% covered) — polls
+  `postgresAcceptingConnections` (the bundled `pg_isready.exe`, not a raw TCP dial: issue #83's
+  live functional-pass testing found a real race where a bare `net.Dial` succeeds as soon as
+  `postgres.exe`'s listener socket is bound, measurably before the server can complete a real
+  connection handshake, breaking `runMigrations` with "connection was closed in the middle of
+  operation" — `pg_isready` performs the same real libpq-level check `pg_ctl -w` itself relies
+  on) against the selected port, detects early process exit via `cmd.Wait()` in a background
+  goroutine (deliberately not `isPidRunning`, which is only a real liveness check on Windows —
+  see its own doc comment — reusing it here would make the early-exit branch untestable on Linux
+  for a platform-quirk reason unrelated to `cmd.Wait()` itself, which works correctly
+  everywhere).
   **Issue #83 (feature parity)**: `startWorker` spawns the bundled PgQueuer worker
   (`python.exe -m pgqueuer run app.tasks.pgq_app:main`, matching `buildUvicornArgs`/
   `buildAlembicArgs`'s existing `-m modulename` style rather than a generated `Scripts/pgq.exe`

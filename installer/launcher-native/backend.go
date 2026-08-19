@@ -44,6 +44,15 @@ func buildAlembicArgs() []string {
 	return []string{"-m", "alembic", "upgrade", "head"}
 }
 
+// buildPgqueuerArgs invokes PgQueuer the same way this module already invokes uvicorn/alembic —
+// via "-m modulename", not a generated Scripts/pgq.exe wrapper (see buildUvicornArgs/
+// buildAlembicArgs above) — pgqueuer ships a real __main__.py, confirmed for the pinned
+// pgqueuer==1.3.2. app.tasks.pgq_app:main registers all 6 real task handlers (price sync, ETF
+// holdings, macro indicators, country performance, daily/monthly snapshots).
+func buildPgqueuerArgs() []string {
+	return []string{"-m", "pgqueuer", "run", "app.tasks.pgq_app:main"}
+}
+
 // migrationTimeout bounds runMigrations, deliberately far longer than postgres.go's
 // processTimeout (60s, sized only for quick Postgres commands becoming ready). Root cause of
 // issue #82's Microsoft Store certification failure: a first-run "alembic upgrade head" applies
@@ -75,7 +84,15 @@ func runMigrations(home string, pgPort int) error {
 // run-to-completion commands) with DATABASE_URL pointing at the given Postgres port. Not
 // unit-testable - a real external process spawn, same documented policy as postgres.go's
 // process-spawning functions. The caller is responsible for eventually stopping the returned
-// *exec.Cmd's process (see stopBackend).
+// *exec.Cmd's process (see stopChildProcess).
+//
+// PATH is explicitly prefixed with pgBinDir so admin.py's backup/restore endpoints (which shell
+// out to bare "pg_dump"/"pg_restore" by name, relying on PATH resolution — matching the
+// container image, where postgresql-client tooling is already on PATH) can actually find our
+// bundled pg_dump.exe/pg_restore.exe (issue #83). Without this, the OS-inherited PATH from
+// os.Environ() has no reason to include our data directory's pgsql\bin, and both endpoints would
+// fail outright with a bare "command not found" on a real install — never caught by CI, which
+// doesn't yet exercise this launcher's backup/restore path end-to-end (see issue #114).
 func startBackend(home string, backendPort, pgPort int) (*exec.Cmd, error) {
 	if err := os.MkdirAll(logDir(home), 0o755); err != nil {
 		return nil, fmt.Errorf("creating log directory: %w", err)
@@ -90,6 +107,7 @@ func startBackend(home string, backendPort, pgPort int) (*exec.Cmd, error) {
 	cmd.Env = append(os.Environ(),
 		"DATABASE_URL="+databaseURL(pgPort),
 		"FRONTEND_DIST_DIR="+frontendDistDir(home),
+		"PATH="+pgBinDir(home)+string(os.PathListSeparator)+os.Getenv("PATH"),
 	)
 	cmd.Stdout = out
 	cmd.Stderr = out
@@ -100,16 +118,58 @@ func startBackend(home string, backendPort, pgPort int) (*exec.Cmd, error) {
 	return cmd, nil
 }
 
-// stopBackend terminates a backend process previously started by startBackend. uvicorn has no
-// pg_ctl-style graceful "stop" command of its own to shell out to - killing the process directly
-// is the correct approach here (FastAPI/uvicorn's own shutdown handlers still run on SIGTERM,
-// which Process.Kill sends on Windows via TerminateProcess... actually TerminateProcess does NOT
-// trigger graceful shutdown handlers, unlike a real SIGTERM on POSIX. This is a known, accepted
-// MVP gap: a hard-terminated uvicorn does not get to run FastAPI's own shutdown event handlers.
-// Acceptable for now since this app's shutdown handlers (if any exist) are not relied upon for
-// data integrity - Postgres's own stopPostgres call, which does perform a real graceful
-// shutdown, is what actually matters for data safety.
-func stopBackend(cmd *exec.Cmd) error {
+// startWorker spawns the bundled PgQueuer worker (issue #83) as a second long-lived child
+// process alongside uvicorn — background price sync, ETF holdings refresh, macro indicators,
+// country performance, and daily/monthly snapshot computation (see app/tasks/pgq_app.py) never
+// ran at all on the native launcher before this, a real functional gap versus the containerized
+// version's separate pgq-worker service (compose-prod.yaml). Not unit-testable, same documented
+// policy as startBackend.
+//
+// cmd.Dir must be backendAppDir — pgqueuer's own factory-loading code
+// (adapters/cli/factories.py's load_factory) resolves "app.tasks.pgq_app:main" via
+// sys.path.insert(0, os.getcwd()), not an --app-dir-style flag the way uvicorn's own CLI
+// supports (confirmed against the installed pgqueuer==1.3.2 source — there is no equivalent
+// flag). Without an explicit working directory, the launcher's own default CWD has no reason to
+// contain the "app" package, and the import would fail.
+//
+// No PgQueuer schema-install step needed here: alembic/versions/uu44vv55ww66_add_pgqueuer_schema.py
+// already embeds the verbatim output of "pgq sql install" for the pinned pgqueuer version, so
+// runMigrations (already run on every launch) creates it — confirmed by reading that migration
+// directly, not assumed.
+func startWorker(home string, pgPort int) (*exec.Cmd, error) {
+	if err := os.MkdirAll(logDir(home), 0o755); err != nil {
+		return nil, fmt.Errorf("creating log directory: %w", err)
+	}
+	out, err := os.Create(filepath.Join(logDir(home), "worker.log"))
+	if err != nil {
+		return nil, fmt.Errorf("creating worker log: %w", err)
+	}
+
+	cmd := exec.Command(pythonExePath(home), buildPgqueuerArgs()...)
+	cmd.Dir = backendAppDir(home)
+	hideWindow(cmd)
+	cmd.Env = append(os.Environ(), "DATABASE_URL="+databaseURL(pgPort))
+	cmd.Stdout = out
+	cmd.Stderr = out
+	if err := cmd.Start(); err != nil {
+		out.Close()
+		return nil, fmt.Errorf("starting worker: %w", err)
+	}
+	return cmd, nil
+}
+
+// stopChildProcess terminates a long-lived child process previously started by startBackend or
+// startWorker. Neither uvicorn nor pgqueuer has a pg_ctl-style graceful "stop" command of its
+// own to shell out to — killing the process directly is the correct approach here
+// (FastAPI/uvicorn's own shutdown handlers still run on SIGTERM on POSIX, but
+// Process.Kill sends TerminateProcess on Windows, which does NOT trigger graceful shutdown
+// handlers). This is a known, accepted MVP gap: a hard-terminated uvicorn/pgqueuer does not get
+// to run its own shutdown event handlers. Acceptable since neither app's shutdown handlers are
+// relied upon for data integrity — Postgres's own stopPostgres call, which does perform a real
+// graceful shutdown, is what actually matters for data safety, and PgQueuer's own
+// heartbeat-based redelivery (see app/tasks/pgq_app.py's docstring) already handles a worker
+// dying mid-job without any bespoke cleanup here.
+func stopChildProcess(cmd *exec.Cmd) error {
 	if cmd == nil || cmd.Process == nil {
 		return nil
 	}

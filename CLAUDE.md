@@ -80,8 +80,11 @@ acceptable for a system-interaction binary.
   any write under `AppData`, even a fully hardcoded path, to a location wiped on uninstall),
   `ports.go` (dynamic port selection, never the #76 poc's hardcoded 5432/8123), all arg-builder
   functions in `postgres.go`/`backend.go` (`buildInitdbArgs`, `buildPostgresArgs`,
-  `buildPgCtlStopArgs`, `buildCreateDbArgs`, `databaseURL`, `buildUvicornArgs`, `healthURL`),
-  `runCapturedCommand`, `stopBackend`, `waitForHealth` (fully exercised via `httptest.Server` and
+  `buildPgCtlStopArgs`, `buildCreateDbArgs`, `databaseURL`, `buildUvicornArgs`, `healthURL`,
+  `buildPgqueuerArgs`),
+  `runCapturedCommand`, `stopChildProcess` (renamed from `stopBackend` — issue #83's PgQueuer
+  worker is a second long-lived child process it also stops, so the old backend-specific name no
+  longer fit), `waitForHealth` (fully exercised via `httptest.Server` and
   real short-lived subprocesses, not just argument-building), `readPostmasterPid`, and
   `hideWindow` (`hidewindow_windows.go`/`hidewindow_other.go` — suppresses the console window
   Windows otherwise pops up per spawned subprocess for a windowless GUI app, confirmed live via
@@ -117,9 +120,34 @@ acceptable for a system-interaction binary.
   (deliberately not `isPidRunning`, which is only a real liveness check on Windows — see its own
   doc comment — reusing it here would make the early-exit branch untestable on Linux for a
   platform-quirk reason unrelated to `cmd.Wait()` itself, which works correctly everywhere).
+  **Issue #83 (feature parity)**: `startWorker` spawns the bundled PgQueuer worker
+  (`python.exe -m pgqueuer run app.tasks.pgq_app:main`, matching `buildUvicornArgs`/
+  `buildAlembicArgs`'s existing `-m modulename` style rather than a generated `Scripts/pgq.exe`
+  wrapper) as a second long-lived child alongside `uvicorn` — before this, the native launcher
+  ran no worker at all, a real functional gap (zero background price sync/snapshot computation)
+  versus the containerized version's separate `pgq-worker` service. Needs `cmd.Dir =
+  backendAppDir(home)`: pgqueuer's own factory-loading code
+  (`adapters/cli/factories.py`'s `load_factory`) resolves the `module:function` string via
+  `sys.path.insert(0, os.getcwd())`, not an `--app-dir`-style flag the way uvicorn's CLI
+  supports — confirmed against the installed `pgqueuer==1.3.2` source, no such flag exists. No
+  separate PgQueuer schema-install step needed: `alembic/versions/
+  uu44vv55ww66_add_pgqueuer_schema.py` already embeds the verbatim output of `pgq sql install`
+  for the pinned version, so the migrations `runMigrations` already applies on every launch
+  create it. Same untestable classification as `startBackend` (real process spawn) — not pushed
+  into the fully-tested bucket the way `startPostgres` was, to keep this change proportionate to
+  what #83 actually needed.
+
+  **Also #83: `startBackend`'s `cmd.Env` now prefixes `PATH` with `pgBinDir(home)`.**
+  `backend/app/api/routers/admin.py`'s backup/restore endpoints shell out to bare `pg_dump`/
+  `pg_restore` by name (matching the container image, where postgresql-client tooling is already
+  on `PATH`) — without this, the launcher's inherited `os.Environ()` PATH has no reason to
+  include the bundled `pgsql\bin`, and both endpoints would fail outright with "command not
+  found" on a real install. Found by reading `admin.py` directly, not assumed — confirmed nothing
+  else in this launcher previously set `PATH` at all. Not yet covered by CI (see #114).
+
   **Intentionally untestable** (real process spawns/OS liveness checks, same class as the
   Podman-based installer's own untestable bucket) — `runInitdb`, `stopPostgres`,
-  `createAppDatabase`, `startBackend`, `isPidRunning`, `recoverFromPreviousSession`,
+  `createAppDatabase`, `startBackend`, `startWorker`, `isPidRunning`, `recoverFromPreviousSession`,
   `startupSequence` (the top-level orchestrator — every decision it makes is already covered by
   testing the pure functions it calls; the function itself is thin sequencing glue), and all of
   `main.go` (WebView2/window glue). Covered instead by the CI install+launch smoke test in

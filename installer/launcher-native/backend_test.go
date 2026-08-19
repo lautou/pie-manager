@@ -62,6 +62,14 @@ func TestBuildAlembicArgs(t *testing.T) {
 	}
 }
 
+func TestBuildPgqueuerArgs(t *testing.T) {
+	args := buildPgqueuerArgs()
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "pgqueuer run app.tasks.pgq_app:main") {
+		t.Errorf("expected pgqueuer run invocation in args, got %v", args)
+	}
+}
+
 func TestRunMigrations_UsesBackendAppDirAndDatabaseURL(t *testing.T) {
 	// runMigrations itself execs a real process (python.exe, not available here) - covered by
 	// the CI install+launch smoke test, same documented policy as postgres.go's process-spawning
@@ -81,20 +89,20 @@ func TestHealthURL(t *testing.T) {
 	}
 }
 
-func TestStopBackend_NilCmd(t *testing.T) {
-	if err := stopBackend(nil); err != nil {
+func TestStopChildProcess_NilCmd(t *testing.T) {
+	if err := stopChildProcess(nil); err != nil {
 		t.Errorf("expected nil error for a nil cmd, got %v", err)
 	}
 }
 
-func TestStopBackend_NeverStartedProcess(t *testing.T) {
+func TestStopChildProcess_NeverStartedProcess(t *testing.T) {
 	cmd := exec.Command("does-not-matter")
-	if err := stopBackend(cmd); err != nil {
+	if err := stopChildProcess(cmd); err != nil {
 		t.Errorf("expected nil error for a cmd that was never Start()ed (Process is nil), got %v", err)
 	}
 }
 
-func TestStopBackend_KillsRunningProcess(t *testing.T) {
+func TestStopChildProcess_KillsRunningProcess(t *testing.T) {
 	sleepExe := "/bin/sleep"
 	if _, err := os.Stat(sleepExe); err != nil {
 		t.Skip("/bin/sleep not available on this platform")
@@ -103,8 +111,8 @@ func TestStopBackend_KillsRunningProcess(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("failed to start test process: %v", err)
 	}
-	if err := stopBackend(cmd); err != nil {
-		t.Errorf("expected stopBackend to kill the process cleanly, got %v", err)
+	if err := stopChildProcess(cmd); err != nil {
+		t.Errorf("expected stopChildProcess to kill the process cleanly, got %v", err)
 	}
 	_ = cmd.Wait() // reap the killed child, ignore the resulting "signal: killed" error
 }

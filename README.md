@@ -30,7 +30,7 @@ PIE Manager permet de suivre plusieurs portefeuilles d'investissement depuis une
 | Élément | Détail |
 |---------|--------|
 | Linux | Fedora, Ubuntu ou toute distribution compatible Podman |
-| Windows | Windows 11 64-bit (WSL2 et Podman installés automatiquement) |
+| Windows | Windows 11 64-bit — installation via le [Microsoft Store](https://apps.microsoft.com/detail/9PM8GPSMJG0N), aucun prérequis manuel |
 | macOS | Apple Silicon (arm64), macOS 14 Sonoma ou ultérieur (Podman installé automatiquement) |
 
 ---
@@ -68,13 +68,11 @@ pie-manager start
 
 ### Windows 11 (x86_64)
 
-1. Télécharger [`pie-manager-windows-amd64.exe`](https://github.com/lautou/pie-manager/releases/latest/download/pie-manager-windows-amd64.exe) depuis la page des releases
-2. Double-cliquer pour lancer
-3. Si Windows SmartScreen bloque : cliquer **"Afficher plus" → "Exécuter quand même"**
+Installer [PIE Manager depuis le Microsoft Store](https://apps.microsoft.com/detail/9PM8GPSMJG0N) — un clic sur **Obtenir**, aucune configuration manuelle.
 
-L'installateur gère tout automatiquement : WSL2, Podman, images Docker, démarrage des services. Un redémarrage peut être nécessaire si WSL2 n'est pas encore installé — relancer simplement l'exe après.
+Aucun prérequis : contrairement à l'ancien installateur, l'app Store embarque directement son propre backend Python et sa propre base PostgreSQL — pas de WSL2, pas de Podman, pas de containers à télécharger.
 
-Après l'installation, utiliser l'icône **PIE Manager** dans le menu Démarrer.
+Après l'installation, utiliser l'icône **PIE Manager** dans le menu Démarrer. Les mises à jour sont automatiques via le Microsoft Store.
 
 Pour le guide détaillé : [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
@@ -202,13 +200,17 @@ Guide détaillé : [docs/SAUVEGARDE.md](docs/SAUVEGARDE.md).
 
 ## Sécurité et signature de code
 
-Les binaires Windows sont signés (Authenticode, horodatage RFC-3161) avec un certificat
-auto-généré (`CN=PIEManager`) — [SignPath Foundation](https://signpath.org) (signature gratuite
-pour l'open source) a refusé la demande faute d'audience suffisante sur ce dépôt. Un certificat
-auto-généré n'a pas la réputation accumulée d'une autorité de certification reconnue : Windows
-SmartScreen affichera donc quand même un avertissement au premier lancement : cliquez sur
-**"Informations complémentaires" → "Exécuter quand même"** (voir la section Installation
-ci-dessus).
+**Windows (Microsoft Store) :** l'app distribuée via le Store est signée et certifiée par
+Microsoft dans le cadre du processus de publication — aucun avertissement SmartScreen, aucune
+étape de contournement nécessaire.
+
+L'exécutable `pie-manager-windows-amd64.exe` (ancien installateur WSL2/Podman, toujours publié
+dans les releases GitHub pour compatibilité) reste signé (Authenticode, horodatage RFC-3161)
+avec un certificat auto-généré (`CN=PIEManager`) — [SignPath Foundation](https://signpath.org)
+(signature gratuite pour l'open source) a refusé la demande faute d'audience suffisante sur ce
+dépôt. Un certificat auto-généré n'a pas la réputation accumulée d'une autorité de certification
+reconnue : Windows SmartScreen affichera donc quand même un avertissement au premier lancement
+si vous utilisez cette voie plutôt que le Store.
 
 Le binaire macOS n'est ni signé ni notarié — cela nécessiterait un compte Apple Developer
 Program payant (99$/an), qui n'est pas utilisé pour ce projet. macOS Gatekeeper bloquera donc

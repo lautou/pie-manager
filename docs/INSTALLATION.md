@@ -20,9 +20,9 @@
 
 | Ressource | Linux | Windows 11 | macOS |
 |---|---|---|---|
-| **CPU** | 2 cœurs | 4 cœurs (WSL2 en consomme 2) | Apple Silicon (M1 ou ultérieur) |
-| **RAM** | 2 Go | 4 Go (WSL2 + Podman Machine ~2 Go) | 4 Go (Podman Machine ~2 Go) |
-| **Disque** | 4 Go libres | 8 Go libres (VM WSL2 incluse) | 6 Go libres (VM Podman Machine incluse) |
+| **CPU** | 2 cœurs | 2 cœurs (pas de VM — backend Python + PostgreSQL bundlés directement) | Apple Silicon (M1 ou ultérieur) |
+| **RAM** | 2 Go | *non mesuré* (pas de couche VM/containers depuis le passage au launcher natif Store, voir §4) | 4 Go (Podman Machine ~2 Go) |
+| **Disque** | 4 Go libres | *non mesuré* | 6 Go libres (VM Podman Machine incluse) |
 | **OS** | Fedora 38+, Ubuntu 22.04+ | Windows 11 64-bit | macOS 14 Sonoma ou ultérieur |
 
 ### Empreinte en fonctionnement normal
@@ -46,16 +46,17 @@ séparément.*
 
 #### Windows 11 (état de repos, app démarrée)
 
-Sur Windows, les containers tournent dans la **Podman Machine** (VM WSL2). Il faut ajouter la couche virtualisation :
+Depuis le passage à la distribution Microsoft Store (launcher natif, voir §4), il n'y a plus de
+VM ni de containers sur Windows — le backend Python et PostgreSQL tournent directement comme
+processus natifs, lancés par une fenêtre WebView2. Le processus `VmmemWSL` et son empreinte
+mémoire dédiée n'existent plus pour cette app.
 
-| Couche | RAM | Disque |
+| Processus | RAM | Disque |
 |---|---|---|
-| WSL2 (hyperviseur) | ~100 Mo | — |
-| Podman Machine (VM Fedora CoreOS) | ~400 Mo | ~3 Go (disque virtuel .vhdx) |
-| 5 containers PIE Manager | *non re-mesuré* | *non re-mesuré* |
-| **Total VmmemWSL** | **~2 Go** | **~3,5 Go** |
+| Backend Python + PostgreSQL (bundlés) | *non mesuré* | *non mesuré* |
 
-Le processus `VmmemWSL` visible dans le Gestionnaire des tâches représente la mémoire totale de la VM WSL2 — c'est normal.
+*Chiffres à mesurer sur un premier passage d'utilisation réelle — voir aussi la vérification de
+l'issue #82.*
 
 #### macOS (état de repos, app démarrée)
 
@@ -73,9 +74,9 @@ Contrairement à Windows, il n'y a pas de processus hôte unique consolidant tou
 
 | Durée d'utilisation | Données PostgreSQL | Disque total (Linux) | Disque total (Windows) | Disque total (macOS) |
 |---|---|---|---|---|
-| 1 mois (2 portefeuilles) | ~5 Mo | ~500 Mo | ~4 Go | ~4,5 Go |
-| 6 mois | ~20 Mo | ~600 Mo | ~4,5 Go | ~5 Go |
-| 2 ans | ~80 Mo | ~800 Mo | ~5 Go | ~5,3 Go |
+| 1 mois (2 portefeuilles) | ~5 Mo | ~500 Mo | *non mesuré (launcher natif Store)* | ~4,5 Go |
+| 6 mois | ~20 Mo | ~600 Mo | *non mesuré* | ~5 Go |
+| 2 ans | ~80 Mo | ~800 Mo | *non mesuré* | ~5,3 Go |
 
 La base de données reste légère — les prix historiques (yfinance) représentent l'essentiel du stockage. Les `.dump` de sauvegarde font généralement **300–500 Ko**.
 
@@ -174,26 +175,35 @@ Sans WebKitGTK, le navigateur par défaut est utilisé à la place.
 
 ## 4. Installation sur Windows 11
 
-L'installateur Windows gère tout automatiquement — aucune installation manuelle requise.
+**Installer [PIE Manager depuis le Microsoft Store](https://apps.microsoft.com/detail/9PM8GPSMJG0N)** — un clic sur **Obtenir**, aucune installation manuelle.
 
-**Prérequis :** Windows 11 64-bit (le reste est installé automatiquement)
+**Prérequis :** Windows 11 64-bit — rien d'autre. Contrairement à l'ancien installateur (WSL2 +
+Podman + containers), l'app Store est un launcher natif qui embarque directement son propre
+backend Python et sa propre base PostgreSQL — pas de virtualisation, pas de containers à
+télécharger.
 
-**Procédure :**
+**Ce que fait l'app au premier lancement :**
 
-1. Télécharger `pie-manager-windows-amd64.exe` depuis la [page des releases](https://github.com/lautou/pie-manager/releases/latest)
-2. Double-cliquer pour lancer — Windows SmartScreen peut afficher un avertissement : cliquer **"Afficher plus" → "Exécuter quand même"**
-3. L'installateur gère dans l'ordre :
-   - Installation de WSL2 (si absent) — **reboot possible**, relancer l'exe après
-   - Installation de Podman CLI via winget
-   - Initialisation de la Podman Machine (~650 Mo, quelques minutes)
-   - Installation de `podman-compose` dans la machine
-   - Téléchargement des images (~1,5 Go)
-   - Démarrage des 5 containers
-   - Ouverture de PIE Manager dans Edge (fenêtre sans barre d'adresse)
+1. Initialisation de PostgreSQL (`initdb`) dans `%USERPROFILE%\PieManager\` — jamais sous
+   `AppData`/`LocalAppData`, qui seraient effacés par Windows au moindre repackaging MSIX
+2. Sélection dynamique d'un port libre
+3. Application des migrations de base de données (Alembic)
+4. Démarrage du backend (uvicorn) et ouverture de la fenêtre native (WebView2)
 
-**Icône menu Démarrer :** après installation, l'icône PIE Manager lance l'application directement. Plusieurs clics ramènent la fenêtre au premier plan sans ouvrir de doublon.
+Aucun avertissement Windows SmartScreen : l'app est signée et certifiée par Microsoft dans le
+cadre du processus de publication sur le Store.
 
-**Note mémoire :** le processus `VmmemWSL` consomme ~2 Go — normal, c'est la machine virtuelle Podman (WSL2) avec tous les containers.
+**Icône menu Démarrer :** après installation, l'icône PIE Manager lance l'application
+directement.
+
+**Mises à jour :** automatiques via le Microsoft Store, comme n'importe quelle autre app Store —
+pas de commande manuelle à relancer.
+
+**Historique :** cette distribution Store remplace l'ancien installateur WSL2/Podman comme
+méthode documentée pour Windows (issue #82). L'exécutable `pie-manager-windows-amd64.exe`
+reste publié dans les releases GitHub pour compatibilité, mais n'est plus la voie recommandée —
+voir la section « Sécurité et signature de code » du README pour le détail de cette voie
+alternative.
 
 ---
 
@@ -284,9 +294,19 @@ Déroulement :
 
 Voir [SAUVEGARDE.md](SAUVEGARDE.md) pour le guide complet.
 
+**Windows (Microsoft Store) :** mise à jour automatique via le Store, comme n'importe quelle
+autre app — rien à faire manuellement.
+
 ---
 
 ## 8. Désinstallation complète
+
+**Windows (Microsoft Store) :** Paramètres → Applications → PIE Manager → Désinstaller. Les
+données restent dans `%USERPROFILE%\PieManager\` (choix délibéré pour survivre à une
+désinstallation, voir CLAUDE.md) — les supprimer manuellement si un nettoyage complet est
+voulu.
+
+Les commandes ci-dessous concernent l'installation Linux/macOS (Podman) :
 
 ### Arrêter et supprimer les containers et les volumes
 

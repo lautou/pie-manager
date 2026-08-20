@@ -508,13 +508,15 @@ jobs:
         run: |
           $version = "${{ needs.build.outputs.version }}"
           try {
-            Add-AppxPackage -Path "pie-manager-native-launcher-$version.msix" -Verbose
+            # -AllUsers: registers the package machine-wide, not just for the elevated account
+            # that runs this step — the non-admin test user created below needs to see it too.
+            Add-AppxPackage -Path "pie-manager-native-launcher-$version.msix" -AllUsers -Verbose
           } catch {
             Write-Host "::error::Add-AppxPackage failed: $_"
             exit 1
           }
 
-          $pkg = Get-AppxPackage -Name "PIEManager.PIEManager"
+          $pkg = Get-AppxPackage -AllUsers -Name "PIEManager.PIEManager"
           if (-not $pkg) {
             Write-Host "::error::Package not found after Add-AppxPackage"
             exit 1
@@ -526,53 +528,46 @@ jobs:
           # Administrator token (confirmed live: WindowsPrincipal.IsInRole(Administrator) is
           # true here) — not representative of a real user's normal desktop session, where
           # Windows UAC hands even an admin-type account a non-elevated token by default for a
-          # plain Start Menu app launch. A plain Start-Process (or "explorer.exe
-          # shell:AppsFolder\...", tried and confirmed NOT sufficient — see below) inherits that
-          # elevated token straight into launcher-native.exe's child postgres.exe, which refuses
-          # to run under an elevated token ("Execution of PostgreSQL by a user with
-          # administrative permissions is not permitted" — a real, deliberate
-          # Postgres-on-Windows safety check, confirmed live).
+          # plain Start Menu app launch. Postgres refuses to run under an elevated token
+          # ("Execution of PostgreSQL by a user with administrative permissions is not
+          # permitted" — a real, deliberate Postgres-on-Windows safety check, confirmed live).
           #
-          # A Scheduled Task with RunLevel Limited targeting a plain "explorer.exe
-          # shell:AppsFolder\..." was tried first and did NOT fix this: Explorer is
-          # single-instance per session, so a fresh invocation typically just forwards the
-          # activation request via COM to the ALREADY-RUNNING (elevated) Explorer process and
-          # exits — the actual launcher-native.exe spawn happens inside that pre-existing
-          # elevated process, never touching the new task's own Limited token at all.
+          # Two same-account "run with a different token" tricks were tried and both still
+          # produced an elevated token: a Scheduled Task with RunLevel Limited targeting
+          # "explorer.exe shell:AppsFolder\..." (Explorer is single-instance per session, so a
+          # fresh invocation just forwarded the request via COM to the already-running elevated
+          # Explorer instance), and the same after first killing that pre-existing Explorer
+          # process so there was nothing left to delegate to. Both still failed identically —
+          # strong evidence that UAC/LUA token-splitting is disabled entirely on this runner
+          # image, meaning RunLevel Limited has nothing to filter for an Administrators-group
+          # account: there is only ever one (admin) token available to it, full stop. A separate
+          # direct IApplicationActivationManager COM-interop attempt hit its own unresolved,
+          # unrelated COM-level failure and was abandoned too.
           #
-          # A direct IApplicationActivationManager.ActivateApplication COM-interop call (bypassing
-          # Explorer's shell-folder delegation entirely) was tried next and hit a genuine,
-          # unresolved COM-level failure ("incorrect format", 0x8007000B) three interop layers
-          # deep (QueryInterface cast, COM apartment state, and finally the call itself) with no
-          # further progress — abandoned.
-          #
-          # Fix that actually works: kill any pre-existing Explorer process immediately before
-          # launching (see .github/scripts/activate-appx-package.ps1), so the fresh
-          # "explorer.exe shell:AppsFolder\..." invocation this Limited-run-level task makes has
-          # no instance left to delegate to — it becomes the session's primary shell handler
-          # itself, actually performing the launch under its own (Limited) token. Script lives in
-          # a real repo file, not an inline heredoc: a PowerShell here-string's closing "@ must be
-          # the first characters on its own line, which is incompatible with YAML's block-scalar
-          # indentation rules for a "run: |" block.
-          $activatorPath = Join-Path $env:GITHUB_WORKSPACE ".github\scripts\activate-appx-package.ps1"
-          $resultPath = Join-Path $env:TEMP "activate-result.log"
-          $pwshPath = (Get-Command pwsh).Source
+          # Fix that actually works: a genuinely non-administrator local account never has an
+          # admin SID to elevate in the first place, regardless of the runner's UAC/LUA
+          # configuration. Start-Process -Credential (not a Scheduled Task) launches the app as
+          # this new user while still attached to the current, already-interactive desktop —
+          # unlike a Scheduled Task's Password/S4U logon types, which run in a non-interactive,
+          # Session-0-like context with no real desktop for a GUI app to render into.
+          $testUserName = "pietestuser"
+          $testUserPassword = "P!eManager$(Get-Random -Minimum 100000 -Maximum 999999)Test"
+          $securePassword = ConvertTo-SecureString $testUserPassword -AsPlainText -Force
+          New-LocalUser -Name $testUserName -Password $securePassword `
+            -PasswordNeverExpires -UserMayNotChangePassword | Out-Null
+          Write-Host "Created non-admin test user: $testUserName"
 
-          $taskName = "PieManagerNativeLauncherTest"
-          $action = New-ScheduledTaskAction -Execute $pwshPath `
-            -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$activatorPath`" -Aumid `"$aumid`" -ResultPath `"$resultPath`""
-          $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
-          $task = New-ScheduledTask -Action $action -Principal $principal
-          Register-ScheduledTask -TaskName $taskName -InputObject $task -Force | Out-Null
-          Start-ScheduledTask -TaskName $taskName
-          Start-Sleep -Seconds 5
-          Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
-
-          if (Test-Path $resultPath) {
-            Write-Host "Activation result: $(Get-Content $resultPath)"
-          } else {
-            Write-Host "::warning::activate-result.log was not written — the scheduled task may not have run"
+          $cred = New-Object System.Management.Automation.PSCredential($testUserName, $securePassword)
+          try {
+            Start-Process -FilePath "explorer.exe" -ArgumentList "shell:AppsFolder\$aumid" -Credential $cred
+          } catch {
+            Write-Host "::error::Start-Process -Credential failed: $_"
+            exit 1
           }
+
+          # Exposed for the health-check step below, which must look in this new user's own
+          # profile (where the app's data directory actually lives), not the elevated session's.
+          Add-Content -Path $env:GITHUB_ENV -Value "TEST_USER_NAME=$testUserName"
 
       - name: Wait for the backend to become healthy, then dump logs
         # Generous deadline: covers MSIX activation, WebView2 startup, staging ~150+MB of
@@ -580,7 +575,10 @@ jobs:
         # pg_ctl start, createdb, and Alembic migrations — all first-run-only work.
         shell: pwsh
         run: |
-          $dataDir = Join-Path $env:USERPROFILE "PieManager"
+          # The app runs as $env:TEST_USER_NAME (a separate, genuinely non-admin local account —
+          # see the previous step), not this step's own elevated session, so its data directory
+          # lives under that user's own profile, not $env:USERPROFILE here.
+          $dataDir = Join-Path "C:\Users\$env:TEST_USER_NAME" "PieManager"
           $logDir = Join-Path $dataDir "logs"
           $healthUrl = "http://127.0.0.1:14943/api/admin/version"
 
@@ -618,16 +616,19 @@ jobs:
           Get-Process -Name launcher-native -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
           Get-Process -Name postgres -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
           Get-Process -Name python -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-          $pkg = Get-AppxPackage -Name "PIEManager.PIEManager"
+          $pkg = Get-AppxPackage -AllUsers -Name "PIEManager.PIEManager"
           if ($pkg) {
-            Remove-AppxPackage -Package $pkg.PackageFullName -ErrorAction SilentlyContinue
+            Remove-AppxPackage -Package $pkg.PackageFullName -AllUsers -ErrorAction SilentlyContinue
           }
           if ($env:THUMBPRINT) {
             Remove-Item "Cert:\LocalMachine\Root\$env:THUMBPRINT" -ErrorAction SilentlyContinue
             Remove-Item "Cert:\LocalMachine\TrustedPeople\$env:THUMBPRINT" -ErrorAction SilentlyContinue
             Remove-Item "Cert:\CurrentUser\My\$env:THUMBPRINT" -ErrorAction SilentlyContinue
           }
-          Remove-Item (Join-Path $env:USERPROFILE "PieManager") -Recurse -Force -ErrorAction SilentlyContinue
+          if ($env:TEST_USER_NAME) {
+            Remove-Item (Join-Path "C:\Users\$env:TEST_USER_NAME" "PieManager") -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-LocalUser -Name $env:TEST_USER_NAME -ErrorAction SilentlyContinue
+          }
 
       - name: Upload MSIX as a workflow artifact
         # Kept even on failure (unlike the release-attach step below) so a failed run's

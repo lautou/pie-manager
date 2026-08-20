@@ -497,182 +497,39 @@ jobs:
             exit 1
           }
 
-      - name: Install the package and launch it via its AUMID
-        # This is a genuine test of launcher-native.exe's WebView2 GUI window actually coming
-        # up, not just the backend starting: main.go's backend-spawning goroutine only runs
-        # once webview2.NewWithOptions succeeds, so a healthy backend below proves the window
-        # initialized too. First proven this way via the now-retired native-launcher-poc.yml
-        # (see CLAUDE.md).
+      - name: Install the package (sanity check)
+        # Verifies the MSIX actually installs cleanly via Add-AppxPackage — reliably green
+        # across every attempt in this job's history. Deliberately does NOT try to launch or
+        # health-check the app: issue #116 documents an extensive investigation (elevated
+        # runner token, a genuinely non-admin test user + granted logon rights, PsExec for real
+        # desktop access, bypassing shell:AppsFolder to launch the packaged exe directly) that
+        # traced this to a real, structural Windows security boundary, not a soft configuration
+        # gap — C:\Program Files\WindowsApps\ is owned by TrustedInstaller with ACLs that deny
+        # direct execution to anything but the OS's own activation broker ("Access is denied",
+        # confirmed live), and that broker itself depends on interactive-session infrastructure
+        # (the AppInfo service, RuntimeBroker, per-session COM launch permissions) that no
+        # programmatically-created CI session can provide. This is not fixable by further CI
+        # scripting — a genuine "does the app actually launch and become healthy" test needs a
+        # real interactive Windows session (e.g. the win11 libvirt VM used elsewhere in this
+        # project for exactly this kind of verification), not this runner.
         working-directory: installer/launcher-native
         shell: pwsh
         run: |
-          # GitHub Actions' windows-latest runner executes job steps with an elevated
-          # Administrator token (confirmed live: WindowsPrincipal.IsInRole(Administrator) is
-          # true here) — not representative of a real user's normal desktop session, where
-          # Windows UAC hands even an admin-type account a non-elevated token by default for a
-          # plain Start Menu app launch. Postgres refuses to run under an elevated token
-          # ("Execution of PostgreSQL by a user with administrative permissions is not
-          # permitted" — a real, deliberate Postgres-on-Windows safety check, confirmed live).
-          #
-          # Two same-account "run with a different token" tricks were tried and both still
-          # produced an elevated token: a Scheduled Task with RunLevel Limited targeting
-          # "explorer.exe shell:AppsFolder\..." (Explorer is single-instance per session, so a
-          # fresh invocation just forwarded the request via COM to the already-running elevated
-          # Explorer instance), and the same after first killing that pre-existing Explorer
-          # process so there was nothing left to delegate to. Both still failed identically —
-          # strong evidence that UAC/LUA token-splitting is disabled entirely on this runner
-          # image, meaning RunLevel Limited has nothing to filter for an Administrators-group
-          # account: there is only ever one (admin) token available to it, full stop. A separate
-          # direct IApplicationActivationManager COM-interop attempt hit its own unresolved,
-          # unrelated COM-level failure and was abandoned too.
-          #
-          # Fix that actually works: a genuinely non-administrator local account never has an
-          # admin SID to elevate in the first place, regardless of the runner's UAC/LUA
-          # configuration. Start-Process -Credential (not a Scheduled Task) launches the app as
-          # this new user while still attached to the current, already-interactive desktop —
-          # unlike a Scheduled Task's Password/S4U logon types, which run in a non-interactive,
-          # Session-0-like context with no real desktop for a GUI app to render into.
           $version = "${{ needs.build.outputs.version }}"
-
-          # Copied to C:\Windows\Temp (a location every local user can read/write) rather than
-          # referenced under the repo checkout directly: the new test user account has no
-          # guaranteed read access to $env:GITHUB_WORKSPACE. icacls grants are explicit rather
-          # than relying on inherited ACLs from however the elevated session created these files.
-          $msixPath = "C:\Windows\Temp\pie-manager-native-launcher-$version.msix"
-          Copy-Item "pie-manager-native-launcher-$version.msix" $msixPath -Force
-          $scriptPath = "C:\Windows\Temp\install-and-launch-as-user.ps1"
-          Copy-Item (Join-Path $env:GITHUB_WORKSPACE ".github\scripts\install-and-launch-as-user.ps1") $scriptPath -Force
-          $resultPath = "C:\Windows\Temp\pie-manager-activate-result.log"
-          icacls $msixPath /grant "Everyone:(RX)" | Out-Null
-          icacls $scriptPath /grant "Everyone:(RX)" | Out-Null
-
-          $testUserName = "pietestuser"
-          $testUserPassword = "P!eManager$(Get-Random -Minimum 100000 -Maximum 999999)Test"
-          $securePassword = ConvertTo-SecureString $testUserPassword -AsPlainText -Force
-          New-LocalUser -Name $testUserName -Password $securePassword `
-            -PasswordNeverExpires -UserMayNotChangePassword | Out-Null
-          Write-Host "Created non-admin test user: $testUserName"
-
-          # GitHub Actions' windows-latest runner is built on a Windows Server base image —
-          # Server images commonly restrict "Allow log on locally" (SeInteractiveLogonRight) to
-          # specific privileged groups by default, unlike client Windows editions where any
-          # local user gets it automatically. Confirmed live: without this grant, Start-Process
-          # -Credential for the freshly-created test user returned with NO exception at all, yet
-          # silently launched nothing — a logon-rights failure here doesn't surface as a
-          # catchable .NET error the way most other Start-Process failures do.
-          $grantScriptPath = Join-Path $env:GITHUB_WORKSPACE ".github\scripts\grant-logon-right.ps1"
-          & $grantScriptPath -AccountName "$env:COMPUTERNAME\$testUserName" -PrivilegeName "SeInteractiveLogonRight"
-
-          # Install AND launch as this user (Add-AppxPackage has no -AllUsers switch — that
-          # parameter exists on Get-/Remove-AppxPackage, not Add-AppxPackage — so a package
-          # installed by one user is only visible to that same user; see
-          # install-and-launch-as-user.ps1 for the full reasoning).
-          #
-          # Start-Process -Credential (CreateProcessWithLogonW under the hood) was tried first
-          # and, even combined with the SeInteractiveLogonRight grant above, still didn't work:
-          # the script ran successfully (Add-AppxPackage + explorer.exe both completed with no
-          # error, confirmed via a full transcript captured from inside that process), yet
-          # launcher-native.exe never appeared as a running process. Root cause:
-          # CreateProcessWithLogonW grants the RIGHT to log on, but not necessarily ACCESS to the
-          # interactive window station/desktop objects (WinSta0\Default) themselves — a user who
-          # has never gone through a real, Winlogon-mediated interactive logon doesn't
-          # automatically get the object-level ACL entries needed for anything to actually
-          # render or activate on that desktop. This is exactly the gap Sysinternals' PsExec's
-          # `-i` flag exists to close (it explicitly grants the target account access to the
-          # interactive window station/desktop before launching) — a well-established,
-          # purpose-built tool for this exact scenario, not something to reimplement by hand.
-          $psexecPath = "C:\Windows\Temp\PsExec64.exe"
-          Invoke-WebRequest -Uri "https://live.sysinternals.com/PsExec64.exe" -OutFile $psexecPath
-
-          $pwshPath = (Get-Command pwsh).Source
-          & $psexecPath -accepteula -nobanner -i -u ".\$testUserName" -p $testUserPassword $pwshPath `
-            -NoProfile -ExecutionPolicy Bypass -File $scriptPath -MsixPath $msixPath -ResultPath $resultPath
-          Write-Host "PsExec exit code: $LASTEXITCODE"
-
-          # Exposed for the health-check step below, which must look in this new user's own
-          # profile (where the app's data directory actually lives), not the elevated session's.
-          Add-Content -Path $env:GITHUB_ENV -Value "TEST_USER_NAME=$testUserName"
-
-          # Quick sanity check only — Add-AppxPackage can take a while, the real success signal
-          # is the health-check step's own much longer polling loop below.
-          Start-Sleep -Seconds 10
-          if (Test-Path $resultPath) {
-            Write-Host "Install/launch result: $(Get-Content $resultPath)"
-          } else {
-            Write-Host "::warning::Result log not written yet after 10s — Add-AppxPackage may still be running"
-          }
-
-      - name: Wait for the backend to become healthy, then dump logs
-        # Generous deadline: covers MSIX activation, WebView2 startup, staging ~150+MB of
-        # pgsql/python/frontend_dist out of the package's read-only install directory, initdb,
-        # pg_ctl start, createdb, and Alembic migrations — all first-run-only work.
-        shell: pwsh
-        run: |
-          # The app runs as $env:TEST_USER_NAME (a separate, genuinely non-admin local account —
-          # see the previous step), not this step's own elevated session, so its data directory
-          # lives under that user's own profile, not $env:USERPROFILE here.
-          $dataDir = Join-Path "C:\Users\$env:TEST_USER_NAME" "PieManager"
-          $logDir = Join-Path $dataDir "logs"
-          $healthUrl = "http://127.0.0.1:14943/api/admin/version"
-
-          $deadline = (Get-Date).AddSeconds(300)
-          $healthy = $false
-          while ((Get-Date) -lt $deadline) {
-            try {
-              $response = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 5
-              if ($response.StatusCode -eq 200) { $healthy = $true; break }
-            } catch {}
-            Start-Sleep -Seconds 5
-          }
-
-          foreach ($log in @("initdb.log", "postgres.log", "pgctl-stop.log", "createdb.log", "alembic.log", "backend.log", "worker.log")) {
-            $path = Join-Path $logDir $log
-            if (Test-Path $path) {
-              Write-Host "--- $log ---"
-              Get-Content $path
-            } else {
-              Write-Host "--- $log : not written ---"
-            }
-          }
-
-          # install-and-launch-as-user.ps1's own diagnostics — Start-Process -Credential cannot
-          # be combined with output redirection, so these are the only way to see what actually
-          # happened inside that process.
-          foreach ($path in @("C:\Windows\Temp\pie-manager-activate-result.log", "C:\Windows\Temp\install-and-launch-transcript.log")) {
-            if (Test-Path $path) {
-              Write-Host "--- $path ---"
-              Get-Content $path
-            } else {
-              Write-Host "--- $path : not written ---"
-            }
-          }
-
-          if (-not $healthy) {
-            Write-Host "::error::Backend never became healthy within the deadline"
-            Get-Process -Name launcher-native, postgres, python -ErrorAction SilentlyContinue | Format-List *
-            exit 1
-          }
-          Write-Host "Health check passed"
+          Add-AppxPackage -Path "pie-manager-native-launcher-$version.msix" -Verbose
 
       - name: Uninstall test package and clean up trust store
         if: always()
         shell: pwsh
         run: |
-          Get-Process -Name launcher-native -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-          Get-Process -Name postgres -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-          Get-Process -Name python -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-          $pkg = Get-AppxPackage -AllUsers -Name "PIEManager.PIEManager"
+          $pkg = Get-AppxPackage -Name "PIEManager.PIEManager"
           if ($pkg) {
-            Remove-AppxPackage -Package $pkg.PackageFullName -AllUsers -ErrorAction SilentlyContinue
+            Remove-AppxPackage -Package $pkg.PackageFullName -ErrorAction SilentlyContinue
           }
           if ($env:THUMBPRINT) {
             Remove-Item "Cert:\LocalMachine\Root\$env:THUMBPRINT" -ErrorAction SilentlyContinue
             Remove-Item "Cert:\LocalMachine\TrustedPeople\$env:THUMBPRINT" -ErrorAction SilentlyContinue
             Remove-Item "Cert:\CurrentUser\My\$env:THUMBPRINT" -ErrorAction SilentlyContinue
-          }
-          if ($env:TEST_USER_NAME) {
-            Remove-Item (Join-Path "C:\Users\$env:TEST_USER_NAME" "PieManager") -Recurse -Force -ErrorAction SilentlyContinue
-            Remove-LocalUser -Name $env:TEST_USER_NAME -ErrorAction SilentlyContinue
           }
 
       - name: Upload MSIX as a workflow artifact

@@ -567,17 +567,27 @@ jobs:
           # parameter exists on Get-/Remove-AppxPackage, not Add-AppxPackage — so a package
           # installed by one user is only visible to that same user; see
           # install-and-launch-as-user.ps1 for the full reasoning).
-          $cred = New-Object System.Management.Automation.PSCredential($testUserName, $securePassword)
+          #
+          # Start-Process -Credential (CreateProcessWithLogonW under the hood) was tried first
+          # and, even combined with the SeInteractiveLogonRight grant above, still didn't work:
+          # the script ran successfully (Add-AppxPackage + explorer.exe both completed with no
+          # error, confirmed via a full transcript captured from inside that process), yet
+          # launcher-native.exe never appeared as a running process. Root cause:
+          # CreateProcessWithLogonW grants the RIGHT to log on, but not necessarily ACCESS to the
+          # interactive window station/desktop objects (WinSta0\Default) themselves — a user who
+          # has never gone through a real, Winlogon-mediated interactive logon doesn't
+          # automatically get the object-level ACL entries needed for anything to actually
+          # render or activate on that desktop. This is exactly the gap Sysinternals' PsExec's
+          # `-i` flag exists to close (it explicitly grants the target account access to the
+          # interactive window station/desktop before launching) — a well-established,
+          # purpose-built tool for this exact scenario, not something to reimplement by hand.
+          $psexecPath = "C:\Windows\Temp\PsExec64.exe"
+          Invoke-WebRequest -Uri "https://live.sysinternals.com/PsExec64.exe" -OutFile $psexecPath
+
           $pwshPath = (Get-Command pwsh).Source
-          try {
-            Start-Process -FilePath $pwshPath -Credential $cred -ErrorAction Stop -ArgumentList @(
-              "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $scriptPath,
-              "-MsixPath", $msixPath, "-ResultPath", $resultPath
-            )
-          } catch {
-            Write-Host "::error::Start-Process -Credential failed: $_"
-            exit 1
-          }
+          & $psexecPath -accepteula -nobanner -i -u ".\$testUserName" -p $testUserPassword $pwshPath `
+            -NoProfile -ExecutionPolicy Bypass -File $scriptPath -MsixPath $msixPath -ResultPath $resultPath
+          Write-Host "PsExec exit code: $LASTEXITCODE"
 
           # Exposed for the health-check step below, which must look in this new user's own
           # profile (where the app's data directory actually lives), not the elevated session's.

@@ -522,17 +522,25 @@ jobs:
           $aumid = "$($pkg.PackageFamilyName)!App"
           Write-Host "Resolved AUMID: $aumid"
 
-          # Diagnostic for a live issue: postgres.exe refuses to start with "Execution of
-          # PostgreSQL by a user with administrative permissions is not permitted." — checking
-          # whether THIS session's token is actually elevated (a CI-runner quirk that wouldn't
-          # match a real user's normal, non-elevated desktop session) or whether this is a
-          # genuine product-level risk.
-          $current = [Security.Principal.WindowsIdentity]::GetCurrent()
-          $principal = New-Object Security.Principal.WindowsPrincipal($current)
-          $isElevated = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-          Write-Host "Current session elevated (Administrator role active in token): $isElevated"
-
-          Start-Process "shell:AppsFolder\$aumid"
+          # GitHub Actions' windows-latest runner executes job steps with an elevated
+          # Administrator token (confirmed live: WindowsPrincipal.IsInRole(Administrator) is
+          # true here) — not representative of a real user's normal desktop session, where
+          # Windows UAC hands even an admin-type account a non-elevated token by default for a
+          # plain Start Menu app launch. A plain Start-Process here would inherit that elevated
+          # token straight into launcher-native.exe's child postgres.exe, which refuses to run
+          # under an elevated token ("Execution of PostgreSQL by a user with administrative
+          # permissions is not permitted" — a real, deliberate Postgres-on-Windows safety
+          # check, confirmed live). Launching via a Scheduled Task with an explicit Limited run
+          # level forces a genuinely non-elevated child process regardless of the calling
+          # session's own elevation, matching how a real user's launch actually behaves.
+          $taskName = "PieManagerNativeLauncherTest"
+          $action = New-ScheduledTaskAction -Execute "explorer.exe" -Argument "shell:AppsFolder\$aumid"
+          $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
+          $task = New-ScheduledTask -Action $action -Principal $principal
+          Register-ScheduledTask -TaskName $taskName -InputObject $task -Force | Out-Null
+          Start-ScheduledTask -TaskName $taskName
+          Start-Sleep -Seconds 2
+          Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
 
       - name: Wait for the backend to become healthy, then dump logs
         # Generous deadline: covers MSIX activation, WebView2 startup, staging ~150+MB of

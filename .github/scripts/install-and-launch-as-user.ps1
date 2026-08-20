@@ -20,6 +20,20 @@ param(
     [string]$ResultPath
 )
 
+# Start-Process -Credential (the only way to launch this script as a different user while still
+# attached to the current interactive desktop) cannot be combined with
+# -RedirectStandardOutput/-RedirectStandardError at all — PowerShell rejects that parameter
+# combination outright. Start-Transcript, called from INSIDE this script instead, captures
+# everything regardless of how the script was launched — the only way to get real visibility
+# into what happens in this process once Start-Process hands off to it.
+$transcriptPath = "C:\Windows\Temp\install-and-launch-transcript.log"
+Start-Transcript -Path $transcriptPath -Force | Out-Null
+
+# Written unconditionally, before anything else that could fail, so a run that never gets this
+# far (e.g. the script itself couldn't be read, or never even started) is distinguishable from
+# one that started but failed inside the try/catch below.
+"STARTED as $(whoami)" | Out-File -FilePath $ResultPath
+
 try {
     Add-AppxPackage -Path $MsixPath -Verbose
 
@@ -35,4 +49,6 @@ try {
 } catch {
     "ERROR: $_" | Out-File -FilePath $ResultPath
     exit 1
+} finally {
+    Stop-Transcript | Out-Null
 }

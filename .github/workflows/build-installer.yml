@@ -625,6 +625,18 @@ jobs:
             }
           }
 
+          # install-and-launch-as-user.ps1's own diagnostics — Start-Process -Credential cannot
+          # be combined with output redirection, so these are the only way to see what actually
+          # happened inside that process.
+          foreach ($path in @("C:\Windows\Temp\pie-manager-activate-result.log", "C:\Windows\Temp\install-and-launch-transcript.log")) {
+            if (Test-Path $path) {
+              Write-Host "--- $path ---"
+              Get-Content $path
+            } else {
+              Write-Host "--- $path : not written ---"
+            }
+          }
+
           if (-not $healthy) {
             Write-Host "::error::Backend never became healthy within the deadline"
             Get-Process -Name launcher-native, postgres, python -ErrorAction SilentlyContinue | Format-List *

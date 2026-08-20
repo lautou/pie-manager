@@ -10,6 +10,11 @@ import (
 	"time"
 )
 
+// Version is injected at build time via -ldflags "-X main.Version=x.y.z". Declared here rather
+// than in main.go (which is //go:build windows-only) so it stays available for `go vet`/`go
+// test` on every platform — startBackend below needs it too, not just main.go's loading screen.
+var Version = "dev"
+
 func pythonExePath(home string) string { return filepath.Join(pythonDir(home), "python.exe") }
 
 // backendAppDir is where the backend's Python source (the "app" package) is staged, alongside
@@ -108,6 +113,13 @@ func startBackend(home string, backendPort, pgPort int) (*exec.Cmd, error) {
 		"DATABASE_URL="+databaseURL(pgPort),
 		"FRONTEND_DIST_DIR="+frontendDistDir(home),
 		"PATH="+pgBinDir(home)+string(os.PathListSeparator)+os.Getenv("PATH"),
+		// Without this, GET /api/admin/version falls through to admin.py's own "UNKNOWN"
+		// fallback (confirmed live on the Store-published build: the UI's version badge showed
+		// "vUNKNOWN") — the native launcher has no installer-writes-a-.env-file step the way the
+		// Podman-based path does, so APP_VERSION/INSTALLER_VERSION were simply never set at all.
+		// Version is main.go's own build-time-injected value (-ldflags "-X main.Version=x.y.z"),
+		// already used for the WebView2 loading screen — just never threaded through here too.
+		"APP_VERSION="+Version,
 	)
 	cmd.Stdout = out
 	cmd.Stderr = out

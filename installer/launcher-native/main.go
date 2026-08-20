@@ -15,9 +15,6 @@ import (
 	"github.com/jchv/go-webview2"
 )
 
-// Version is injected at build time via -ldflags "-X main.Version=x.y.z"
-var Version = "dev"
-
 var (
 	user32                  = syscall.NewLazyDLL("user32.dll")
 	procFindWindowW         = user32.NewProc("FindWindowW")

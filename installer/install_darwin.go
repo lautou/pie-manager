@@ -224,10 +224,10 @@ func runInstall() {
 
 // installPodmanFromGitHub downloads the official Podman installer package for
 // macOS/arm64 from containers/podman's latest GitHub release and installs it
-// via macOS's native `installer` CLI — the same "official package straight
-// from GitHub, not a third-party package manager" pattern already used for
-// WSL2/winget on Windows (see common.go's githubLatestAssetURL/downloadFile).
-// Podman's own docs recommend this .pkg over Homebrew for exactly this reason
+// via macOS's native `installer` CLI — an "official package straight from
+// GitHub, not a third-party package manager" pattern (see common.go's
+// githubLatestAssetURL/downloadFile). Podman's own docs recommend this .pkg
+// over Homebrew for exactly this reason
 // (Homebrew is community-maintained; the .pkg is the vendor's own artifact).
 // Only handles a fresh install (podman absent) — re-running the .pkg to
 // *upgrade* an already-installed Podman is a known-fragile path upstream
@@ -323,8 +323,8 @@ func isPodmanMachineRunning() bool {
 }
 
 // ensurePodmanMachine initializes and/or starts the Podman machine if needed.
-// Unlike Windows's WSL2 setup, this never requires a reboot or an OS-feature
-// toggle — Apple's Hypervisor.framework is already part of the OS.
+// Never requires a reboot or an OS-feature toggle — Apple's
+// Hypervisor.framework is already part of the OS.
 func ensurePodmanMachine() error {
 	if !isPodmanMachineInitialized() {
 		fmt.Println("Initializing Podman machine (first run, may take a minute)...")
@@ -348,8 +348,8 @@ func ensurePodmanMachine() error {
 }
 
 // configurePodmanRestartService symlinks podman-restart.service inside the
-// Podman machine's guest (Fedora CoreOS, same as Windows's WSL2 guest) so
-// containers come back up automatically after the machine restarts.
+// Podman machine's guest (Fedora CoreOS) so containers come back up
+// automatically after the machine restarts.
 //
 // The whole command is passed as the SOLE trailing argument after "--", never
 // split as separate "bash"/"-c"/cmd arguments — `podman machine ssh` mangles

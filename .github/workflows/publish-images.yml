@@ -87,7 +87,7 @@ jobs:
   # apt-installing postgresql-client, and the Containerfile's own build-time check only
   # proves the binaries *start* (`--version`), not that a full round-trip against a real
   # database still works. continue-on-error until proven reliable across a few releases,
-  # mirroring test-windows-install/test-linux-install in build-installer.yml (see #45).
+  # mirroring test-linux-install's continue-on-error pattern in build-installer.yml (see #45).
   smoke-test-backend:
     needs: publish
     runs-on: ubuntu-latest

@@ -71,9 +71,7 @@ const loadingHTMLTpl = `<!DOCTYPE html>
 const errorHTMLTpl = `<!DOCTYPE html><html><body style="font-family:Segoe UI;margin:0;background:#1a1a2e;color:#e0e0e0;padding:24px;box-sizing:border-box;height:100vh;overflow:hidden;display:flex;flex-direction:column"><h2 style="flex-shrink:0">PIE Manager</h2><pre style="color:#ff6b6b;white-space:pre-wrap;word-break:break-word;overflow-y:auto;font-family:Consolas,monospace;font-size:13px;margin-top:16px">{{MESSAGE}}</pre></body></html>`
 
 // focusExistingWindow brings the existing PIE Manager window to the foreground.
-// Returns true if a window was found. Identical to installer/launcher/main.go's own
-// implementation - this is genuinely OS-glue code with no logic of its own worth sharing across
-// the two separate Go modules for.
+// Returns true if a window was found.
 func focusExistingWindow() bool {
 	title, _ := syscall.UTF16PtrFromString(windowTitle)
 	hwnd, _, _ := procFindWindowW.Call(0, uintptr(unsafe.Pointer(title)))
@@ -122,7 +120,7 @@ func main() {
 	pkgRoot := filepath.Dir(exePath)
 
 	// IconId: 1 matches the numeric RT_GROUP_ICON resource ID ("#1") embedded via
-	// winres/winres.json - mirrors installer/launcher/main.go's own icon setup.
+	// winres/winres.json.
 	w := webview2.NewWithOptions(webview2.WebViewOptions{
 		Debug: false,
 		WindowOptions: webview2.WindowOptions{

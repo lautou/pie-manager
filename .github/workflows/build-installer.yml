@@ -84,57 +84,20 @@ jobs:
           go-version: '1.22'
           cache-dependency-path: installer/go.sum
 
-      - name: Install osslsigncode and stage signing certificate
-        env:
-          PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
-          PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
-        run: |
-          sudo apt-get update && sudo apt-get install -y osslsigncode
-          echo "$PFX_BASE64" | base64 -d > "$RUNNER_TEMP/codesign.pfx"
-          # Self-signed cert: extract the public half to verify our own signature against
-          # (osslsigncode verify's default CA bundle has no reason to trust it, by design).
-          openssl pkcs12 -in "$RUNNER_TEMP/codesign.pfx" -passin "pass:$PFX_PASSWORD" \
-            -nokeys -clcerts -out "$RUNNER_TEMP/codesign-public.pem"
-
       - name: Copy assets for embed
         run: |
-          mkdir -p installer/assets installer/launcher/assets
+          mkdir -p installer/assets
           cp compose-prod.yaml installer/assets/
-          cp compose-prod.yaml installer/launcher/assets/
           cp packaging/pie-manager.desktop installer/assets/
           cp packaging/pie-manager.svg installer/assets/
           cp packaging/pie-manager-macos-info.plist installer/assets/
           # haproxy.cfg, pie-manager.ico are version-controlled in installer/assets/
-          # haproxy.cfg, pie-manager.ico are version-controlled in installer/launcher/assets/
-
-      - name: go mod tidy (launcher)
-        run: cd installer/launcher && go mod tidy
-
-      - name: Build launcher.exe (embedded in Windows installer)
-        run: |
-          cd installer/launcher
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
-            -ldflags="-H windowsgui -s -w -X main.Version=${VERSION}" \
-            -o ../assets/launcher.exe .
-
-      - name: Sign launcher.exe
-        env:
-          PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
-        run: |
-          osslsigncode sign -pkcs12 "$RUNNER_TEMP/codesign.pfx" -pass "$PFX_PASSWORD" \
-            -h sha256 -n "PIE Manager" -i "${{ github.server_url }}/${{ github.repository }}" \
-            -t "http://timestamp.digicert.com" \
-            -in installer/assets/launcher.exe -out installer/assets/launcher.exe.signed
-          mv installer/assets/launcher.exe.signed installer/assets/launcher.exe
 
       - name: go mod tidy
         run: cd installer && go mod tidy
 
       - name: go vet (Linux)
         run: cd installer && go vet ./...
-
-      - name: go vet (Windows)
-        run: cd installer && GOOS=windows GOARCH=amd64 go vet ./...
 
       - name: go vet (macOS)
         run: cd installer && GOOS=darwin GOARCH=arm64 go vet ./...
@@ -162,11 +125,6 @@ jobs:
             -o "pie-manager-linux-amd64-${VERSION}" . >/tmp/build-linux.log 2>&1 &
           pid_linux=$!
 
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
-            -ldflags="-s -w -X main.Version=${VERSION}" \
-            -o "pie-manager-windows-amd64-${VERSION}.exe" . >/tmp/build-windows.log 2>&1 &
-          pid_windows=$!
-
           # macOS installer (Apple Silicon only — see CLAUDE.md's "macOS installation
           # architecture" section for why amd64/Intel isn't built)
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build \
@@ -175,7 +133,7 @@ jobs:
           pid_darwin=$!
 
           fail=0
-          for entry in "$pid_linux:Linux:linux" "$pid_windows:Windows:windows" "$pid_darwin:macOS:darwin"; do
+          for entry in "$pid_linux:Linux:linux" "$pid_darwin:macOS:darwin"; do
             pid="${entry%%:*}"; rest="${entry#*:}"; label="${rest%%:*}"; logname="${rest#*:}"
             if ! wait "$pid"; then
               echo "::error::${label} installer build failed"
@@ -187,23 +145,7 @@ jobs:
 
           # Generic aliases
           cp "pie-manager-linux-amd64-${VERSION}" pie-manager-linux-amd64
-          cp "pie-manager-windows-amd64-${VERSION}.exe" pie-manager-windows-amd64.exe
           cp "pie-manager-darwin-arm64-${VERSION}" pie-manager-darwin-arm64
-
-      - name: Sign Windows installer executable
-        env:
-          PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
-        run: |
-          cd installer
-          osslsigncode sign -pkcs12 "$RUNNER_TEMP/codesign.pfx" -pass "$PFX_PASSWORD" \
-            -h sha256 -n "PIE Manager" -i "${{ github.server_url }}/${{ github.repository }}" \
-            -t "http://timestamp.digicert.com" \
-            -in "pie-manager-windows-amd64-${VERSION}.exe" \
-            -out "pie-manager-windows-amd64-${VERSION}.exe.signed"
-          mv "pie-manager-windows-amd64-${VERSION}.exe.signed" "pie-manager-windows-amd64-${VERSION}.exe"
-          cp "pie-manager-windows-amd64-${VERSION}.exe" pie-manager-windows-amd64.exe
-          osslsigncode verify -CAfile "$RUNNER_TEMP/codesign-public.pem" "pie-manager-windows-amd64-${VERSION}.exe" | grep -q "Signature verification: ok"
-          rm -f "$RUNNER_TEMP/codesign.pfx"
 
       - name: Smoke test — Linux binary executes
         run: |
@@ -224,13 +166,6 @@ jobs:
         with:
           name: pie-manager-linux-amd64
           path: installer/pie-manager-linux-amd64-*
-          retention-days: 1
-
-      - name: Upload Windows binary for real-install testing
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: pie-manager-windows-amd64
-          path: installer/pie-manager-windows-amd64-*.exe
           retention-days: 1
 
       - name: Generate CHANGELOG.md
@@ -278,8 +213,9 @@ jobs:
           \`\`\`
 
           ### Windows 11 installation (x86_64)
-          Download \`pie-manager-windows-amd64-${VER}.exe\` and run it as Administrator.
-          Sets up WSL2, Podman, Docker Compose, and starts all containers automatically.
+          Install from the Microsoft Store: https://apps.microsoft.com/detail/9PM8GPSMJG0N
+          No prerequisites — the Store app bundles its own backend and PostgreSQL directly.
+          No WSL2, no Podman, no containers to download.
 
           ### macOS installation (Apple Silicon)
           \`\`\`bash
@@ -306,10 +242,8 @@ jobs:
 
           gh release upload "${TAG}" \
             "installer/pie-manager-linux-amd64-${VER}" \
-            "installer/pie-manager-windows-amd64-${VER}.exe" \
             "installer/pie-manager-darwin-arm64-${VER}" \
             installer/pie-manager-linux-amd64 \
-            installer/pie-manager-windows-amd64.exe \
             installer/pie-manager-darwin-arm64 \
             --repo ${{ github.repository }} \
             --clobber
@@ -773,130 +707,3 @@ jobs:
           echo "::error::Linux install: health check never succeeded"
           exit 1
 
-  test-windows-install:
-    # Full install-flow test on a real windows-latest GitHub-hosted runner.
-    # Nested virtualization (needed for WSL2, in turn needed for Podman
-    # Machine) has been confirmed working on GitHub's Windows runners by the
-    # community since the Dadsv5 hardware migration (Jan 2024), but this is
-    # NOT officially documented/guaranteed by GitHub.
-    #
-    # The installer's embedded manifest requires admin rights (correct and
-    # unchanged for real users) — but launching it via PowerShell's
-    # Start-Process (which uses ShellExecute) triggers the interactive UAC
-    # consent prompt, and nobody is present to click it on a headless
-    # runner: confirmed live, twice, as an indefinite hang (45+ minutes,
-    # zero progress) rather than a clean refusal. Fixed below by running the
-    # installer through a Scheduled Task set to "run with highest
-    # privileges" instead — Task Scheduler's own documented silent-elevation
-    # mechanism, which bypasses the interactive consent dialog entirely
-    # without weakening the shipped manifest or a real end user's UAC
-    # prompt. continue-on-error until proven reliable across a few real
-    # releases. See CLAUDE.md.
-    needs: [build, detect-installer-changes]
-    if: needs.detect-installer-changes.outputs.changed == 'true'
-    runs-on: windows-latest
-    continue-on-error: true
-    steps:
-      - name: Download Windows binary
-        uses: actions/download-artifact@v8.0.1   # node24-native
-        with:
-          name: pie-manager-windows-amd64
-
-      - name: Wait for images to be published to Quay.io
-        shell: pwsh
-        # Same race as the Linux job above (see issue #16) — poll before
-        # kicking off the scheduled task, since the actual "podman compose up
-        # -d" pull happens deep inside the installer binary where we can't
-        # inject a wait directly.
-        run: |
-          $version = "${{ needs.build.outputs.version }}"
-          $deadline = (Get-Date).AddMinutes(10)
-          foreach ($img in @('pie-manager-backend', 'pie-manager-frontend')) {
-            Write-Host "Waiting for quay.io/ltourreau/${img}:${version} ..."
-            $found = $false
-            while ((Get-Date) -lt $deadline) {
-              try {
-                $resp = Invoke-RestMethod -Uri "https://quay.io/api/v1/repository/ltourreau/${img}/tag/?specificTag=${version}&onlyActiveTags=true"
-                if ($resp.tags.Count -gt 0) { $found = $true; break }
-              } catch {}
-              Start-Sleep -Seconds 10
-            }
-            if (-not $found) {
-              Write-Host "::error::Timed out waiting for quay.io/ltourreau/${img}:${version} to be published"
-              exit 1
-            }
-            Write-Host "Found quay.io/ltourreau/${img}:${version}"
-          }
-
-      - name: Run real install
-        shell: pwsh
-        # GITHUB_TOKEN lifts the installer's GitHub API calls (WSL2/winget
-        # release lookups, only hit as a fallback when the Store-based path
-        # fails) past the 60/hour unauthenticated rate limit — see the macOS
-        # job's identical env for why this is CI-only and harmless for a
-        # real end user's install.
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $version = "${{ needs.build.outputs.version }}"
-          $exe = (Resolve-Path ".\pie-manager-windows-amd64-$version.exe").Path
-          $workDir = Split-Path $exe -Parent
-          $taskName = "PieManagerInstallTest"
-          $userId = "$env:COMPUTERNAME\$env:USERNAME"
-
-          # A Scheduled Task does NOT inherit this step's own process
-          # environment — Task Scheduler builds a fresh environment block for
-          # the target user from machine/user-scoped variables, not from the
-          # calling PowerShell process's transient env vars. Confirmed live:
-          # main_windows.go's `os.Getenv("CI") != ""` popup-skip guard (see
-          # CLAUDE.md) never saw CI=true when launched this way, so the
-          # installer still hung on the final popup even after that fix.
-          # Persist it machine-wide so the freshly-spawned process picks it
-          # up — this throwaway runner VM is destroyed right after the job.
-          [Environment]::SetEnvironmentVariable('CI', 'true', 'Machine')
-
-          $action = New-ScheduledTaskAction -Execute $exe -WorkingDirectory $workDir
-          $principal = New-ScheduledTaskPrincipal -UserId $userId -LogonType Interactive -RunLevel Highest
-          Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Force | Out-Null
-          Start-ScheduledTask -TaskName $taskName
-
-          $deadline = (Get-Date).AddMinutes(10)
-          do {
-            Start-Sleep -Seconds 5
-            $state = (Get-ScheduledTask -TaskName $taskName).State
-          } while ($state -ne 'Ready' -and (Get-Date) -lt $deadline)
-
-          $info = Get-ScheduledTaskInfo -TaskName $taskName
-          Write-Host "Task state: $state, last result: $($info.LastTaskResult)"
-          Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
-
-          $logPath = Join-Path $workDir "install-prereq.log"
-          if (Test-Path $logPath) {
-            Write-Host "--- install-prereq.log ---"
-            Get-Content $logPath
-          }
-
-          if ($state -ne 'Ready') {
-            Write-Host "::error::Installer scheduled task did not finish within 10 minutes"
-            exit 1
-          }
-          if ($info.LastTaskResult -ne 0) {
-            Write-Host "::error::Installer exited with code $($info.LastTaskResult)"
-            exit 1
-          }
-
-      - name: Verify the app is actually serving traffic
-        shell: pwsh
-        run: |
-          for ($i = 0; $i -lt 60; $i++) {
-            try {
-              $response = Invoke-WebRequest -Uri "http://localhost:14943/api/admin/health" -UseBasicParsing -TimeoutSec 5
-              if ($response.StatusCode -eq 200) {
-                Write-Host "Health check passed"
-                exit 0
-              }
-            } catch {}
-            Start-Sleep -Seconds 5
-          }
-          Write-Host "::error::Windows install: health check never succeeded"
-          exit 1

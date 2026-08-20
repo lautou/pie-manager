@@ -6,7 +6,7 @@
 2. [Où sont stockées les données](#2-où-sont-stockées-les-données)
 3. [Sauvegarde depuis l'interface](#3-sauvegarde-depuis-linterface)
 4. [Sauvegarde manuelle en ligne de commande](#4-sauvegarde-manuelle-en-ligne-de-commande)
-5. [Sauvegarde de la machine Podman — Windows uniquement](#5-sauvegarde-de-la-machine-podman--windows-uniquement)
+5. [Sauvegarde complète du dossier d'installation — Windows](#5-sauvegarde-complète-du-dossier-dinstallation--windows)
 6. [Sauvegarde de la machine Podman — macOS](#6-sauvegarde-de-la-machine-podman--macos)
 7. [Restauration depuis l'interface](#7-restauration-depuis-linterface)
 8. [Restauration manuelle en ligne de commande](#8-restauration-manuelle-en-ligne-de-commande)
@@ -28,20 +28,24 @@ La sauvegarde logique est un fichier `.dump` contenant l'intégralité de la bas
 | **Avant chaque mise à jour** | L'installateur le rappelle automatiquement |
 | **Après une saisie importante** | Transactions, prix manuels, modifications de configuration |
 
-Le fichier `.dump` (quelques Mo) est indépendant de la machine, de WSL2 et de Podman. Il peut être restauré sur n'importe quelle installation de PIE Manager, y compris sur une machine différente. Il est conseillé de le stocker dans un répertoire synchronisé (cloud personnel, clé USB dédiée).
+Le fichier `.dump` (quelques Mo) est indépendant de la machine et de la plateforme. Il peut être restauré sur n'importe quelle installation de PIE Manager, y compris sur une machine différente. Il est conseillé de le stocker dans un répertoire synchronisé (cloud personnel, clé USB dédiée).
 
-### Sauvegarde de la machine — avant une mise à jour (Windows et macOS)
+### Sauvegarde de la machine — avant une mise à jour (macOS uniquement)
 
-Sur Windows et macOS, les données vivent à l'intérieur d'une Podman Machine (une VM — WSL2 sur Windows, hyperviseur natif d'Apple sur macOS). Une sauvegarde supplémentaire de cette machine protège contre les problèmes de migration lors d'une mise à jour logicielle.
+Sur macOS, les données vivent à l'intérieur d'une Podman Machine (une VM utilisant l'hyperviseur natif d'Apple). Une sauvegarde supplémentaire de cette machine protège contre les problèmes de migration lors d'une mise à jour logicielle — voir [Sauvegarde de la machine Podman — macOS](#6-sauvegarde-de-la-machine-podman--macos).
 
-Voir les sections [Sauvegarde de la machine Podman — Windows](#5-sauvegarde-de-la-machine-podman--windows-uniquement) et [Sauvegarde de la machine Podman — macOS](#6-sauvegarde-de-la-machine-podman--macos).
+Sur Windows, l'app native (distribuée via le Microsoft Store) n'utilise ni VM ni containers —
+les données PostgreSQL vivent directement sur le disque, dans `%USERPROFILE%\PieManager\`. Il
+n'y a donc pas de "machine" à sauvegarder séparément ; voir
+[Sauvegarde complète du dossier d'installation — Windows](#5-sauvegarde-complète-du-dossier-dinstallation--windows)
+pour une sauvegarde optionnelle allant au-delà du `.dump` quotidien.
 
 ### Tableau récapitulatif
 
 | Fréquence | Action | Durée | Protège contre |
 |---|---|---|---|
 | **Quotidien** | Télécharger sauvegarde depuis l'UI | 2 secondes | Fausse manip données |
-| **Avant chaque upgrade (Windows)** | `wsl --export` | 5–10 min | Migration DB échouée |
+| **Avant chaque upgrade (Windows)** | Sauvegarde logique (voir section 3) — copie optionnelle du dossier `%USERPROFILE%\PieManager\` en complément | 2 secondes | Migration DB échouée |
 | **Avant chaque upgrade (macOS)** | Sauvegarde logique renforcée (pas d'export machine natif — voir [Sauvegarde de la machine Podman — macOS](#6-sauvegarde-de-la-machine-podman--macos)) | 2 secondes | Migration DB échouée |
 | **Archivage mensuel** | Conserver 1 sauvegarde par mois | — | Historique long terme |
 
@@ -58,12 +62,17 @@ Ce volume est géré par Podman et persiste indépendamment du cycle de vie des 
 
 **Sur Linux**, le volume est dans `~/.local/share/containers/storage/volumes/` — directement accessible sur le système de fichiers.
 
-**Sur Windows**, le volume est à l'intérieur de la Podman Machine (distribution WSL2 `podman-machine-default`), dans son disque virtuel `.vhdx`. Il est accessible depuis l'Explorateur via :
+**Sur Windows**, l'app native (distribuée via le Microsoft Store) n'utilise ni VM ni Podman —
+les données PostgreSQL sont directement sur le disque, accessibles depuis l'Explorateur :
 ```
-\\wsl.localhost\podman-machine-default\home\user\.local\share\containers\storage\volumes\pie-manager_postgres_data\
+%USERPROFILE%\PieManager\pgdata\
 ```
+Ce dossier n'est jamais placé sous `AppData`/`LocalAppData` : Windows y effectue une
+réinitialisation transparente au moindre repackaging MSIX, ce qui effacerait les données à
+chaque mise à jour de l'app. `%USERPROFILE%\PieManager\` survit aussi à une désinstallation —
+les données restent en place tant qu'elles ne sont pas supprimées manuellement.
 
-> ⚠️ Sur Windows, supprimer la distribution WSL2 `podman-machine-default` **détruit irrémédiablement** le volume et toutes les données. La sauvegarde logique quotidienne est donc indispensable.
+> ⚠️ Supprimer `%USERPROFILE%\PieManager\pgdata\` **détruit irrémédiablement** les données. La sauvegarde logique quotidienne est donc indispensable.
 
 **Sur macOS**, le volume est de la même façon à l'intérieur de la Podman Machine — mais celle-ci utilise l'hyperviseur natif d'Apple, pas WSL2, et n'est donc **pas accessible directement depuis le Finder**. Pour l'atteindre, il faut passer par la VM elle-même :
 ```bash
@@ -117,52 +126,45 @@ podman cp pie-manager_backend_1:/tmp/backup.dump \
 
 > Note : utiliser le container **backend** (qui dispose de `pg_dump` v18) et non le container postgres directement.
 
+**Sur Windows (app native)** : ces méthodes en ligne de commande ne s'appliquent pas — il n'y a
+ni `.env` ni containers Podman. Le port de l'app est choisi dynamiquement à chaque lancement et
+n'est pas exposé dans un fichier prévu pour être lu de l'extérieur. La sauvegarde depuis
+l'interface (section 3) est donc la méthode recommandée et pratiquement la seule sur Windows.
+
 ---
 
-## 5. Sauvegarde de la machine Podman — Windows uniquement
+## 5. Sauvegarde complète du dossier d'installation — Windows
 
-Sur Windows, cette sauvegarde protège contre les problèmes lors d'une mise à jour logicielle (migration de base de données, changement d'architecture). Elle capture l'intégralité de la VM WSL2 incluant les volumes Podman.
-
-### Avant une mise à jour
+L'app native Windows n'a pas de "machine" à sauvegarder — pas de VM, pas de containers. La
+sauvegarde logique quotidienne (`.dump`, section 3) est déjà la protection principale et
+suffisante, exactement comme sur macOS avec Podman Machine hors service. Pour une sauvegarde
+plus large, allant au-delà des seules données PostgreSQL (utile avant une mise à jour majeure,
+ou pour un archivage complet), copier l'intégralité du dossier d'installation :
 
 ```powershell
-# 1. Arrêter la machine Podman
-podman machine stop
+# 1. Fermer PIE Manager (sinon Postgres a des fichiers ouverts)
 
-# 2. Exporter la machine (5-10 min, fichier de 2-5 Go)
-wsl --export podman-machine-default "C:\Backups\podman-machine-$(Get-Date -Format 'yyyyMMdd').tar"
+# 2. Copier tout le dossier d'installation
+Copy-Item -Recurse "$env:USERPROFILE\PieManager" "C:\Backups\PieManager-$(Get-Date -Format 'yyyyMMdd')"
 
-# 3. Redémarrer la machine
-podman machine start
-
-# 4. Effectuer la mise à jour normalement
+# 3. Relancer PIE Manager normalement
 ```
 
-### En cas de problème — restaurer la machine
+### En cas de problème — restaurer le dossier
 
 ```powershell
-# Supprimer la machine corrompue
-podman machine rm
-wsl --unregister podman-machine-default
-
-# Réimporter la sauvegarde
-wsl --import podman-machine-default `
-  "$env:LOCALAPPDATA\Packages\RedHat.Podman_...\LocalState" `
-  "C:\Backups\podman-machine-20260601.tar"
-
-# Redémarrer la machine
-podman machine start
+# Fermer PIE Manager, puis :
+Remove-Item -Recurse -Force "$env:USERPROFILE\PieManager"
+Copy-Item -Recurse "C:\Backups\PieManager-20260601" "$env:USERPROFILE\PieManager"
+# Relancer PIE Manager
 ```
 
 ### Ce que cette sauvegarde protège
 
 | Protège contre | Ne protège pas contre |
 |---|---|
-| Migration Alembic échouée | Perte du fichier `.tar` lui-même |
-| Mise à jour qui casse les containers | Désinstallation de WSL2 après la mise à jour |
-| Mauvaise image Docker déployée | Corruption du disque Windows |
-
-> WSL2 ne supporte pas les snapshots natifs. `wsl --export` est l'équivalent le plus proche.
+| Migration Alembic échouée | Perte de la copie elle-même |
+| Mise à jour Store qui casse le backend/Postgres bundlés | Corruption du disque Windows |
 
 ---
 
@@ -253,6 +255,11 @@ podman exec -e PGPASSWORD=pie_password pie-manager_backend_1 \
 Une mise à jour de PIE Manager peut, occasionnellement, changer la version majeure de PostgreSQL utilisée (par exemple 16 → 18). Contrairement à une mise à jour normale, **PostgreSQL refuse de démarrer directement sur des données écrites par une version majeure différente** — ce n'est pas un bug, c'est une règle stricte de compatibilité de PostgreSQL lui-même.
 
 **Bonne nouvelle : l'installateur détecte cette situation automatiquement** et refuse de procéder tant que la migration n'a pas été faite manuellement — il ne touche jamais à vos données existantes sans confirmation.
+
+> Cette détection automatique concerne l'installateur Linux/macOS (basé sur Podman). L'app
+> native Windows embarque une version fixe de PostgreSQL par mise à jour Store et n'a pas
+> encore de détection équivalente — en cas de doute avant une mise à jour Windows, faites
+> systématiquement une sauvegarde `.dump` au préalable (section 3).
 
 ### Ce qui se passe concrètement
 

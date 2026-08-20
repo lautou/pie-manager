@@ -199,11 +199,10 @@ directement.
 **Mises à jour :** automatiques via le Microsoft Store, comme n'importe quelle autre app Store —
 pas de commande manuelle à relancer.
 
-**Historique :** cette distribution Store remplace l'ancien installateur WSL2/Podman comme
-méthode documentée pour Windows (issue #82). L'exécutable `pie-manager-windows-amd64.exe`
-reste publié dans les releases GitHub pour compatibilité, mais n'est plus la voie recommandée —
-voir la section « Sécurité et signature de code » du README pour le détail de cette voie
-alternative.
+**Historique :** cette distribution Store remplace intégralement l'ancien installateur
+WSL2/Podman pour Windows (issues #82/#83/#84). L'exécutable `pie-manager-windows-amd64.exe`
+n'est plus publié dans les releases GitHub — le Store est désormais la seule voie
+d'installation sur Windows.
 
 ---
 

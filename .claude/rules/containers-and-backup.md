@@ -181,9 +181,10 @@ needing its own fix:
    catalog format — some data migration is mandatory. **`installer/common.go`'s
    `pgDataVolumeName`/`pgVersionMajor`/`composePostgresMajor`/`postgresMajorMismatch`
    implement a hard-stop guard**, wired into `install.go`/`install_darwin.go`'s upgrade path
-   (Linux/macOS only — Windows's legacy WSL2/Podman installer has no equivalent
-   existing-version-detection logic to hook into, and is slated for full replacement by the
-   native launcher, #84): before pulling any new image, it reads the existing volume's
+   (Linux/macOS only — the old WSL2/Podman Windows installer this was never extended to has
+   since been fully removed, issue #84; the native Windows launcher bundles fixed-version
+   Postgres binaries rather than pulling an image tag, so this specific guard doesn't apply
+   there the same way): before pulling any new image, it reads the existing volume's
    `PG_VERSION` file (found via `podman volume ls`, matched by a `_postgres_data` suffix —
    deliberately NOT reconstructing podman-compose's project-name-derivation algorithm from
    the install directory's basename, which differs across platforms/compose implementations

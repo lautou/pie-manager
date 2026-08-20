@@ -52,16 +52,9 @@ installer/assets/pie-manager-macos-info.plist
 installer-prereq/assets/compose-prod.yaml
 # Binaires générés
 installer/pie-manager-linux-amd64
-installer/pie-manager-windows-amd64.exe
 installer/pie-manager-darwin-arm64
 installer/installer
 installer/signed/
-installer/assets/launcher.exe
-
-# launcher icon extraction artifacts — derived from pie-manager.ico via go-winres.
-# The generated .syso is committed; these intermediate files are not needed in git.
-installer/launcher/*.bmp
-installer/launcher/*.png
 
 # installer-prereq merged into installer/ — ignore remaining local artifacts
 installer-prereq/

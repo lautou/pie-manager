@@ -38,27 +38,22 @@ The Go installer (`installer/`) has two categories of functions:
 
 **Fully testable (must be 100% covered):** `findAvailablePort`, `readAppPort`,
 `readInstalledVersion`, `updateEnvPort`, `detectComposeCmd`, `copyFile`,
-`githubLatestAssetURL`, `downloadFile`, `extractZipEntryBySuffix`,
+`githubLatestAssetURL`, `downloadFile`,
 `composePostgresMajor`, `postgresMajorMismatch` (issue #58's PostgreSQL major-version
 mismatch guard — see `.claude/rules/containers-and-backup.md`'s "PostgreSQL major-version
 bumps" section for what this protects against).
 These pure utility functions all live in `common.go` (no build constraint — shared by
-Linux/Windows/macOS, see `.claude/rules/distribution.md`'s "Shared refactor enabling this"
+Linux/macOS, see `.claude/rules/distribution.md`'s "Shared refactor enabling this"
 in the macOS section), tested in `install_test.go`/`common_test.go`.
-The last three have no actual Windows dependency (plain HTTP + zip) despite existing
-to support a Windows-only fallback — see `.claude/rules/distribution.md`'s "Store-independent
-WSL2/winget install" section — so they're written as real testable functions instead of being dumped into the
-untestable bucket just because their caller lives in `main_windows.go`.
 
 **Intentionally untestable:** `runInstall`, `runStartWithCompose`, `forceRecreate`,
 `notify`, `podmanImageExists`, `focusExistingWindow`, `openBrowser`,
 `pgDataVolumeName`, `pgVersionMajor` (both exec `podman` directly, same class as
 `podmanImageExists` — issue #58),
-all functions in `main_windows.go`, and all functions in `install_darwin.go`/
+and all functions in `install_darwin.go`/
 `start_darwin.go`/`main_darwin.go` (Podman `.pkg` install, Podman Machine setup,
-`launchd` agent, `.app` bundle writing — same class of system-interaction code as
-`main_windows.go`). These exec external programs (Podman, browser,
-OS notifications, Windows API) and require integration-level testing. They are covered
+`launchd` agent, `.app` bundle writing). These exec external programs (Podman, browser,
+OS notifications) and require integration-level testing. They are covered
 by the CI smoke test (`go build + ./pie-manager version`). Overall installer coverage is
 necessarily low (check `go test ./... -cover` for the current figure) — expected and
 acceptable for a system-interaction binary.
@@ -66,12 +61,8 @@ acceptable for a system-interaction binary.
 **Installer structure:**
 - `common.go` — shared code (no build constraint): `Version`, `defaultPort`, `findAvailablePort`, `readAppPort`
 - `main.go` — Linux CLI dispatcher (`//go:build linux`)
-- `main_windows.go` — Windows full installer (`//go:build windows`)
 - `install.go`, `start.go`, `install_test.go` — Linux only (`//go:build linux`)
 - `main_darwin.go`, `install_darwin.go`, `start_darwin.go` — macOS full installer (`//go:build darwin`)
-- `launcher/` — separate Go module, builds `launcher.exe` (Windows WebView2 native launcher,
-  Podman-based product — waits for Podman Machine + containers, no process orchestration of
-  its own)
 - `launcher-native/` — separate Go module, issue #82's native-Windows-port MVP launcher (no
   Podman/containers at all — orchestrates a bundled Postgres + bundled Python backend directly).
   Own coverage policy, mirroring the pattern above: **fully testable (100% covered)** —
@@ -165,9 +156,9 @@ acceptable for a system-interaction binary.
   `main.go`'s WebView2 window itself initializes there (the backend-spawning goroutine only
   runs once `webview2.NewWithOptions` succeeds). Packaging assets (`AppxManifest.xml`,
   `gen-assets/` icon renderer, `winres/` + `main_windows_amd64.syso` for the exe's own
-  taskbar/titlebar icon) live directly in this module, mirroring `installer/launcher/`'s own
-  layout — promoted here from a throwaway `installer/testing/native-launcher-poc/` diagnostic
-  (now deleted) once this exact mechanism was proven live.
+  taskbar/titlebar icon) live directly in this module — promoted here from a throwaway
+  `installer/testing/native-launcher-poc/` diagnostic (now deleted) once this exact mechanism
+  was proven live.
 - `testing/` — reproducible scripts to recreate the win11 libvirt/QEMU test VM from scratch on
   a fresh Fedora host (not part of the shipped product; see its own `README.md`)
 - `testing/msix-loopback-poc/` — throwaway diagnostic confirming (live, on a real `windows-latest`

@@ -136,8 +136,7 @@ func main() {
 	var session atomic.Pointer[nativeSession]
 
 	go func() {
-		setStatus(w, "Preparing local database…")
-		s, err := startupSequence(pkgRoot, home)
+		s, err := startupSequence(pkgRoot, home, func(status string) { setStatus(w, status) })
 		if err != nil {
 			showError(w, fmt.Sprintf("Failed to start PIE Manager: %v", err))
 			return

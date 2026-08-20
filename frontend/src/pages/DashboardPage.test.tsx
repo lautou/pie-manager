@@ -8,9 +8,10 @@ import '@testing-library/jest-dom';
 import { pfCoreStubs, pfTableStubs } from '../../tests/utils/patternfly-mocks';
 
 // Mock react-router-dom
+const mockNavigate = vi.fn();
 vi.mock('react-router-dom', () => ({
   useParams: () => ({ portfolioId: '1' }),
-  useNavigate: () => vi.fn(),
+  useNavigate: () => mockNavigate,
   Link: ({ children }: any) => <a>{children}</a>,
 }));
 
@@ -184,20 +185,27 @@ describe('DashboardPage', () => {
     expect(screen.getByText(/Erreur lors du chargement du dashboard/i)).toBeTruthy();
   });
 
-  it('shows empty state when no data', () => {
+  it('shows onboarding empty state when no data', () => {
     mockUseDashboard.mockReturnValue({ data: undefined, isLoading: false, isError: false });
     render(<DashboardPage />);
-    expect(screen.getByText(/Aucune donnée disponible/i)).toBeTruthy();
+    expect(screen.getByText(/n'est pas encore configuré/i)).toBeTruthy();
   });
 
-  it('shows empty state when pools is empty', () => {
+  it('shows onboarding empty state when pools is empty, and navigates from its CTAs', async () => {
+    const user = userEvent.setup();
     mockUseDashboard.mockReturnValue({
       data: { ...mockDashboard, pools: [] },
       isLoading: false,
       isError: false,
     });
     render(<DashboardPage />);
-    expect(screen.getByText(/Aucune donnée disponible/i)).toBeTruthy();
+    expect(screen.getByText(/n'est pas encore configuré/i)).toBeTruthy();
+
+    await user.click(screen.getByText('Configurer le portefeuille'));
+    expect(mockNavigate).toHaveBeenCalledWith('/portfolio/1/admin');
+
+    await user.click(screen.getByText('Importer des transactions'));
+    expect(mockNavigate).toHaveBeenCalledWith('/portfolio/1/import');
   });
 
   it('renders dashboard with data', () => {

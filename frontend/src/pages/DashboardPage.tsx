@@ -1,11 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
 	Alert,
+	Button,
 	Card,
 	CardBody,
 	CardTitle,
+	EmptyState,
+	EmptyStateBody,
 	Grid,
 	GridItem,
 	Modal,
@@ -19,6 +22,7 @@ import {
 	ContentVariants,
 	Title
 } from '@patternfly/react-core';
+import { CogIcon, ImportIcon } from '@patternfly/react-icons';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import {
 	ChartDonut,
@@ -211,6 +215,7 @@ export function TreemapContent(props: {
 
 export default function DashboardPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { portfolioId } = useParams<{ portfolioId: string }>();
   const { data: dashboard, isLoading, isError } = useDashboard(portfolioId!);
   const { data: holdings } = useHoldings(portfolioId!);
@@ -253,9 +258,21 @@ export default function DashboardPage() {
   if (!dashboard || dashboard.pools.length === 0) {
     return (
       <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
-        <Content>
-          <Content component={ContentVariants.h2}>{t('error.noData')}</Content>
-        </Content>
+        <EmptyState titleText={<Title headingLevel="h2" size="lg">{t('dashboard.onboardingTitle')}</Title>}>
+          <EmptyStateBody>
+            {t('dashboard.onboardingBody')}
+          </EmptyStateBody>
+          <Button variant="primary" icon={<CogIcon />}
+            onClick={() => navigate(`/portfolio/${portfolioId}/admin`)}>
+            {t('dashboard.onboardingConfigureButton')}
+          </Button>
+          <div style={{ marginTop: '1rem' }}>
+            <Button variant="link" icon={<ImportIcon />}
+              onClick={() => navigate(`/portfolio/${portfolioId}/import`)}>
+              {t('dashboard.onboardingImportButton')}
+            </Button>
+          </div>
+        </EmptyState>
       </PageSection>
     );
   }

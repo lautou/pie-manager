@@ -104,7 +104,11 @@
     "noPositionInPool": "No positions in this pool.",
     "poolPopupTitle": "Pool {{name}}",
     "tickerPopupTitle": "{{ticker}}",
-    "stalePriceWarning": "Stale manual price (> {{days}} days): {{names}}"
+    "stalePriceWarning": "Stale manual price (> {{days}} days): {{names}}",
+    "onboardingTitle": "This portfolio isn't configured yet",
+    "onboardingBody": "For the dashboard to show your data, first create at least one investment pool (Offensive / Defensive) and link your accounts in the portfolio configuration. You can then enter or import your transactions.",
+    "onboardingConfigureButton": "Configure portfolio",
+    "onboardingImportButton": "Import transactions"
   },
   "positions": {
     "title": "Positions",

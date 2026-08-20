@@ -42,23 +42,31 @@ try {
         "ERROR: Package not found after Add-AppxPackage" | Out-File -FilePath $ResultPath
         exit 1
     }
-    $aumid = "$($pkg.PackageFamilyName)!App"
 
-    # Start-Process -Credential attaches this process to the SAME window station/desktop as the
-    # calling (elevated, runneradmin) session, rather than creating a fully separate one — so
-    # the elevated session's own pre-existing explorer.exe is still present on that shared
-    # window station. Explorer's single-instance-per-session model appears to key off the window
-    # station, not the account: confirmed live, a fresh "explorer.exe shell:AppsFolder\..."
-    # invocation here did not launch anything at all (no launcher-native.exe process ever
-    # appeared) — almost certainly because it delegated to that pre-existing instance the same
-    # way it did earlier when both invocations belonged to the same (elevated) account. Killing
-    # it first — same fix already proven necessary once before — removes it so THIS invocation
-    # has no instance left to delegate to, under this user's own (genuinely non-admin) token.
-    Get-Process -Name explorer -ErrorAction SilentlyContinue | Stop-Process -Force
-    Start-Sleep -Milliseconds 500
+    # Deliberately NOT "explorer.exe shell:AppsFolder\<aumid>" (tried and confirmed not to
+    # work, even combined with a genuinely non-admin user, SeInteractiveLogonRight, and PsExec
+    # -i for real desktop access). AppX/MSIX activation via shell:AppsFolder routes through
+    # explorer.exe + the Application Activation Manager COM broker, which depends on
+    # interactive-session infrastructure (the AppInfo service, RuntimeBroker, per-session COM
+    # launch permissions) that no programmatically-created session fully replicates — a
+    # widely-documented class of problem, not specific to this app or this fix attempt (see
+    # e.g. github.com/openai/codex#25221, a near-identical symptom: shell:AppsFolder activation
+    # silently doing nothing/launching the wrong thing, with the same documented workaround).
+    #
+    # launcher-native.exe is a full-trust MSIX app (not sandboxed/AppContainer), so once
+    # installed it's a completely ordinary Win32 executable at a real file path — bypassing
+    # AppsFolder activation and launching that path directly sidesteps the entire broken
+    # broker/COM activation chain, since a full-trust package doesn't need it to run and this
+    # app calls no WinRT/Windows.ApplicationModel APIs that would need activation-provided
+    # package identity context.
+    $exePath = Join-Path $pkg.InstallLocation "launcher-native.exe"
+    if (-not (Test-Path $exePath)) {
+        "ERROR: launcher-native.exe not found at $exePath" | Out-File -FilePath $ResultPath
+        exit 1
+    }
 
-    Start-Process "explorer.exe" -ArgumentList "shell:AppsFolder\$aumid"
-    "Installed and launched AUMID: $aumid" | Out-File -FilePath $ResultPath
+    Start-Process $exePath
+    "Installed and launched directly: $exePath" | Out-File -FilePath $ResultPath
 } catch {
     "ERROR: $_" | Out-File -FilePath $ResultPath
     exit 1

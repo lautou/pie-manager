@@ -536,12 +536,15 @@ jobs:
 
           # Copied to C:\Windows\Temp (a location every local user can read/write) rather than
           # referenced under the repo checkout directly: the new test user account has no
-          # guaranteed read access to $env:GITHUB_WORKSPACE.
+          # guaranteed read access to $env:GITHUB_WORKSPACE. icacls grants are explicit rather
+          # than relying on inherited ACLs from however the elevated session created these files.
           $msixPath = "C:\Windows\Temp\pie-manager-native-launcher-$version.msix"
           Copy-Item "pie-manager-native-launcher-$version.msix" $msixPath -Force
           $scriptPath = "C:\Windows\Temp\install-and-launch-as-user.ps1"
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE ".github\scripts\install-and-launch-as-user.ps1") $scriptPath -Force
           $resultPath = "C:\Windows\Temp\pie-manager-activate-result.log"
+          icacls $msixPath /grant "Everyone:(RX)" | Out-Null
+          icacls $scriptPath /grant "Everyone:(RX)" | Out-Null
 
           $testUserName = "pietestuser"
           $testUserPassword = "P!eManager$(Get-Random -Minimum 100000 -Maximum 999999)Test"
@@ -550,6 +553,16 @@ jobs:
             -PasswordNeverExpires -UserMayNotChangePassword | Out-Null
           Write-Host "Created non-admin test user: $testUserName"
 
+          # GitHub Actions' windows-latest runner is built on a Windows Server base image —
+          # Server images commonly restrict "Allow log on locally" (SeInteractiveLogonRight) to
+          # specific privileged groups by default, unlike client Windows editions where any
+          # local user gets it automatically. Confirmed live: without this grant, Start-Process
+          # -Credential for the freshly-created test user returned with NO exception at all, yet
+          # silently launched nothing — a logon-rights failure here doesn't surface as a
+          # catchable .NET error the way most other Start-Process failures do.
+          $grantScriptPath = Join-Path $env:GITHUB_WORKSPACE ".github\scripts\grant-logon-right.ps1"
+          & $grantScriptPath -AccountName "$env:COMPUTERNAME\$testUserName" -PrivilegeName "SeInteractiveLogonRight"
+
           # Install AND launch as this user (Add-AppxPackage has no -AllUsers switch — that
           # parameter exists on Get-/Remove-AppxPackage, not Add-AppxPackage — so a package
           # installed by one user is only visible to that same user; see
@@ -557,7 +570,7 @@ jobs:
           $cred = New-Object System.Management.Automation.PSCredential($testUserName, $securePassword)
           $pwshPath = (Get-Command pwsh).Source
           try {
-            Start-Process -FilePath $pwshPath -Credential $cred -ArgumentList @(
+            Start-Process -FilePath $pwshPath -Credential $cred -ErrorAction Stop -ArgumentList @(
               "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $scriptPath,
               "-MsixPath", $msixPath, "-ResultPath", $resultPath
             )

@@ -25,6 +25,13 @@ param(
     [string]$ResultPath
 )
 
+# The coclass declares it implements the interface directly (rather than getting a raw
+# __ComObject via GetTypeFromCLSID+Activator.CreateInstance and casting it afterward with `-as`)
+# — confirmed live this matters: the cast-based approach's runtime QueryInterface failed under
+# PowerShell 7 (.NET, not .NET Framework), even though the identical shape of code is a commonly
+# published pattern for classic Windows PowerShell 5.1. Declaring the interface directly on the
+# class lets normal COM activation (CoCreateInstance, triggered by `New-Object`) wire up the
+# vtable dispatch from the start, without a separate runtime cast step.
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
@@ -39,18 +46,21 @@ public interface IApplicationActivationManager
         int options,
         out uint processId);
 }
+
+[ComImport, Guid("45BA127D-10A8-46EA-8AB7-56EA9078943C")]
+public class ApplicationActivationManager : IApplicationActivationManager
+{
+    [PreserveSig]
+    public extern int ActivateApplication(
+        [MarshalAs(UnmanagedType.LPWStr)] string appUserModelId,
+        [MarshalAs(UnmanagedType.LPWStr)] string arguments,
+        int options,
+        out uint processId);
+}
 "@
 
 try {
-    $clsid = [Guid]"45BA127D-10A8-46EA-8AB7-56EA9078943C"
-    $comType = [Type]::GetTypeFromCLSID($clsid)
-    $comObj = [Activator]::CreateInstance($comType)
-    $aam = $comObj -as [IApplicationActivationManager]
-
-    if (-not $aam) {
-        "ERROR: QueryInterface for IApplicationActivationManager failed" | Out-File -FilePath $ResultPath
-        exit 1
-    }
+    $aam = New-Object ApplicationActivationManager
 
     [uint32]$processId = 0
     $hr = $aam.ActivateApplication($Aumid, "", 0, [ref]$processId)

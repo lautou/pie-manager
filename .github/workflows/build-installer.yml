@@ -551,9 +551,14 @@ jobs:
           $resultPath = Join-Path $env:TEMP "activate-result.log"
           $pwshPath = (Get-Command pwsh).Source
 
+          # -MTA: IApplicationActivationManager.ActivateApplication is a broker-mediated WinRT
+          # activation call that requires an MTA COM apartment — PowerShell's main thread
+          # defaults to STA on Windows, which produced a misleading "incorrect format"
+          # (0x8007000B) error from ActivateApplication rather than a clearer apartment-mismatch
+          # error, confirmed live.
           $taskName = "PieManagerNativeLauncherTest"
           $action = New-ScheduledTaskAction -Execute $pwshPath `
-            -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$activatorPath`" -Aumid `"$aumid`" -ResultPath `"$resultPath`""
+            -Argument "-MTA -NoProfile -ExecutionPolicy Bypass -File `"$activatorPath`" -Aumid `"$aumid`" -ResultPath `"$resultPath`""
           $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
           $task = New-ScheduledTask -Action $action -Principal $principal
           Register-ScheduledTask -TaskName $taskName -InputObject $task -Force | Out-Null

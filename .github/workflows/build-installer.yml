@@ -521,6 +521,17 @@ jobs:
           }
           $aumid = "$($pkg.PackageFamilyName)!App"
           Write-Host "Resolved AUMID: $aumid"
+
+          # Diagnostic for a live issue: postgres.exe refuses to start with "Execution of
+          # PostgreSQL by a user with administrative permissions is not permitted." — checking
+          # whether THIS session's token is actually elevated (a CI-runner quirk that wouldn't
+          # match a real user's normal, non-elevated desktop session) or whether this is a
+          # genuine product-level risk.
+          $current = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = New-Object Security.Principal.WindowsPrincipal($current)
+          $isElevated = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+          Write-Host "Current session elevated (Administrator role active in token): $isElevated"
+
           Start-Process "shell:AppsFolder\$aumid"
 
       - name: Wait for the backend to become healthy, then dump logs

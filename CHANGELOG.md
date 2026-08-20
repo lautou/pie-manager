@@ -2,6 +2,19 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.5.0] - 2026-08-20
+
+### Added
+
+- **launcher-native:** Spawn PgQueuer worker, fix pg_dump/pg_restore PATH
+- **installer:** Retire the WSL2/Podman Windows install path (#84)
+
+### Fixed
+
+- **launcher-native:** Suppress visible console windows for Postgres/uvicorn
+- **frontend:** Clarify SyncBadge tooltip when sync looks stale but isn't broken
+- **launcher-native:** Use pg_isready for Postgres readiness, not a raw TCP dial
+
 ## [1.4.8] - 2026-08-18
 
 ### Fixed

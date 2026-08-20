@@ -44,6 +44,19 @@ try {
     }
     $aumid = "$($pkg.PackageFamilyName)!App"
 
+    # Start-Process -Credential attaches this process to the SAME window station/desktop as the
+    # calling (elevated, runneradmin) session, rather than creating a fully separate one — so
+    # the elevated session's own pre-existing explorer.exe is still present on that shared
+    # window station. Explorer's single-instance-per-session model appears to key off the window
+    # station, not the account: confirmed live, a fresh "explorer.exe shell:AppsFolder\..."
+    # invocation here did not launch anything at all (no launcher-native.exe process ever
+    # appeared) — almost certainly because it delegated to that pre-existing instance the same
+    # way it did earlier when both invocations belonged to the same (elevated) account. Killing
+    # it first — same fix already proven necessary once before — removes it so THIS invocation
+    # has no instance left to delegate to, under this user's own (genuinely non-admin) token.
+    Get-Process -Name explorer -ErrorAction SilentlyContinue | Stop-Process -Force
+    Start-Sleep -Milliseconds 500
+
     Start-Process "explorer.exe" -ArgumentList "shell:AppsFolder\$aumid"
     "Installed and launched AUMID: $aumid" | Out-File -FilePath $ResultPath
 } catch {

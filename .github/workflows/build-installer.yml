@@ -506,24 +506,6 @@ jobs:
         working-directory: installer/launcher-native
         shell: pwsh
         run: |
-          $version = "${{ needs.build.outputs.version }}"
-          try {
-            # -AllUsers: registers the package machine-wide, not just for the elevated account
-            # that runs this step — the non-admin test user created below needs to see it too.
-            Add-AppxPackage -Path "pie-manager-native-launcher-$version.msix" -AllUsers -Verbose
-          } catch {
-            Write-Host "::error::Add-AppxPackage failed: $_"
-            exit 1
-          }
-
-          $pkg = Get-AppxPackage -AllUsers -Name "PIEManager.PIEManager"
-          if (-not $pkg) {
-            Write-Host "::error::Package not found after Add-AppxPackage"
-            exit 1
-          }
-          $aumid = "$($pkg.PackageFamilyName)!App"
-          Write-Host "Resolved AUMID: $aumid"
-
           # GitHub Actions' windows-latest runner executes job steps with an elevated
           # Administrator token (confirmed live: WindowsPrincipal.IsInRole(Administrator) is
           # true here) — not representative of a real user's normal desktop session, where
@@ -550,6 +532,17 @@ jobs:
           # this new user while still attached to the current, already-interactive desktop —
           # unlike a Scheduled Task's Password/S4U logon types, which run in a non-interactive,
           # Session-0-like context with no real desktop for a GUI app to render into.
+          $version = "${{ needs.build.outputs.version }}"
+
+          # Copied to C:\Windows\Temp (a location every local user can read/write) rather than
+          # referenced under the repo checkout directly: the new test user account has no
+          # guaranteed read access to $env:GITHUB_WORKSPACE.
+          $msixPath = "C:\Windows\Temp\pie-manager-native-launcher-$version.msix"
+          Copy-Item "pie-manager-native-launcher-$version.msix" $msixPath -Force
+          $scriptPath = "C:\Windows\Temp\install-and-launch-as-user.ps1"
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE ".github\scripts\install-and-launch-as-user.ps1") $scriptPath -Force
+          $resultPath = "C:\Windows\Temp\pie-manager-activate-result.log"
+
           $testUserName = "pietestuser"
           $testUserPassword = "P!eManager$(Get-Random -Minimum 100000 -Maximum 999999)Test"
           $securePassword = ConvertTo-SecureString $testUserPassword -AsPlainText -Force
@@ -557,9 +550,17 @@ jobs:
             -PasswordNeverExpires -UserMayNotChangePassword | Out-Null
           Write-Host "Created non-admin test user: $testUserName"
 
+          # Install AND launch as this user (Add-AppxPackage has no -AllUsers switch — that
+          # parameter exists on Get-/Remove-AppxPackage, not Add-AppxPackage — so a package
+          # installed by one user is only visible to that same user; see
+          # install-and-launch-as-user.ps1 for the full reasoning).
           $cred = New-Object System.Management.Automation.PSCredential($testUserName, $securePassword)
+          $pwshPath = (Get-Command pwsh).Source
           try {
-            Start-Process -FilePath "explorer.exe" -ArgumentList "shell:AppsFolder\$aumid" -Credential $cred
+            Start-Process -FilePath $pwshPath -Credential $cred -ArgumentList @(
+              "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $scriptPath,
+              "-MsixPath", $msixPath, "-ResultPath", $resultPath
+            )
           } catch {
             Write-Host "::error::Start-Process -Credential failed: $_"
             exit 1
@@ -568,6 +569,15 @@ jobs:
           # Exposed for the health-check step below, which must look in this new user's own
           # profile (where the app's data directory actually lives), not the elevated session's.
           Add-Content -Path $env:GITHUB_ENV -Value "TEST_USER_NAME=$testUserName"
+
+          # Quick sanity check only — Add-AppxPackage can take a while, the real success signal
+          # is the health-check step's own much longer polling loop below.
+          Start-Sleep -Seconds 10
+          if (Test-Path $resultPath) {
+            Write-Host "Install/launch result: $(Get-Content $resultPath)"
+          } else {
+            Write-Host "::warning::Result log not written yet after 10s — Add-AppxPackage may still be running"
+          }
 
       - name: Wait for the backend to become healthy, then dump logs
         # Generous deadline: covers MSIX activation, WebView2 startup, staging ~150+MB of

@@ -48,7 +48,7 @@ now structurally gone from the backend image via the multi-stage build in #20 (s
 
 **Real release gate since #21** (`exit-code: 1`, no `continue-on-error`) — the filtered scan ran
 clean (0 findings) across 6 consecutive releases (v1.3.2 through v1.4.3) before this was flipped,
-mirroring the `test-windows-install`/`test-linux-install` progressive-hardening pattern below.
+mirroring `test-linux-install`'s progressive-hardening pattern below.
 
 **Scans happen BEFORE push, not after — this matters, don't revert to post-push scanning.**
 Each image is built, saved to a local tarball (`podman save`), and scanned from that tarball via
@@ -64,7 +64,7 @@ and rejected too — `compose-prod.yaml`/the installer always pin the exact vers
 ### Backend backup/restore smoke test (`smoke-test-backend`, #45)
 
 `publish-images.yml`'s `smoke-test-backend` job (`needs: publish`, `continue-on-error: true` —
-same progressive-hardening pattern as `test-windows-install`/`test-linux-install`) runs a real
+same progressive-hardening pattern as `test-linux-install`) runs a real
 `pg_dump`/`pg_restore` round-trip against the just-published backend image: starts a real
 `postgres:18-alpine` GitHub Actions service (no volume mount at all — a GitHub Actions service
 container uses its own ephemeral storage, so the PGDATA/mount-layout fix documented in the
@@ -96,79 +96,19 @@ pinned to the same base+digest) — a Dependabot PR bumping one must bump both, 
 than the `runtime` stage actually ships. `frontend/Containerfile` also has two `FROM` lines
 since its own multi-stage refactor (#13) — same rule: bump both together.
 
-### Windows executable code signing
-
-`build-installer.yml` Authenticode-signs `launcher.exe` and `pie-manager-windows-amd64*.exe`
-using a self-signed `CN=PIEManager` certificate (`osslsigncode`, since the whole workflow runs
-on `ubuntu-latest` with no Windows runner — the Windows binaries are cross-compiled, not built
-natively). Signing includes an RFC-3161 timestamp (`timestamp.digicert.com`), so the signature
-stays valid after the certificate expires (2031). The PFX and its password live only as the
-GitHub secrets `WINDOWS_CODESIGN_PFX_BASE64`/`WINDOWS_CODESIGN_PFX_PASSWORD` — a personal
-backup of the PFX exists outside the repo/VM, not tracked here.
-
-**This does not remove the Windows SmartScreen "Unknown Publisher" warning** — only a
-CA-issued certificate with accumulated reputation does that. It provides a valid, verifiable,
-non-expiring signature (integrity/authenticity), nothing more.
-
-**Worse than SmartScreen: Smart App Control (SAC) can hard-block `launcher.exe` with no
-override at all (issue #60).** Confirmed live on a fresh Windows 11 install (win11 test VM,
-v1.3.3): after the installer completed successfully (all 6 containers healthy) and offered to
-launch the app, Windows blocked `launcher.exe` outright ("Le Contrôle intelligent des
-applications a bloqué une application potentiellement dangereuse") — unlike SmartScreen, this
-dialog has no "Run anyway" option; the app simply never opens. Root cause confirmed via
-registry (`HKLM\SYSTEM\CurrentControlSet\Control\CI\Policy\VerifiedAndReputablePolicyState =
-0x1`, i.e. SAC in full enforcement mode, not just the default post-install Evaluation state):
-per Microsoft's own docs, SAC only accepts signatures chained to a CA in the Microsoft Trusted
-Root Program — our self-signed cert doesn't qualify. **Notably, `pie-manager-windows-amd64.exe`
-(the installer itself, signed with the same cert) was NOT blocked** — SAC classifies each
-binary independently via cloud reputation first and only falls back to signature validity when
-inconclusive, so this isn't fully deterministic from our side. SAC starts in "Evaluation" mode
-on a fresh Win11 22H2+ install and can transition to full "On" on its own — exactly what
-happened on this from-scratch VM, meaning any real user doing a truly fresh Windows install can
-hit this wall with zero in-product workaround. **Confirmed this has no local-trust-store
-workaround either**: the win11 test VM's `CN=PIEManager` cert is already present in both the
-Root and TrustedPublisher stores (imported manually at some point, outside any setup script —
-see caveat below) and SAC still blocked `launcher.exe` anyway, since SAC specifically requires
-a chain to a CA in the Microsoft Trusted Root Program, not just local machine trust. See #60
-for the full writeup — a real CA-issued cert is the only fully reliable fix; neither a
-self-signed cert nor manually trusting it locally resolves this.
-
-**The UAC prompt and the Firewall "allow this app" prompt read the publisher from two
-different, unrelated places.** UAC shows "Éditeur vérifié: PIEManager" because it validates
-the Authenticode signature — **caveat confirmed 2026-08-10 (see #60): the win11 test VM's
-baseline snapshot (`base-clean-tuned-2026-07-17`) has the self-signed `CN=PIEManager` cert
-pre-imported into Root/TrustedPublisher/`CurrentUser\My` (the last one with its full private
-key, not just the public cert) — confirmed present on a virgin snapshot boot, before the
-installer was ever run, so it predates any test session and was never part of the documented
-`installer/testing/` setup scripts. A genuinely fresh Windows machine without that manual trust
-step likely shows "Éditeur inconnu" instead** — this VM is not representative of a clean
-install for UAC-publisher testing; re-verify on a real clean machine before trusting this
-claim. The private-key-in-VM finding also means the PFX (not just the public cert) was
-manually copied into this VM at some point, contradicting the "PFX lives only in GitHub
-secrets + a personal backup outside the repo/VM" intent stated above — worth purging from a
-future snapshot rebuild. The Firewall prompt shows "Éditeur: Inconnu" regardless of
-signing, because it reads the `CompanyName`/`ProductName` fields from the binary's embedded
-VERSIONINFO resource, separate from the manifest/icon. Fixed: `installer/winres/winres.json`
-(go-winres, same tool/format as `installer/launcher/winres/winres.json`) regenerates
-`installer/main_windows_amd64.syso` with those fields populated — regenerate via
-`go run github.com/tc-hib/go-winres@latest make --in winres/winres.json --out main --arch amd64`
-(the tool's default output naming, `main_windows_amd64.syso`, is exactly the file Go's build
-expects — keep it, don't rename it to a bare `main.syso`). Avoid non-ASCII characters (em dash,
-`—`) in any winres.json text field — one silently killed RT_VERSION generation entirely
-(RT_MANIFEST still worked) with no error from the tool, confirmed by regenerating without it.
-
-**Correction (2026-07):** the file was previously renamed to a bare `main.syso` in the mistaken
-belief that Go wouldn't pick up the properly `_windows_amd64`-suffixed name — that belief was
-never actually re-verified and turned out to be wrong. A bare, unsuffixed `.syso` has no
-OS/ARCH scoping at all, so Go links it into **every** build target unconditionally, not just
-Windows; this only surfaced as a real problem once a `darwin/arm64` build target was added
-(`GOOS=darwin GOARCH=arm64 go build` failed with `unknown ARM64 relocation type 3`, since the
-file is a Windows PE-COFF object). Verified empirically (byte-diffed the two resulting Windows
-binaries, identical except Go's own build-ID cache string) that renaming back to
-`main_windows_amd64.syso` produces the exact same signed Windows binary while fixing every
-other platform. Never go back to a bare `main.syso`.
-
 ### MSIX/Microsoft Store distribution of launcher.exe alone — investigated and rejected (issue #63)
+
+**Historical background** (the old WSL2/Podman `launcher.exe`/`pie-manager-windows-amd64.exe`
+path this section originally describes was fully retired in issue #84 — see "Windows
+installation architecture" below for the current, native/Store-only replacement). Kept here
+because the decision trail — why a hybrid "Store app that downloads/elevates a separate
+installer" design doesn't work — remains true regardless of what the old path's own code looked
+like, and the SAC-block finding below was the direct trigger for building #82's native launcher
+in the first place: Smart App Control (SAC) could hard-block the old, self-signed
+`CN=PIEManager`-Authenticode-signed `launcher.exe` outright on a fresh Windows 11 install, with
+no override, no local-trust-store workaround, and no fix short of a real CA-issued certificate
+(confirmed live, issue #60) — because SAC only accepts signatures chained to a CA in the
+Microsoft Trusted Root Program.
 
 Issue #63 explored Store-distributing only `launcher.exe` as an MSIX package to route around
 #60's Smart App Control (SAC) block (Store apps bypass SAC/SmartScreen by design), with the rest
@@ -207,11 +147,10 @@ distribution itself. #65's own research (prompted by these exact rejections) fou
 bundling **everything** it needs inside the MSIX package — no network download, no elevation, no
 external installer, only ordinary non-elevated child processes — doesn't trigger either rejected
 policy. #82 is the resulting native-Windows-port MVP (bundled Postgres + bundled Python backend,
-no WSL2/Podman at all), now in active development. Until/unless that lands and passes
-certification for real, the SAC block remains a known, accepted limitation whose only current
-workaround is the end user disabling Smart App Control themselves (Settings → Privacy & security
-→ Windows Security → App & browser control) — a real but drastic step, since re-enabling SAC
-afterward requires reinstalling Windows.
+no WSL2/Podman at all) — it landed, passed real Store certification, and is now the only
+Windows distribution path (issue #84 retired the old WSL2/Podman installer once #82/#83 were
+verified stable). SAC is no longer a concern at all for this app: Store-distributed apps bypass
+SAC/SmartScreen by design.
 
 **The Partner Center reservation from this investigation is still valid and reused by #82,
 not recreated:** real identity `Name="PIEManager.PIEManager"`,
@@ -281,10 +220,13 @@ to dismiss either way, so a real user isn't left wondering if something's wrong.
 
 ### Installed files (Windows)
 ```
-%APPDATA%\pie-manager\   compose-prod.yaml, haproxy.cfg, .env, VERSION
-%APPDATA%\pie-manager\   launcher.exe, start-podman.vbs
-Start Menu\Programs\     PIE Manager.lnk  (→ launcher.exe)
+%USERPROFILE%\PieManager\   pgdata (Postgres data dir), pgsql\ (bundled Postgres binaries)
+%USERPROFILE%\PieManager\   python\ (bundled embeddable Python + backend app + frontend_dist)
+%USERPROFILE%\PieManager\   logs\ (backend.log, postgres.log, worker.log, etc.)
+Start Menu                  PIE Manager  (Store-installed MSIX, → launcher-native.exe)
 ```
+Deliberately never under `AppData`/`LocalAppData` — MSIX transparently redirects any write
+there to a location wiped on uninstall (confirmed live, #76/#82).
 
 ### Installed files (macOS)
 ```
@@ -294,162 +236,22 @@ Start Menu\Programs\     PIE Manager.lnk  (→ launcher.exe)
 ~/.local/bin/                               pie-manager (symlink)
 ```
 
-### Windows installation architecture
+### Windows installation architecture (native, Store-distributed — issue #82/#83/#84)
 
-On Windows, PIE Manager requires WSL2 + Podman Machine (a WSL2-backed Fedora CoreOS VM)
-+ Docker Compose (installed via winget). The installer (`pie-manager-windows-amd64.exe`) is a
-single statically compiled Go binary that handles the full setup.
+On Windows, PIE Manager is distributed exclusively through the Microsoft Store
+(`installer/launcher-native/`, PFN `PIEManager.PIEManager_9h5hzpm8nc7w0`, Store ID
+`9PM8GPSMJG0N`) as a single self-contained MSIX package. No WSL2, no Podman, no containers, no
+elevation: the package bundles its own Postgres binaries and an embeddable Python interpreter
+running the real backend directly as native child processes, orchestrated by
+`launcher-native.exe` (a WebView2 GUI shell). This fully replaced the old WSL2/Podman/winget
+installer in issue #84, once #82/#83 were verified stable — see the `#63` section above for why
+a hybrid Store-app-plus-elevated-installer design was never viable, and the root `CLAUDE.md`'s
+"Installer test coverage policy" section (the `launcher-native/` entry) for the actual
+architecture: process orchestration, Postgres readiness (`pg_isready`, not a raw TCP dial),
+console-window suppression, the PgQueuer worker, and this module's own CI coverage (#114).
 
-**Compose provider:** `docker-compose.exe` (installed on the Windows host via winget). HAProxy
-and all containers communicate over Podman's internal Docker-compatible network.
-
-**Launcher:** `launcher.exe` is a native Go binary using WebView2 (pre-installed on Windows 11).
-It replaces the old `launcher.ps1`/`open-app.vbs`/Edge `--app` chain. It:
-- Shows the PIE Manager icon in the Windows taskbar (AUMI belongs to our .exe)
-- Detects if a window is already open (single-instance via FindWindowW)
-- Shows a native loading screen while polling `/api/admin/version`
-- Navigates to the app in a WebView2 window once the backend is ready
-
-**Window title bar icon** requires an explicit `IconId` — `jchv/go-webview2`'s `webview2.New()`
-falls back to the generic Win32 stock icon (`IDI_APPLICATION`) whenever `WindowOptions.IconId`
-is left at zero; it does not automatically pick up the exe's own embedded icon resource, even
-though one is present via `winres/winres.json`. Fix: key the icon group by numeric ID in
-`winres.json` (`"RT_GROUP_ICON": {"#1": {...}}`, not a string name like `"APP"` — the API only
-accepts a numeric resource ID), then construct with
-`webview2.NewWithOptions(webview2.WebViewOptions{WindowOptions: webview2.WindowOptions{IconId: 1}})`
-instead of `webview2.New(false)`.
-
-**Auto-start:** A Windows Task Scheduler task runs `start-podman.vbs` at login (wscript.exe,
-completely invisible). This starts the Podman Machine. Containers restart automatically via
-`podman-restart.service` inside the Fedora CoreOS VM.
-
-**VmmemWSL memory:** ~3-4 GB is normal — the Podman Machine VM + all containers.
-
-**Windows install sequence (fresh machine):**
-1. Run `.exe` as Administrator → installs WSL2, Podman CLI, Docker Compose (may reboot)
-2. After reboot, installer auto-resumes via a Windows Scheduled Task (not RunOnce — see
-   "Auto-resume after reboot uses a single Scheduled Task" below)
-3. `podman machine init` + start (~650 MB download)
-4. All 6 containers pulled and started via `podman compose up -d`
-5. `launcher.exe` deployed, Start Menu shortcut created, Task Scheduler registered
-
-The `.env` file written by the installer contains:
-```
-APP_VERSION=<version>
-INSTALLER_VERSION=<version>
-APP_PORT=<port>
-```
-
-### Windows gotchas (do not repeat these mistakes)
-
-**Store-independent WSL2/winget install** — `wsl --install --no-distribution` fetches the
-actual WSL2 engine as a Microsoft Store app, and `winget` itself is normally provisioned
-through the Store too; both are silently absent on a fresh **local-account** Windows install
-(Store provisioning never triggers without a Microsoft-account first login) — confirmed live
-in a test VM. `main_windows.go` now enables the two required optional features directly via
-DISM (`enableWindowsFeature`, bypassing `wsl --install`'s own flaky attempt at this), and
-falls back to downloading the official `.msixbundle` packages straight from
-[microsoft/WSL](https://github.com/microsoft/WSL/releases) and
-[microsoft/winget-cli](https://github.com/microsoft/winget-cli/releases) releases
-(`installWSLFromGitHub`/`installWingetFromGitHub`) when the Store-dependent path fails —
-Microsoft's own documented offline/enterprise install method, not a hack.
-
-**WSL2 readiness must check the actual engine, not just DISM feature flags.** `isWSL2Ready()`
-used to check only whether `Microsoft-Windows-Subsystem-Linux`/`VirtualMachinePlatform`
-report `State=Enabled`. Confirmed live: both can report `Enabled` (with `RestartNeeded=False`,
-so not a pending-reboot issue either) while the WSL kernel/engine was never installed — e.g.
-the features were toggled independently, or an earlier run enabled them via DISM but was
-interrupted before `wsl --install` finished. The installer then logged "WSL2 déjà installé"
-and skipped straight to Podman machine init, which failed with a confusing "WSL isn't
-installed" error. Fixed: `isWSL2Ready()` now runs `wsl --status` directly — it exercises the
-real engine and requires both features anyway, so it's a single, reliable signal instead of
-two flags that can drift from actual system state.
-
-**Cosmetic: `wsl.exe`'s own console chatter and the WSL Settings "welcome" popup are both
-suppressed, not just tolerated.** `wsl --install`'s stdout/stderr is now captured
-(`CombinedOutput()`), not streamed to the console — it prints confusing internal diagnostics
-(e.g. "not installed, run wsl --install" as part of its own self-check) that read as a real
-error; the raw text is still logged, replaced on screen with our own curated status lines.
-Separately, the WSL Settings onboarding window (`wslsettings.exe`, launched by `wslservice.exe`
-via `----ms-protocol:wsl-settings://oobe`) used to pop up mid-install — confirmed via
-microsoft/WSL's own source (`LxssUserSession.cpp`'s `_LaunchOOBEIfNeeded`) that it fires the
-first time ANY WSL distro is registered on the machine, including Podman Machine's own
-`podman-machine-default` distro — nothing specific to our WSL2 install step. Its entire gate is
-one registry DWORD, `HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss\OOBEComplete` — the
-exact value `wslservice.exe` itself writes after a real OOBE run. `disableWSLOOBEWelcome()` sets
-it preemptively, early in `main()`, doing ahead of time what the OS does reactively.
-
-`Add-AppxPackage` itself is confirmed live (real elevated non-SYSTEM user, test VM) to work
-correctly for VCLibs/UI.Xaml/winget. The one real failure mode hit live is HRESULT
-`0x80073D06` ("a higher version of this package is already installed") — some Windows 11
-builds ship a newer in-box framework package than the version this installer pins, and AppX
-dependency resolution only requires "at least this version," so it's harmless. `addAppxPackage`
-treats this specific HRESULT as success (`isAppxAlreadyNewerError` in `common.go`).
-
-**`podman-restart.service` enable via SSH** — `systemctl --user enable` fails silently when
-`~/.config/systemd/user/default.target.wants/` is owned by root (Podman Machine default).
-Fix: create the symlink directly after fixing ownership, chaining the steps with `&&`.
-
-**`podman machine ssh` mangles a compound `&&`-chained command passed as `"bash", "-c",
-cmd`** — confirmed live and matches an independent upstream report
-([containers/podman#13517](https://github.com/containers/podman/issues/13517)): it re-joins
-multiple trailing arguments before forwarding them over SSH, so `bash`, `-c`, and the command
-string arrive at the remote shell re-split on whitespace — only the first word after `-c`
-survives as its actual script argument (observed live as a bare `sudo` invocation dumping its
-usage text, silently no-op'ing the whole setup step). Fix: pass the full compound command as
-the **sole** trailing argument after `--`, no separate `"bash", "-c"` — the remote SSH server
-already wraps a single command string in a shell itself.
-
-**Podman machine start at login** — the Task Scheduler VBS uses `True` (wait) + retry loop
-(up to 5 attempts, 5s between) because WSL2 may not be ready immediately at login.
-
-**Auto-resume after reboot uses a single Scheduled Task, not RunOnce — do not add RunOnce
-back.** An earlier version registered both a `HKCU\...\RunOnce` entry AND a Scheduled Task
-(`RunLevel Highest`, `-AtLogOn -User $env:USERNAME`) as redundant auto-resume mechanisms,
-since RunOnce alone was intermittent on at least one test VM: a failed-to-fire RunOnce entry
-survives completely **unconsumed** in the registry (Windows always deletes a RunOnce value
-immediately before running it, success or failure, so a surviving value means it was never
-attempted that boot at all — a documented class of quirk with RunOnce pointing at a
-`requireAdministrator`-manifested executable). The Scheduled Task backup was added to cover
-that flakiness. **This redundancy was then confirmed live to actively cause the worse bug it
-was meant to guard against**: both mechanisms fired for the same logon, and — critically —
-each one triggers its own elevation event *before* any of our code (including a
-`CreateMutexW`-based single-instance lock, `acquireSingleInstanceLock` in
-`main_windows.go`) ever runs, since Windows decides whether to elevate before the process
-image executes. Confirmed live as one silent auto-elevation plus one visible UAC consent
-dialog for the same logon — a mutex can only stop the *second* instance from doing duplicate
-work once both have already elevated, it cannot suppress the extra prompt itself. The only
-fix that actually prevents the double elevation event is registering a single mechanism.
-RunOnce was dropped; the Scheduled Task was kept, since it is Microsoft's documented
-mechanism for reliably resuming an elevated process at logon and doesn't share RunOnce's
-silent-no-fire quirk. The single-instance mutex is kept anyway as a general defensive guard
-(e.g. a manual double-launch of the resumed installer), just no longer covering this specific
-race. Since the installer's own SKIP-logic makes every step idempotent regardless, a manual
-re-launch of the `.exe` after reboot remains a safe fallback if the Scheduled Task ever fails
-to fire.
-
-**RESOLVED — the "intermittent" final popup was never failing to render, it was rendering
-BEHIND the console window.** A `MessageBox.Show(msg, title, ...)` call with no owner window
-has no z-order relationship to the installer's own console window — Windows is free to leave
-it behind the (still-focused) console, silently, with no error. Confirmed live via screenshot:
-the popup was present and fully functional, just hidden under the console the whole time.
-Fixed by giving every popup an invisible, `TopMost`-set owner `Form` (`topmostOwnerPS` in
-`main_windows.go`, prepended to both `popup()`'s and `popupYesNo()`'s script) — an owned
-window is kept above its owner in z-order, and a `TopMost` owner keeps it above unrelated
-windows too. Accessing `$owner` in `MessageBox.Show($owner, ...)` is what forces the form's
-native handle into existence even though `.Show()` is never called on it — no visible extra
-window appears.
-
-**Final popup asks Yes/No to launch immediately, and both a Desktop and Start Menu shortcut
-are created** — `popupYesNo()` (mirrors `popup()`, `MessageBoxButtons.YesNo` +
-`MessageBoxIcon.Question`, matches on the literal `"Yes"` return string). Answering "Oui"
-starts `launcher.exe` directly (fire-and-forget `exec.Command(...).Start()`, not `.Run()` —
-it's a long-lived GUI process the installer must not wait on). The desktop shortcut resolves
-its path via PowerShell's `[Environment]::GetFolderPath('Desktop')`, not a hardcoded
-`%USERPROFILE%\Desktop`, since that breaks under Known Folder Move (OneDrive-redirected
-Desktop). Before this, only a Start Menu shortcut was actually created despite the
-surrounding log/comment text already claiming "desktop shortcut" — a real, silent gap now
-fixed, not a rename.
+Auto-update is handled entirely by the Microsoft Store, like any other Store app — no
+in-app update mechanism, no Scheduled Task, no manual re-run needed.
 
 ### Native window integration (wrapper.py / WebKitGTK) — Linux only
 
@@ -476,9 +278,9 @@ which handles the case where containers have stopped after a reboot.
 
 ### Local win11 test VM (`installer/testing/`) — maintenance notes
 
-A local libvirt/QEMU Windows 11 VM (separate from `test-windows-install`'s GitHub-hosted CI
-runner above) is used for hands-on, real-hardware-adjacent testing of the Windows installer —
-UAC prompts, Smart App Control, the native launcher's MSIX install/launch, etc. Built and
+A local libvirt/QEMU Windows 11 VM (separate from `package-native-launcher-msix`'s
+GitHub-hosted CI runner above) is used for hands-on, real-hardware-adjacent testing of the
+native launcher — UAC prompts, Smart App Control, the MSIX install/launch, etc. Built and
 rebuilt via 3 scripts, run in order (see `installer/testing/README.md` for the exact commands):
 
 - **`00-download-win11-iso.py`** — fetches the real, official Windows 11 x64 multi-edition ISO
@@ -655,26 +457,28 @@ shells* only — confirmed live in CI: `podman machine init` failed with "execut
 found in $PATH" immediately after "The install was successful." `refreshPathForPodman()`
 reads that same `/etc/paths.d/` entry and prepends it to the current process's `PATH` before
 continuing, rather than hardcoding the `.pkg`'s install directory. Also,
-`githubLatestAssetURL` (`common.go`, used here and by Windows's WSL2/winget fallback) now
-passes `GITHUB_TOKEN`/`GH_TOKEN` as a bearer token when present in the environment — shared
-GitHub Actions runner IPs can already be near the unauthenticated GitHub API's 60/hour limit
-(confirmed live: a real 403), while a real end user's install never has this env var set.
+`githubLatestAssetURL` (`common.go`) now passes `GITHUB_TOKEN`/`GH_TOKEN` as a bearer token
+when present in the environment — shared GitHub Actions runner IPs can already be near the
+unauthenticated GitHub API's 60/hour limit (confirmed live: a real 403), while a real end
+user's install never has this env var set.
 
-**Podman Machine setup itself does port over from Windows, since Podman Machine's own guest
-OS (Fedora CoreOS) is identical on both platforms.** `ensurePodmanMachine()` in
-`install_darwin.go`/`start_darwin.go` mirrors Windows's init/start logic (`podman machine
-list --format json`, parse `Running`), and `configurePodmanRestartService()` reuses the exact
-same `podman machine ssh` compound-command pattern as Windows (see Windows gotchas above for
-why the whole `&&`-chained command must be the sole trailing argument, never split as
-separate `"bash","-c",cmd` arguments — the same footgun applies identically here).
+**`configurePodmanRestartService()`'s `podman machine ssh` call must pass the whole
+`&&`-chained compound command as the sole trailing argument, never split as separate
+`"bash","-c",cmd` arguments.** `podman machine ssh` mangles a compound command passed that way
+— confirmed live and matches an independent upstream report
+([containers/podman#13517](https://github.com/containers/podman/issues/13517)): it re-joins
+multiple trailing arguments before forwarding them over SSH, so `bash`, `-c`, and the command
+string arrive at the remote shell re-split on whitespace — only the first word after `-c`
+survives as its actual script argument. Pass the full compound command as one string after
+`--` instead — the remote SSH server already wraps a single command string in a shell itself.
 
-**Auto-start at login uses a `launchd` LaunchAgent, not Task Scheduler.**
+**Auto-start at login uses a `launchd` LaunchAgent.**
 `~/Library/LaunchAgents/com.pie-manager.podman-start.plist` (`RunAtLoad`) runs `podman machine
-start` at login — the direct functional equivalent of Windows's Scheduled Task +
-`start-podman.vbs`, loaded/unloaded via `launchctl load`/`unload`.
+start` at login, loaded/unloaded via `launchctl load`/`unload`.
 
 **No native WebView launcher for v1 — `open <url>` (default browser), matching Linux's own
-fallback path.** Windows's `launcher.exe` uses `go-webview2`, a cgo-free binding to the
+fallback path.** The native Windows launcher (`installer/launcher-native/`) uses
+`go-webview2`, a cgo-free binding to the
 pre-installed WebView2 runtime. No equivalent cgo-free WebKit binding exists for Go on macOS;
 the community `webview/webview` binding needs cgo, which would break `CGO_ENABLED=0`
 cross-compilation from Linux CI (cgo cross-compiling to Darwin needs a macOS SDK/clang
@@ -701,39 +505,42 @@ per-user app-data convention, playing the same role as Linux's `~/.local/share/p
 `install.go`/`start.go` (previously `//go:build linux`-scoped) into `common.go` (no build
 tag) — these six functions are pure `os`/`os/exec`/`path/filepath` calls with no Linux-specific
 behavior, so `install_darwin.go`/`start_darwin.go` reuse them directly instead of duplicating
-them, the same way `main_windows.go` does *not* reuse them (Windows's flow genuinely differs
-enough — WSL2, winget, reboot handling — that duplication there is warranted; macOS's flow is
-close enough to Linux's that sharing is the better call).
+them. Windows has no equivalent to share with: the native launcher (`installer/launcher-native/`)
+is an entirely separate module with its own architecture (bundled Postgres + Python, no
+Podman/compose/image-pull concept at all), not a variant of this Podman-based install flow.
 
 **PostgreSQL major-version mismatch guard (issue #58), Linux + macOS only.** Before
 `runInstall` pulls any new image on an upgrade, it checks whether the existing data volume's
 Postgres major version differs from the one the new `compose-prod.yaml` is about to start —
 see the root `CLAUDE.md`'s "Database backup" section for the full mechanism and why this
-exists. Not added to `main_windows.go`: its upgrade flow has no equivalent
-existing-version-detection logic to hook this into at all (unlike Linux/macOS, which already
-had the near-identical `existingVersion`/backup-reminder block this guard extends), and that
-whole WSL2/Podman install path is slated for full replacement by the native launcher (#84) —
-not worth building parallel detection logic for a path being retired.
+exists. The old WSL2/Podman Windows install path this guard was never extended to has since
+been fully removed (issue #84). The native Windows launcher bundles its own fixed-version
+Postgres binaries rather than pulling a Dependabot-tracked image tag, so this specific
+mismatch scenario doesn't apply there the same way — no equivalent guard exists for it yet,
+and none is currently planned.
 
-## Full install-flow CI testing (all 3 platforms)
+## Install-flow CI testing (Linux full install; macOS/native-Windows smoke tests)
 
-`build-installer.yml` runs a **real `install` invocation** (Podman setup, Podman Machine/
-native start, image pull, compose up, health-check poll) on all 3 platforms at release time —
-not just a cross-compile check or a `version` smoke test. This only exists because the repo is
-**public**: standard GitHub-hosted runner minutes (Linux, Windows, *and* macOS alike) are free
-and uncapped on public repos regardless of the 2x/10x-vs-Linux multiplier that applies to
-private-repo paid quotas — the only real cost is wall-clock time, not money.
+`build-installer.yml` runs a **real `install` invocation** (Podman setup, image pull, compose
+up, health-check poll) for Linux at release time — not just a cross-compile check or a
+`version` smoke test. This only exists because the repo is **public**: standard GitHub-hosted
+runner minutes are free and uncapped on public repos regardless of the 2x/10x-vs-Linux
+multiplier that applies to private-repo paid quotas — the only real cost is wall-clock time,
+not money. Windows has no equivalent full-install job of this kind anymore — the native
+launcher's own install+launch validation is a real MSIX package install + app launch, covered
+by `package-native-launcher-msix`'s own smoke test (see CLAUDE.md's `launcher-native/`
+coverage-policy section), not this Podman-based flow at all (issue #84 removed the old
+WSL2/Podman `test-windows-install` job along with the install path it tested).
 
 **Gated by `detect-installer-changes`, not run on every release.** A full install test is
 expensive relative to a routine backend/frontend-only release where the installer's own code
 provably didn't move. That job diffs `installer/`, `packaging/`, `compose-prod.yaml`, and the
 two workflow files themselves against the *previous* release tag (`git describe --tags
 --abbrev=0 "${GITHUB_REF_NAME}~1"`); no previous tag (first-ever release) defaults to "changed"
-rather than silently skipping. If none of those paths moved, the 2 gated full-install jobs
-(`test-linux-install`, `test-windows-install`) are skipped — `test-macos` is **not** gated by
-this (it always runs, but only ever does a `version` smoke test, never a full install, see
-below) — and the cheap cross-compile checks (`ci.yml`) and the Linux/macOS `version` smoke
-tests still always run regardless.
+rather than silently skipping. If that path didn't move, the gated `test-linux-install` job is
+skipped — `test-macos` is **not** gated by this (it always runs, but only ever does a
+`version` smoke test, never a full install, see below) — and the cheap cross-compile checks
+(`ci.yml`) and the Linux/macOS `version` smoke tests still always run regardless.
 
 **Linux runs on `ubuntu-latest`, deliberately not a Fedora-flavored environment**, even though
 Fedora is this project's actual reference distro. GitHub has no Fedora-hosted runner; running
@@ -761,54 +568,27 @@ make it pass; `continue-on-error` would only hide a test that can never succeed.
 smoke test is the full extent of macOS CI coverage; a genuine full-install validation needs
 the user's own Apple Silicon Mac.
 
-**Windows and Linux are `continue-on-error: true` — informational, not release gates, until
-proven reliable across a few real releases:**
-- **`test-windows-install`**: nested virtualization for WSL2 (in turn needed for Podman
-  Machine) has been confirmed working on GitHub's `windows-latest` runners by the community
-  since the Dadsv5 hardware migration (Jan 2024) — but this is **not officially documented or
-  guaranteed** by GitHub. **The installer's embedded `execution-level: administrator` manifest
-  (see "Windows executable code signing" above) hung the job indefinitely the first two times
-  this was tested** (confirmed live: 45+ minutes, zero progress, twice) — PowerShell's
-  `Start-Process` launches an exe via ShellExecute, which honors that manifest by popping the
-  interactive UAC consent dialog, and nobody is present to click it on a headless runner. Fix:
-  run the installer through a Scheduled Task (`New-ScheduledTaskPrincipal -RunLevel Highest`)
-  instead of `Start-Process` — Task Scheduler's own silent-elevation mechanism bypasses the
-  interactive consent dialog entirely, without weakening the shipped manifest or a real end
-  user's UAC prompt in any way. **A second, distinct hang surfaced right after this fix**: the
-  install log showed every real step (WSL2/Podman/Docker Compose, `podman compose up -d`,
-  shortcuts) succeed within ~3 minutes, yet the Scheduled Task still reported `Running` a full
-  10 minutes later — `popupYesNo`'s final "Voulez-vous lancer maintenant ?" `MessageBox.Show`
-  blocks forever with nobody to click it. Fixed at the source in `popup()`/`popupYesNo()`
-  (`main_windows.go`): both skip the interactive dialog and log instead when `CI` is set in
-  the environment (GitHub Actions, and virtually every other CI provider, sets `CI=true`) —
-  never set on a real end user's machine, so their experience is unchanged. **Third hang, same
-  symptom, after that fix**: a Scheduled Task does not inherit the calling PowerShell step's
-  own process environment — Task Scheduler builds a fresh environment block for the target
-  user from machine/user-scoped variables, not the caller's transient `env:` block — so
-  `os.Getenv("CI")` still saw nothing and the popup still blocked. Fixed by persisting it with
-  `[Environment]::SetEnvironmentVariable('CI', 'true', 'Machine')` in the workflow step
-  *before* registering the task, harmless since this runner VM is destroyed right after.
-- **`test-linux-install`**: lower risk (no elevation dance, no nested hypervisor), but new and
-  unproven — kept `continue-on-error` for the same reason, tighten once stable. The job
-  installs `podman-compose` explicitly (`pip install podman-compose`, matching `ci.yml`'s own
-  compose-syntax step) — without it, `detectComposeCmd()` falls back to the `podman compose`
-  subcommand, which on this runner image auto-delegates to Docker's pre-installed compose CLI
-  plugin instead of using Podman's own compose implementation, and that plugin can't reach a
-  Docker daemon (confirmed live). A real end-user machine without Docker installed alongside
-  Podman wouldn't hit this.
+**`test-linux-install` is `continue-on-error: true` — informational, not a release gate, until
+proven reliable across a few real releases.** Lower risk than the old Windows job ever was (no
+elevation dance, no nested hypervisor), but new and unproven when first added — kept
+`continue-on-error` for that reason, tighten once stable. The job installs `podman-compose`
+explicitly (`pip install podman-compose`, matching `ci.yml`'s own compose-syntax step) —
+without it, `detectComposeCmd()` falls back to the `podman compose` subcommand, which on this
+runner image auto-delegates to Docker's pre-installed compose CLI plugin instead of using
+Podman's own compose implementation, and that plugin can't reach a Docker daemon (confirmed
+live). A real end-user machine without Docker installed alongside Podman wouldn't hit this.
 
-Once each of these two has run clean across a handful of real releases, remove its
-`continue-on-error: true` to make it a real release gate — don't leave it soft-failing forever
-just because it started that way.
+Once it has run clean across a handful of real releases, remove its `continue-on-error: true`
+to make it a real release gate — don't leave it soft-failing forever just because it started
+that way.
 
-**Both jobs poll Quay.io before pulling — `publish-images.yml` fires off the same tag push with
-no ordering guarantee.** Confirmed live on the real v1.3.0 release: `test-linux-install` failed
-in 15s on "manifest unknown" and `test-windows-install` failed at the compose step, both well
-before `publish-images.yml` finished pushing 4 minutes later (issue #16). Each install-test job
-now has a "Wait for images to be published to Quay.io" step (polls the public
-`quay.io/api/v1/repository/.../tag/` endpoint, 10-minute timeout) before invoking the installer —
-chosen over reordering the two workflows via `workflow_run` (ref/context quirks) or merging them
-into one (bigger restructure for a timing bug).
+**`test-linux-install` polls Quay.io before pulling — `publish-images.yml` fires off the same
+tag push with no ordering guarantee.** Confirmed live on the real v1.3.0 release: the job
+failed in 15s on "manifest unknown," well before `publish-images.yml` finished pushing 4
+minutes later (issue #16). It now has a "Wait for images to be published to Quay.io" step
+(polls the public `quay.io/api/v1/repository/.../tag/` endpoint, 10-minute timeout) before
+invoking the installer — chosen over reordering the two workflows via `workflow_run` (ref/
+context quirks) or merging them into one (bigger restructure for a timing bug).
 
 **`workflow_dispatch` lets this whole pipeline run on demand without creating a release.**
 `build` computes `VERSION` once — a real tag version on `push`; on a manual run, the
@@ -819,8 +599,8 @@ container image exists on Quay.io for a version nobody ever published (confirmed
 the same value instead of re-deriving it from `GITHUB_REF_NAME` (a branch name on manual runs,
 which can contain `/` and would break filenames built from it). The "Create GitHub Release"
 and "Delete obsolete releases" steps are both gated `if: github.event_name == 'push'` — a
-manual dispatch builds and installer-tests all 3 platforms but never touches GitHub Releases
-or Quay.io.
+manual dispatch builds and installer-tests both Linux and macOS but never touches GitHub
+Releases or Quay.io.
 
 ### Changelog generation
 

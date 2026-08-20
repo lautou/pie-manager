@@ -202,15 +202,8 @@ Guide détaillé : [docs/SAUVEGARDE.md](docs/SAUVEGARDE.md).
 
 **Windows (Microsoft Store) :** l'app distribuée via le Store est signée et certifiée par
 Microsoft dans le cadre du processus de publication — aucun avertissement SmartScreen, aucune
-étape de contournement nécessaire.
-
-L'exécutable `pie-manager-windows-amd64.exe` (ancien installateur WSL2/Podman, toujours publié
-dans les releases GitHub pour compatibilité) reste signé (Authenticode, horodatage RFC-3161)
-avec un certificat auto-généré (`CN=PIEManager`) — [SignPath Foundation](https://signpath.org)
-(signature gratuite pour l'open source) a refusé la demande faute d'audience suffisante sur ce
-dépôt. Un certificat auto-généré n'a pas la réputation accumulée d'une autorité de certification
-reconnue : Windows SmartScreen affichera donc quand même un avertissement au premier lancement
-si vous utilisez cette voie plutôt que le Store.
+étape de contournement nécessaire. Le Store est désormais la seule voie d'installation sur
+Windows (l'ancien installateur WSL2/Podman a été retiré).
 
 Le binaire macOS n'est ni signé ni notarié — cela nécessiterait un compte Apple Developer
 Program payant (99$/an), qui n'est pas utilisé pour ce projet. macOS Gatekeeper bloquera donc

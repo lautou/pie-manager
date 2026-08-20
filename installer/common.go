@@ -1,7 +1,6 @@
 package main
 
 import (
-	"archive/zip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -135,8 +134,8 @@ type githubRelease struct {
 
 // githubLatestAssetURL returns the download URL of the first asset in repo's
 // latest GitHub release whose name ends with suffix. Used to resolve
-// official Microsoft-published packages (WSL, winget) without hardcoding a
-// version-specific filename that changes on every release.
+// official vendor-published packages (e.g. Podman's macOS .pkg) without
+// hardcoding a version-specific filename that changes on every release.
 func githubLatestAssetURL(repo, suffix string) (string, error) {
 	url := fmt.Sprintf("%s/repos/%s/releases/latest", githubAPIBase, repo)
 	req, err := http.NewRequest(http.MethodGet, url, nil)
@@ -203,40 +202,6 @@ func downloadFile(url, dest string) error {
 	return nil
 }
 
-// extractZipEntryBySuffix opens zipPath (any zip-format file, including a
-// NuGet .nupkg, which is a zip) and copies the first entry whose path ends
-// with suffix to dest.
-func extractZipEntryBySuffix(zipPath, suffix, dest string) error {
-	r, err := zip.OpenReader(zipPath)
-	if err != nil {
-		return fmt.Errorf("opening zip %s: %w", zipPath, err)
-	}
-	defer r.Close()
-
-	for _, entry := range r.File {
-		if !strings.HasSuffix(filepath.ToSlash(entry.Name), suffix) {
-			continue
-		}
-		rc, err := entry.Open()
-		if err != nil {
-			return fmt.Errorf("opening zip entry %s: %w", entry.Name, err)
-		}
-		defer rc.Close()
-
-		out, err := os.Create(dest)
-		if err != nil {
-			return fmt.Errorf("creating %s: %w", dest, err)
-		}
-		defer out.Close()
-
-		if _, err := io.Copy(out, rc); err != nil {
-			return fmt.Errorf("extracting %s: %w", entry.Name, err)
-		}
-		return nil
-	}
-	return fmt.Errorf("no entry ending in %q found in %s", suffix, zipPath)
-}
-
 // pgDataVolumeName finds the app's Postgres data volume by suffix rather than
 // reconstructing podman-compose's project-name-derivation algorithm from the install
 // directory's basename — that algorithm differs subtly between podman-compose and podman's
@@ -293,18 +258,4 @@ func composePostgresMajor(compose []byte) string {
 // never counts as a mismatch.
 func postgresMajorMismatch(existing, target string) bool {
 	return existing != "" && target != "" && existing != target
-}
-
-// isAppxAlreadyNewerError reports whether an Add-AppxPackage failure message
-// indicates the package is already satisfied by an equal-or-newer version
-// already installed (HRESULT 0x80073D06) — a benign outcome, not a real
-// failure. Some Windows 11 builds already ship a newer in-box copy of a
-// framework package (confirmed live: Microsoft.UI.Xaml.2.8 pre-installed at
-// 8.2511.26001.0, newer than the 8.2310.30001.0 this installer pins via
-// NuGet) and AppX framework dependency resolution only requires "at least
-// this version" — a dependent package (winget) installs and runs fine
-// regardless of this specific step reporting failure. The HRESULT is
-// locale-independent; the surrounding message text is not, so match on it.
-func isAppxAlreadyNewerError(errOutput string) bool {
-	return strings.Contains(errOutput, "0x80073D06")
 }

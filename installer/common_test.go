@@ -3,7 +3,6 @@
 package main
 
 import (
-	"archive/zip"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -180,145 +179,6 @@ func TestDownloadFile_RenameError(t *testing.T) {
 	}
 }
 
-// --- extractZipEntryBySuffix ---
-
-func TestExtractZipEntryBySuffix_Success(t *testing.T) {
-	dir := t.TempDir()
-	zipPath := filepath.Join(dir, "pkg.zip")
-	writeTestZip(t, zipPath, map[string]string{
-		"tools/AppX/x64/Release/Microsoft.UI.Xaml.2.8.appx": "appx-content",
-		"other/file.txt": "irrelevant",
-	})
-
-	dest := filepath.Join(dir, "out.appx")
-	if err := extractZipEntryBySuffix(zipPath, "Microsoft.UI.Xaml.2.8.appx", dest); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	data, err := os.ReadFile(dest)
-	if err != nil {
-		t.Fatalf("reading extracted file: %v", err)
-	}
-	if string(data) != "appx-content" {
-		t.Errorf("unexpected content: %q", string(data))
-	}
-}
-
-func TestExtractZipEntryBySuffix_BadZip(t *testing.T) {
-	dir := t.TempDir()
-	notZip := filepath.Join(dir, "notzip.bin")
-	os.WriteFile(notZip, []byte("not a zip file"), 0644)
-
-	err := extractZipEntryBySuffix(notZip, ".appx", filepath.Join(dir, "out.appx"))
-	if err == nil {
-		t.Error("expected error opening a non-zip file")
-	}
-}
-
-func TestExtractZipEntryBySuffix_EntryNotFound(t *testing.T) {
-	dir := t.TempDir()
-	zipPath := filepath.Join(dir, "pkg.zip")
-	writeTestZip(t, zipPath, map[string]string{"readme.txt": "hello"})
-
-	err := extractZipEntryBySuffix(zipPath, ".appx", filepath.Join(dir, "out.appx"))
-	if err == nil {
-		t.Error("expected error when no entry matches the suffix")
-	}
-}
-
-func TestExtractZipEntryBySuffix_EntryOpenError(t *testing.T) {
-	dir := t.TempDir()
-	zipPath := filepath.Join(dir, "pkg.zip")
-	// Method 99 is not a compression method Go's zip package supports —
-	// entry.Open() itself rejects it before any data is read.
-	writeRawZipEntry(t, zipPath, "bad.appx", 99, 0, []byte("irrelevant"))
-
-	err := extractZipEntryBySuffix(zipPath, ".appx", filepath.Join(dir, "out.appx"))
-	if err == nil {
-		t.Error("expected error opening an entry with an unsupported compression method")
-	}
-}
-
-func TestExtractZipEntryBySuffix_CreateDestError(t *testing.T) {
-	dir := t.TempDir()
-	zipPath := filepath.Join(dir, "pkg.zip")
-	writeTestZip(t, zipPath, map[string]string{"file.appx": "content"})
-
-	dest := filepath.Join(dir, "nonexistent-subdir", "out.appx")
-	err := extractZipEntryBySuffix(zipPath, ".appx", dest)
-	if err == nil {
-		t.Error("expected error when destination directory does not exist")
-	}
-}
-
-func TestExtractZipEntryBySuffix_CopyError(t *testing.T) {
-	dir := t.TempDir()
-	zipPath := filepath.Join(dir, "pkg.zip")
-	// Deflate (method 8) is a supported/registered method, so entry.Open()
-	// succeeds — but these raw bytes aren't a valid deflate stream, so
-	// decompressing them during io.Copy fails, unlike an Open()-time error.
-	writeRawZipEntry(t, zipPath, "bad.appx", 8, 0, []byte("not a valid deflate stream at all"))
-
-	err := extractZipEntryBySuffix(zipPath, ".appx", filepath.Join(dir, "out.appx"))
-	if err == nil {
-		t.Error("expected error copying an entry with invalid compressed data")
-	}
-}
-
-// --- isAppxAlreadyNewerError ---
-
-func TestIsAppxAlreadyNewerError_MatchesHRESULT(t *testing.T) {
-	msg := `exit status 1 (output: Add-AppxPackage : Deployment failed with HRESULT: 0x80073D06, ` +
-		`Impossible d'installer ce package, car une version ultérieure est déjà installée.)`
-	if !isAppxAlreadyNewerError(msg) {
-		t.Error("expected true for a message containing HRESULT 0x80073D06")
-	}
-}
-
-func TestIsAppxAlreadyNewerError_UnrelatedError(t *testing.T) {
-	msg := "exit status 1 (output: Add-AppxPackage : Deployment failed with HRESULT: 0x80073CF9)"
-	if isAppxAlreadyNewerError(msg) {
-		t.Error("expected false for an unrelated HRESULT")
-	}
-}
-
-func TestIsAppxAlreadyNewerError_Empty(t *testing.T) {
-	if isAppxAlreadyNewerError("") {
-		t.Error("expected false for an empty message")
-	}
-}
-
-// writeRawZipEntry creates a zip file with a single entry whose header lies
-// about its compression method and/or CRC32 relative to the raw bytes
-// written — used to deterministically trigger entry.Open()/Read() failures
-// that a well-formed zip.Writer.Create() call cannot produce.
-func writeRawZipEntry(t *testing.T, path, name string, method uint16, crc32 uint32, raw []byte) {
-	t.Helper()
-	f, err := os.Create(path)
-	if err != nil {
-		t.Fatalf("creating test zip: %v", err)
-	}
-	defer f.Close()
-
-	zw := zip.NewWriter(f)
-	fh := &zip.FileHeader{
-		Name:               name,
-		Method:             method,
-		CRC32:              crc32,
-		CompressedSize64:   uint64(len(raw)),
-		UncompressedSize64: uint64(len(raw)),
-	}
-	w, err := zw.CreateRaw(fh)
-	if err != nil {
-		t.Fatalf("creating raw zip entry: %v", err)
-	}
-	if _, err := w.Write(raw); err != nil {
-		t.Fatalf("writing raw zip entry: %v", err)
-	}
-	if err := zw.Close(); err != nil {
-		t.Fatalf("closing zip writer: %v", err)
-	}
-}
-
 // --- composePostgresMajor ---
 
 func TestComposePostgresMajor_ExtractsVersion(t *testing.T) {
@@ -355,29 +215,5 @@ func TestPostgresMajorMismatch(t *testing.T) {
 				t.Errorf("postgresMajorMismatch(%q, %q) = %v, want %v", c.existing, c.target, got, c.want)
 			}
 		})
-	}
-}
-
-// writeTestZip creates a zip file at path containing the given entries.
-func writeTestZip(t *testing.T, path string, files map[string]string) {
-	t.Helper()
-	f, err := os.Create(path)
-	if err != nil {
-		t.Fatalf("creating test zip: %v", err)
-	}
-	defer f.Close()
-
-	zw := zip.NewWriter(f)
-	for name, content := range files {
-		w, err := zw.Create(name)
-		if err != nil {
-			t.Fatalf("creating zip entry %s: %v", name, err)
-		}
-		if _, err := w.Write([]byte(content)); err != nil {
-			t.Fatalf("writing zip entry %s: %v", name, err)
-		}
-	}
-	if err := zw.Close(); err != nil {
-		t.Fatalf("closing zip writer: %v", err)
 	}
 }

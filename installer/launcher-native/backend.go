@@ -177,9 +177,8 @@ func stopChildProcess(cmd *exec.Cmd) error {
 }
 
 // waitForHealth polls healthURL until it returns 200, or ctx is done. Timeout-based via the
-// caller's context rather than a fixed internal retry count, mirroring today's Podman-based
-// installer/launcher/main.go's own /api/admin/version polling loop (Phase 3), generalized here
-// with a context so the caller can show elapsed-time UI feedback while polling.
+// caller's context rather than a fixed internal retry count, with a context so the caller can
+// show elapsed-time UI feedback while polling.
 func waitForHealth(ctx context.Context, backendPort int) error {
 	client := &http.Client{Timeout: 2 * time.Second}
 	url := healthURL(backendPort)

@@ -61,11 +61,6 @@ jobs:
           cp packaging/pie-manager.desktop installer/assets/
           cp packaging/pie-manager.svg installer/assets/
           cp packaging/pie-manager-macos-info.plist installer/assets/
-          # Placeholder for main_windows.go's //go:embed assets/launcher.exe —
-          # the real signed launcher.exe is only built in build-installer.yml;
-          # here we only need SOME file to exist so `go vet`/`go build` can
-          # resolve the embed directive for a windows cross-compile check.
-          touch installer/assets/launcher.exe
           cd installer
           # Not chained with `&&` — a go-vet or go-test failure here would
           # otherwise be a non-final member of an AND-OR list and silently
@@ -75,7 +70,7 @@ jobs:
           go test ./...
           CGO_ENABLED=0 go build ./...
 
-      - name: Go installer — cross-compile check (Windows, macOS)
+      - name: Go installer — cross-compile check (macOS)
         run: |
           cd installer
           # Each command on its own line, not chained with `&&` — under
@@ -83,14 +78,15 @@ jobs:
           # the last in an AND-OR list is silently exempted from errexit
           # (POSIX rule), so `go vet ... && go build ...` as one statement
           # would swallow a go-vet failure instead of failing the step.
-          # Confirmed live: this exact pattern let a real embed error
-          # ("pattern assets/launcher.exe: no matching files found") print
-          # to the log while the step still reported success.
-          # Cross-compile-only, on ubuntu-latest — no real Windows/macOS runner needed.
+          # Cross-compile-only, on ubuntu-latest — no real macOS runner needed.
           # Catches build-tag/link errors early (e.g. a platform-unscoped .syso file
           # silently breaking every non-Windows target) instead of only at release time.
-          GOOS=windows GOARCH=amd64 go vet ./...
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o /dev/null ./...
+          # No Windows leg here anymore (issue #84): main_windows.go was the only
+          # windows-tagged file in this module — without it, `installer/` has no
+          # windows-tagged func main left at all, so a GOOS=windows build would fail
+          # to link (confirmed live while removing it: "function main is undeclared
+          # in the main package"). Windows is now covered entirely by the separate
+          # installer/launcher-native module's own cross-compile check below.
           GOOS=darwin GOARCH=arm64 go vet ./...
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o /dev/null ./...
 

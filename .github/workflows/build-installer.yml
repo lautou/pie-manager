@@ -543,7 +543,7 @@ jobs:
             Start-Sleep -Seconds 5
           }
 
-          foreach ($log in @("initdb.log", "pgctl-start.log", "createdb.log", "alembic.log", "backend.log")) {
+          foreach ($log in @("initdb.log", "postgres.log", "pgctl-stop.log", "createdb.log", "alembic.log", "backend.log", "worker.log")) {
             $path = Join-Path $logDir $log
             if (Test-Path $path) {
               Write-Host "--- $log ---"

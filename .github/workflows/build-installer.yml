@@ -526,21 +526,46 @@ jobs:
           # Administrator token (confirmed live: WindowsPrincipal.IsInRole(Administrator) is
           # true here) — not representative of a real user's normal desktop session, where
           # Windows UAC hands even an admin-type account a non-elevated token by default for a
-          # plain Start Menu app launch. A plain Start-Process here would inherit that elevated
-          # token straight into launcher-native.exe's child postgres.exe, which refuses to run
-          # under an elevated token ("Execution of PostgreSQL by a user with administrative
-          # permissions is not permitted" — a real, deliberate Postgres-on-Windows safety
-          # check, confirmed live). Launching via a Scheduled Task with an explicit Limited run
-          # level forces a genuinely non-elevated child process regardless of the calling
-          # session's own elevation, matching how a real user's launch actually behaves.
+          # plain Start Menu app launch. A plain Start-Process (or "explorer.exe
+          # shell:AppsFolder\...", tried and confirmed NOT sufficient — see below) inherits that
+          # elevated token straight into launcher-native.exe's child postgres.exe, which refuses
+          # to run under an elevated token ("Execution of PostgreSQL by a user with
+          # administrative permissions is not permitted" — a real, deliberate
+          # Postgres-on-Windows safety check, confirmed live).
+          #
+          # A Scheduled Task with RunLevel Limited targeting "explorer.exe shell:AppsFolder\..."
+          # was tried first and did NOT fix this: Explorer is single-instance per session, so a
+          # fresh "explorer.exe shell:AppsFolder\..." invocation typically just forwards the
+          # activation request via COM to the ALREADY-RUNNING (elevated) Explorer process and
+          # exits — the actual launcher-native.exe spawn happens inside that pre-existing
+          # elevated process, never touching the new task's own Limited token at all.
+          #
+          # Fix: activate the package directly via the IApplicationActivationManager COM
+          # interface from inside the Limited-run-level process, bypassing Explorer's
+          # shell-folder delegation entirely — the process that calls ActivateApplication is the
+          # one whose token is actually used to spawn the app. Script lives in a real repo file
+          # (.github/scripts/activate-appx-package.ps1), not an inline heredoc: a PowerShell
+          # here-string's closing "@ must be the first characters on its own line, which is
+          # incompatible with YAML's block-scalar indentation rules for a "run: |" block.
+          $activatorPath = Join-Path $env:GITHUB_WORKSPACE ".github\scripts\activate-appx-package.ps1"
+          $resultPath = Join-Path $env:TEMP "activate-result.log"
+          $pwshPath = (Get-Command pwsh).Source
+
           $taskName = "PieManagerNativeLauncherTest"
-          $action = New-ScheduledTaskAction -Execute "explorer.exe" -Argument "shell:AppsFolder\$aumid"
+          $action = New-ScheduledTaskAction -Execute $pwshPath `
+            -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$activatorPath`" -Aumid `"$aumid`" -ResultPath `"$resultPath`""
           $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
           $task = New-ScheduledTask -Action $action -Principal $principal
           Register-ScheduledTask -TaskName $taskName -InputObject $task -Force | Out-Null
           Start-ScheduledTask -TaskName $taskName
-          Start-Sleep -Seconds 2
+          Start-Sleep -Seconds 5
           Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+
+          if (Test-Path $resultPath) {
+            Write-Host "Activation result: $(Get-Content $resultPath)"
+          } else {
+            Write-Host "::warning::activate-result.log was not written — the scheduled task may not have run"
+          }
 
       - name: Wait for the backend to become healthy, then dump logs
         # Generous deadline: covers MSIX activation, WebView2 startup, staging ~150+MB of

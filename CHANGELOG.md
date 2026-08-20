@@ -2,6 +2,12 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.5.1] - 2026-08-20
+
+### Fixed
+
+- **launcher-native:** Pass APP_VERSION to the backend, fixes "vUNKNOWN" badge
+
 ## [1.5.0] - 2026-08-20
 
 ### Added

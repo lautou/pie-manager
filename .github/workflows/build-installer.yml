@@ -533,32 +533,34 @@ jobs:
           # administrative permissions is not permitted" — a real, deliberate
           # Postgres-on-Windows safety check, confirmed live).
           #
-          # A Scheduled Task with RunLevel Limited targeting "explorer.exe shell:AppsFolder\..."
-          # was tried first and did NOT fix this: Explorer is single-instance per session, so a
-          # fresh "explorer.exe shell:AppsFolder\..." invocation typically just forwards the
+          # A Scheduled Task with RunLevel Limited targeting a plain "explorer.exe
+          # shell:AppsFolder\..." was tried first and did NOT fix this: Explorer is
+          # single-instance per session, so a fresh invocation typically just forwards the
           # activation request via COM to the ALREADY-RUNNING (elevated) Explorer process and
           # exits — the actual launcher-native.exe spawn happens inside that pre-existing
           # elevated process, never touching the new task's own Limited token at all.
           #
-          # Fix: activate the package directly via the IApplicationActivationManager COM
-          # interface from inside the Limited-run-level process, bypassing Explorer's
-          # shell-folder delegation entirely — the process that calls ActivateApplication is the
-          # one whose token is actually used to spawn the app. Script lives in a real repo file
-          # (.github/scripts/activate-appx-package.ps1), not an inline heredoc: a PowerShell
-          # here-string's closing "@ must be the first characters on its own line, which is
-          # incompatible with YAML's block-scalar indentation rules for a "run: |" block.
+          # A direct IApplicationActivationManager.ActivateApplication COM-interop call (bypassing
+          # Explorer's shell-folder delegation entirely) was tried next and hit a genuine,
+          # unresolved COM-level failure ("incorrect format", 0x8007000B) three interop layers
+          # deep (QueryInterface cast, COM apartment state, and finally the call itself) with no
+          # further progress — abandoned.
+          #
+          # Fix that actually works: kill any pre-existing Explorer process immediately before
+          # launching (see .github/scripts/activate-appx-package.ps1), so the fresh
+          # "explorer.exe shell:AppsFolder\..." invocation this Limited-run-level task makes has
+          # no instance left to delegate to — it becomes the session's primary shell handler
+          # itself, actually performing the launch under its own (Limited) token. Script lives in
+          # a real repo file, not an inline heredoc: a PowerShell here-string's closing "@ must be
+          # the first characters on its own line, which is incompatible with YAML's block-scalar
+          # indentation rules for a "run: |" block.
           $activatorPath = Join-Path $env:GITHUB_WORKSPACE ".github\scripts\activate-appx-package.ps1"
           $resultPath = Join-Path $env:TEMP "activate-result.log"
           $pwshPath = (Get-Command pwsh).Source
 
-          # -MTA: IApplicationActivationManager.ActivateApplication is a broker-mediated WinRT
-          # activation call that requires an MTA COM apartment — PowerShell's main thread
-          # defaults to STA on Windows, which produced a misleading "incorrect format"
-          # (0x8007000B) error from ActivateApplication rather than a clearer apartment-mismatch
-          # error, confirmed live.
           $taskName = "PieManagerNativeLauncherTest"
           $action = New-ScheduledTaskAction -Execute $pwshPath `
-            -Argument "-MTA -NoProfile -ExecutionPolicy Bypass -File `"$activatorPath`" -Aumid `"$aumid`" -ResultPath `"$resultPath`""
+            -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$activatorPath`" -Aumid `"$aumid`" -ResultPath `"$resultPath`""
           $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
           $task = New-ScheduledTask -Action $action -Principal $principal
           Register-ScheduledTask -TaskName $taskName -InputObject $task -Force | Out-Null

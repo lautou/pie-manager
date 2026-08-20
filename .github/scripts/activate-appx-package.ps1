@@ -1,17 +1,24 @@
-# Activates an installed AppX/MSIX package by AUMID via the IApplicationActivationManager COM
-# interface directly, bypassing explorer.exe's shell:AppsFolder handling entirely.
+# Activates an installed AppX/MSIX package by AUMID, under THIS process's own token rather than
+# whatever token an already-running Explorer shell process happens to have.
 #
-# Why this exists: launching via "explorer.exe shell:AppsFolder\<aumid>" does NOT reliably run
-# the target app under the CALLING process's own token. Explorer is single-instance per
-# session — a fresh "explorer.exe shell:AppsFolder\..." invocation typically just forwards the
-# activation request via COM to the already-running Explorer process and exits; the actual app
-# spawn happens inside that pre-existing process, under ITS token, not the caller's. This
-# defeats any attempt to launch a full-trust MSIX app with a deliberately different
-# (e.g. de-elevated) token than whatever Explorer's own long-lived process already has.
+# Why this exists: launching via a fresh "explorer.exe shell:AppsFolder\<aumid>" invocation does
+# NOT reliably run the target app under the CALLING process's own token. Explorer is
+# single-instance per session — a fresh invocation typically just forwards the activation
+# request via COM to the already-running Explorer process and exits; the actual app spawn
+# happens inside that pre-existing process, under ITS token, not the caller's. This defeats any
+# attempt to launch a full-trust MSIX app with a deliberately different (e.g. de-elevated) token
+# than whatever Explorer's own long-lived process already has.
 #
-# Calling ActivateApplication directly from THIS process makes this process itself responsible
-# for the spawn, so the launched app inherits this process's own token — the behavior actually
-# needed when this script is run from inside e.g. a Scheduled Task with a specific run level.
+# A prior attempt called IApplicationActivationManager.ActivateApplication directly via COM
+# interop to sidestep Explorer entirely. That hit a genuine, unresolved COM-level failure
+# ("incorrect format", 0x8007000B) three interop layers deep (QueryInterface cast, apartment
+# state, and finally the call itself) with no further progress — abandoned in favor of this
+# simpler, more direct fix: kill the existing Explorer process immediately before launching, so
+# there is no pre-existing instance left to delegate to. The fresh "explorer.exe
+# shell:AppsFolder\..." invocation this script then makes has no choice but to become the
+# session's primary shell handler itself, actually performing the launch under THIS process's
+# own token (inherited from whatever ran this script — e.g. a Scheduled Task with a specific
+# run level).
 #
 # See build-installer.yml's package-native-launcher-msix job and issue #116 for the concrete
 # problem this was built to diagnose/fix (postgres.exe refusing to start under an elevated
@@ -25,46 +32,12 @@ param(
     [string]$ResultPath
 )
 
-# The coclass declares it implements the interface directly (rather than getting a raw
-# __ComObject via GetTypeFromCLSID+Activator.CreateInstance and casting it afterward with `-as`)
-# — confirmed live this matters: the cast-based approach's runtime QueryInterface failed under
-# PowerShell 7 (.NET, not .NET Framework), even though the identical shape of code is a commonly
-# published pattern for classic Windows PowerShell 5.1. Declaring the interface directly on the
-# class lets normal COM activation (CoCreateInstance, triggered by `New-Object`) wire up the
-# vtable dispatch from the start, without a separate runtime cast step.
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-
-[ComImport, Guid("2e941141-7f97-4756-ba1d-9decde894a3d"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-public interface IApplicationActivationManager
-{
-    [PreserveSig]
-    int ActivateApplication(
-        [MarshalAs(UnmanagedType.LPWStr)] string appUserModelId,
-        [MarshalAs(UnmanagedType.LPWStr)] string arguments,
-        int options,
-        out uint processId);
-}
-
-[ComImport, Guid("45BA127D-10A8-46EA-8AB7-56EA9078943C")]
-public class ApplicationActivationManager : IApplicationActivationManager
-{
-    [PreserveSig]
-    public extern int ActivateApplication(
-        [MarshalAs(UnmanagedType.LPWStr)] string appUserModelId,
-        [MarshalAs(UnmanagedType.LPWStr)] string arguments,
-        int options,
-        out uint processId);
-}
-"@
-
 try {
-    $aam = New-Object ApplicationActivationManager
+    Get-Process -Name explorer -ErrorAction SilentlyContinue | Stop-Process -Force
+    Start-Sleep -Milliseconds 500
 
-    [uint32]$processId = 0
-    $hr = $aam.ActivateApplication($Aumid, "", 0, [ref]$processId)
-    "HRESULT=0x$($hr.ToString('X8')) ProcessId=$processId" | Out-File -FilePath $ResultPath
+    Start-Process "explorer.exe" -ArgumentList "shell:AppsFolder\$Aumid"
+    "Launched via explorer.exe after killing any pre-existing instance" | Out-File -FilePath $ResultPath
 } catch {
     "ERROR: $_" | Out-File -FilePath $ResultPath
     exit 1

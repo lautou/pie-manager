@@ -104,7 +104,11 @@
     "noPositionInPool": "Aucune position dans ce pool.",
     "poolPopupTitle": "Pool {{name}}",
     "tickerPopupTitle": "{{ticker}}",
-    "stalePriceWarning": "Prix Manuel obsolète (> {{days}} j) : {{names}}"
+    "stalePriceWarning": "Prix Manuel obsolète (> {{days}} j) : {{names}}",
+    "onboardingTitle": "Ce portefeuille n'est pas encore configuré",
+    "onboardingBody": "Pour que le tableau de bord affiche vos données, créez d'abord au moins un pool d'investissement (Offensif / Défensif) et associez vos comptes dans la configuration du portefeuille. Vous pourrez ensuite saisir ou importer vos transactions.",
+    "onboardingConfigureButton": "Configurer le portefeuille",
+    "onboardingImportButton": "Importer des transactions"
   },
   "positions": {
     "title": "Positions",

@@ -2,6 +2,7 @@
 paths:
   - "installer/**"
   - "packaging/**"
+  - "backend/app/frontend.py"
   - ".github/workflows/build-installer.yml"
   - ".github/workflows/publish-images.yml"
   - "cliff.toml"
@@ -227,6 +228,30 @@ Start Menu                  PIE Manager  (Store-installed MSIX, → launcher-nat
 ```
 Deliberately never under `AppData`/`LocalAppData` — MSIX transparently redirects any write
 there to a location wiped on uninstall (confirmed live, #76/#82).
+
+### `app/frontend.py`'s `mount_frontend` must set `Cache-Control: no-cache` on `index.html`
+
+The native launcher's WebView2 instance is a **persistent** browser profile (not ephemeral like
+a normal CI/ad hoc test) — it survives across app restarts and even MSIX reinstalls, since the
+profile lives outside `frontend_dist` entirely. `index.html` is requested at a stable, unhashed
+URL (`/`), unlike Vite's content-hashed asset filenames — a client that caches it without
+revalidating will keep serving a stale index.html (and therefore stale asset references)
+indefinitely, no matter how many times `frontend_dist` is rebuilt and correctly re-staged on
+disk. Confirmed live (issue #118): a real multi-round investigation where every single test
+appeared to still be running a build from an earlier session, even after independently verifying
+that *both* the installed MSIX's own `frontend_dist` and the staged writable copy under
+`%USERPROFILE%\PieManager\frontend_dist` had the correct, up-to-date files — the browser simply
+never re-requested `index.html` from the server at all.
+
+**Fix**: `mount_frontend`'s `FileResponse` calls now set `Cache-Control: no-cache` explicitly
+for `index.html` (forces revalidation via the ETag/Last-Modified `FileResponse` already sets —
+cheap 304 if unchanged, fresh fetch if not) and `public, max-age=31536000, immutable` for
+everything else under `/assets/` (safe, since Vite's content-hash filenames never reuse a URL
+for different content). Without an explicit header, `FileResponse`'s default leaves caching up
+to the client's own heuristics, which can pick an arbitrarily long freshness lifetime — this is
+not a hypothetical, it's what actually happened here. If `mount_frontend` is ever rewritten
+(e.g., swapped for `StaticFiles`), preserve this exact split — don't let index.html fall back to
+default/heuristic caching again.
 
 ### Installed files (macOS)
 ```

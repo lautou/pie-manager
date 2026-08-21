@@ -59,6 +59,10 @@ async def test_serves_index_html_at_root(dist_dir):
         resp = await ac.get("/")
     assert resp.status_code == 200
     assert "index" in resp.text
+    # index.html must always revalidate - a stale cached copy at this stable, unhashed URL is
+    # what let a native WebView2 launcher keep serving a days-old build (issue #118), even after
+    # frontend_dist was correctly rebuilt and re-staged on disk.
+    assert resp.headers["cache-control"] == "no-cache"
 
 
 async def test_serves_index_html_for_spa_deep_link(dist_dir):
@@ -70,6 +74,18 @@ async def test_serves_index_html_for_spa_deep_link(dist_dir):
         resp = await ac.get("/portfolio/1/dashboard")
     assert resp.status_code == 200
     assert "index" in resp.text
+    assert resp.headers["cache-control"] == "no-cache"
+
+
+async def test_serves_index_html_when_requested_directly(dist_dir):
+    """A direct /index.html request (not the SPA-fallback path) hits the "real file" branch, not
+    the fallback FileResponse - must still get the same no-cache treatment, not the long-lived
+    asset caching a hashed filename would get."""
+    app = _make_app(dist_dir)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        resp = await ac.get("/index.html")
+    assert resp.status_code == 200
+    assert resp.headers["cache-control"] == "no-cache"
 
 
 async def test_serves_real_static_asset(dist_dir):
@@ -78,6 +94,9 @@ async def test_serves_real_static_asset(dist_dir):
         resp = await ac.get("/assets/app.js")
     assert resp.status_code == 200
     assert "console.log" in resp.text
+    # Vite fingerprints asset filenames with a content hash, so a given URL's content never
+    # changes - safe, and desirable for performance, to let clients cache these indefinitely.
+    assert resp.headers["cache-control"] == "public, max-age=31536000, immutable"
 
 
 async def test_api_routes_take_priority_over_catchall(dist_dir):

@@ -175,26 +175,40 @@ function AppNav({ portfolioId }: { portfolioId: string }) {
 // PatternFly's own `xl` breakpoint (--pf-v6-global--breakpoint--xl: 75rem).
 const SIDEBAR_NARROW_BREAKPOINT_PX = 1200;
 
+// How long after mount to keep polling window.innerWidth before trusting the resize
+// listener alone (see the doc comment on useNarrowViewport for why this is needed).
+const STARTUP_POLL_INTERVAL_MS = 300;
+const STARTUP_POLL_DURATION_MS = 10000;
+
 /**
  * PatternFly's Page component (isManagedSidebar) tracks "mobile" via a ResizeObserver
  * on its own container, measured once near mount — this races the native WebView2
  * launcher's asynchronous initial window-bounds call and never self-corrects if the
  * window isn't resized again after launch (issue #118: confirmed live that PatternFly's
  * internal isMobile flag stayed false even though window.innerWidth was genuinely
- * narrow). Track narrowness ourselves from window.innerWidth instead, with a deferred
- * re-check to absorb that startup race, and drive the sidebar's visibility via a direct
- * inline style (higher specificity than PatternFly's own CSS, so it doesn't matter
- * whether PatternFly's own isMobile ever gets detected correctly).
+ * narrow). Track narrowness ourselves from window.innerWidth instead, and drive the
+ * sidebar's visibility via a direct inline style (higher specificity than PatternFly's
+ * own CSS, so it doesn't matter whether PatternFly's own isMobile ever gets detected
+ * correctly).
+ *
+ * A single deferred re-check isn't enough either — confirmed live that window.innerWidth
+ * can still be stuck wrong well past that. The native launcher does real blocking work at
+ * startup (Postgres init, migrations, spawning the backend) before it's idle enough to
+ * process WM_SIZE and call PutBounds with the real window bounds, so the delay before the
+ * browser's own viewport settles isn't fixed or short. Poll for a while after mount
+ * instead of checking once, then rely on the resize listener for anything after that.
  */
 function useNarrowViewport(): boolean {
   const [isNarrow, setIsNarrow] = useState(() => window.innerWidth < SIDEBAR_NARROW_BREAKPOINT_PX);
   useEffect(() => {
     const check = () => setIsNarrow(window.innerWidth < SIDEBAR_NARROW_BREAKPOINT_PX);
     check();
-    const recheckId = window.setTimeout(check, 500);
+    const pollId = window.setInterval(check, STARTUP_POLL_INTERVAL_MS);
+    const stopPollId = window.setTimeout(() => window.clearInterval(pollId), STARTUP_POLL_DURATION_MS);
     window.addEventListener('resize', check);
     return () => {
-      window.clearTimeout(recheckId);
+      window.clearInterval(pollId);
+      window.clearTimeout(stopPollId);
       window.removeEventListener('resize', check);
     };
   }, []);

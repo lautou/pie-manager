@@ -18,7 +18,7 @@ import {
   SkipToContent,
   Content, ContentVariants,
 } from '@patternfly/react-core';
-import { Component } from 'react';
+import { Component, useCallback, useEffect, useState } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 
 import { useQuery } from '@tanstack/react-query';
@@ -172,12 +172,44 @@ function AppNav({ portfolioId }: { portfolioId: string }) {
   );
 }
 
+// PatternFly's own `xl` breakpoint (--pf-v6-global--breakpoint--xl: 75rem).
+const SIDEBAR_NARROW_BREAKPOINT_PX = 1200;
+
+/**
+ * PatternFly's Page component (isManagedSidebar) tracks "mobile" via a ResizeObserver
+ * on its own container, measured once near mount — this races the native WebView2
+ * launcher's asynchronous initial window-bounds call and never self-corrects if the
+ * window isn't resized again after launch (issue #118: confirmed live that PatternFly's
+ * internal isMobile flag stayed false even though window.innerWidth was genuinely
+ * narrow). Track narrowness ourselves from window.innerWidth instead, with a deferred
+ * re-check to absorb that startup race, and drive the sidebar's visibility via a direct
+ * inline style (higher specificity than PatternFly's own CSS, so it doesn't matter
+ * whether PatternFly's own isMobile ever gets detected correctly).
+ */
+function useNarrowViewport(): boolean {
+  const [isNarrow, setIsNarrow] = useState(() => window.innerWidth < SIDEBAR_NARROW_BREAKPOINT_PX);
+  useEffect(() => {
+    const check = () => setIsNarrow(window.innerWidth < SIDEBAR_NARROW_BREAKPOINT_PX);
+    check();
+    const recheckId = window.setTimeout(check, 500);
+    window.addEventListener('resize', check);
+    return () => {
+      window.clearTimeout(recheckId);
+      window.removeEventListener('resize', check);
+    };
+  }, []);
+  return isNarrow;
+}
+
 function PortfolioLayout({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation();
   const { portfolioId } = useParams<{ portfolioId: string }>();
   const navigate = useNavigate();
   const { data: allPortfolios = [] } = usePortfolios();
   useAutoRefresh(portfolioId);
+  const isNarrow = useNarrowViewport();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const toggleSidebar = useCallback(() => setIsSidebarOpen((open) => !open), []);
 
   const masthead = (
     <Masthead style={{ backgroundColor: '#1b1d21' }}>
@@ -187,6 +219,8 @@ function PortfolioLayout({ children }: { children: React.ReactNode }) {
             isHamburgerButton
             aria-label="Toggle sidebar"
             className="sidebar-toggle-button"
+            isSidebarOpen={isSidebarOpen}
+            onSidebarToggle={toggleSidebar}
           />
         </MastheadToggle>
         <MastheadBrand><MastheadLogo style={{ color: 'white', fontWeight: 'bold', fontSize: '1.2rem' }}>
@@ -201,10 +235,17 @@ function PortfolioLayout({ children }: { children: React.ReactNode }) {
     <>
       <RefreshBanner />
     <Page
-      isManagedSidebar
       masthead={masthead}
       sidebar={
-        <PageSidebar className="dark-sidebar-container">
+        <PageSidebar
+          className="dark-sidebar-container"
+          isSidebarOpen={isNarrow ? isSidebarOpen : true}
+          style={isNarrow ? {
+            transform: isSidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
+            opacity: isSidebarOpen ? 1 : 0,
+            transition: 'transform 0.25s ease, opacity 0.25s ease',
+          } : undefined}
+        >
           <PageSidebarBody>
             {/* Portfolio switcher at top of sidebar */}
             <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.15)' }}>

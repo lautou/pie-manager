@@ -335,35 +335,19 @@ describe('App', () => {
     });
   });
 
-  it('re-checks narrowness for several seconds after mount to absorb a slow WebView2 startup', () => {
+  it('re-checks narrowness for as long as it takes to absorb a slow WebView2 startup, never giving up', () => {
     vi.useFakeTimers();
     withWindowWidth(1400, () => {
       render(<App />);
       let sidebar = document.querySelector('[data-testid="sidebar"]') as HTMLElement;
       expect(sidebar.getAttribute('style')).toBeFalsy();
       // The native launcher does real blocking work at startup (Postgres init,
-      // migrations, spawning the backend) before its real window bounds settle --
-      // confirmed live that a single short-delay re-check isn't enough (issue #118).
+      // migrations, spawning the backend) before its real window bounds settle, and how
+      // long that takes isn't bounded -- confirmed live that neither a single short-delay
+      // re-check nor a 10s bounded poll were enough (issue #118). Advance well past both
+      // of those previously-tried (and insufficient) windows.
       Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
-      act(() => { vi.advanceTimersByTime(3000); });
-      sidebar = document.querySelector('[data-testid="sidebar"]') as HTMLElement;
-      expect(sidebar.style.transform).toBe('translateX(0)');
-    });
-    vi.useRealTimers();
-  });
-
-  it('stops polling once the startup window elapses, relying on the resize listener afterward', () => {
-    vi.useFakeTimers();
-    withWindowWidth(1400, () => {
-      render(<App />);
-      // Startup polling window elapses while still wide.
-      act(() => { vi.advanceTimersByTime(10000); });
-      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
-      act(() => { vi.advanceTimersByTime(1000); });
-      let sidebar = document.querySelector('[data-testid="sidebar"]') as HTMLElement;
-      // Not picked up: polling has stopped and no real resize event fired yet.
-      expect(sidebar.getAttribute('style')).toBeFalsy();
-      act(() => { fireEvent(window, new Event('resize')); });
+      act(() => { vi.advanceTimersByTime(30000); });
       sidebar = document.querySelector('[data-testid="sidebar"]') as HTMLElement;
       expect(sidebar.style.transform).toBe('translateX(0)');
     });

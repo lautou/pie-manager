@@ -8,9 +8,10 @@ import '@testing-library/jest-dom';
 import { pfCoreStubs, pfIconStubs } from '../../tests/utils/patternfly-mocks';
 
 // Mock react-router-dom
+const mockNavigate = vi.fn();
 vi.mock('react-router-dom', () => ({
   useParams: () => ({ portfolioId: '1' }),
-  useNavigate: () => vi.fn(),
+  useNavigate: () => mockNavigate,
 }));
 
 // Mock @tanstack/react-query
@@ -742,7 +743,7 @@ describe('AdminPage — PoolManager sort headers and color input', () => {
 describe('AdminPage — AccountAssignmentManager coverage', () => {
   afterEach(() => { vi.restoreAllMocks(); });
 
-  it('shows "Aucun" when allAccounts is empty (isLoading=false branch, line 252)', () => {
+  it('shows "Aucun" + a "Configuration générale" button when allAccounts is empty, navigating to /config on click', async () => {
     vi.clearAllMocks();
     mockUsePools.mockReturnValue({ data: [mockPool], refetch: vi.fn() });
     mockUsePoolProducts.mockReturnValue({ data: [], refetch: vi.fn() });
@@ -751,8 +752,10 @@ describe('AdminPage — AccountAssignmentManager coverage', () => {
     mockUseAllBrokers.mockReturnValue({ data: [], isLoading: false });
 
     render(<AdminPage />);
-    // When allAccounts.length === 0, returns <span>Aucun</span>
-    expect(screen.getByText('Paramètres')).toBeTruthy();
+    expect(screen.getByText('Aucun')).toBeTruthy();
+    const configBtn = screen.getByText('Configuration générale');
+    await userEvent.click(configBtn);
+    expect(mockNavigate).toHaveBeenCalledWith('/config?from=1');
   }, 10000);
 
   it('shows loading text when isLoading=true (line 251)', () => {

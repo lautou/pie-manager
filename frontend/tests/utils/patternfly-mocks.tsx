@@ -230,6 +230,7 @@ export const pfTableStubs = {
 export const pfIconStubs = {
   BarsIcon: () => null,
   CheckCircleIcon: () => <span>✓</span>,
+  CogIcon: () => <span>cog</span>,
   DatabaseIcon: () => <span>db</span>,
   DownloadIcon: () => <span>dl</span>,
   ExclamationTriangleIcon: () => <span>!</span>,

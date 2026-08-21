@@ -13,13 +13,19 @@
     certification under policies 10.2.5/10.1.5/10.1.2, documented in CLAUDE.md). The reservation
     itself is still valid and reused here for issue #82's different, bundle-everything
     architecture — these are not placeholders, do not change them without updating the
-    reservation in Partner Center to match. __VERSION__ is substituted with the real release
-    version at build time (build-installer.yml).
+    reservation in Partner Center to match. __VERSION__ is substituted with the full 4-part
+    version at build time (build-installer.yml) -- <release>.0 on a real tag push, or
+    <release>.<run_number> on a manual workflow_dispatch test build. The distinct revision on
+    dispatch builds matters: Windows treats an MSIX reinstall with an unchanged Version as
+    already installed and silently keeps serving the old package content, even after
+    Remove-AppxPackage + Add-AppxPackage -- confirmed live (issue #118) burning 4 full
+    round-trip test cycles where every "fix" was actually still testing the very first build's
+    bundle, since every dispatch build shared the same X.Y.Z.0 version.
   -->
   <Identity
       Name="PIEManager.PIEManager"
       Publisher="CN=2654AE3A-D473-41CE-8C17-0C2734C3B4A3"
-      Version="__VERSION__.0"
+      Version="__VERSION__"
       ProcessorArchitecture="x64" />
 
   <Properties>

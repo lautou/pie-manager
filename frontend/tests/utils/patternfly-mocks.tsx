@@ -49,10 +49,11 @@ export const pfCoreStubs = {
   GalleryItem: Stub,
   PageSection: Stub,
   PageSectionVariants: { default: 'default' },
-  PageSidebar: ({ children, isSidebarOpen }: any) => (
-    <div data-testid="sidebar" data-open={String(isSidebarOpen)}>{children}</div>
-  ),
+  PageSidebar: ({ children }: any) => <div data-testid="sidebar">{children}</div>,
   PageSidebarBody: Stub,
+  PageToggleButton: ({ 'aria-label': ariaLabel, className }: any) => (
+    <button aria-label={ariaLabel} className={className} />
+  ),
 
   // Typography
   Content: ({ children }: any) => <span>{children}</span>,

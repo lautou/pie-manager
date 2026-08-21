@@ -304,19 +304,15 @@ describe('App', () => {
     expect(body).toContain('Indicateurs macro');
   });
 
-  it('sidebar toggle button click covers the inner (o) => !o updater (line 73)', async () => {
+  it('renders the sidebar toggle button, delegating open/close state to PatternFly\'s managed sidebar', async () => {
     const user = userEvent.setup({ delay: null });
     render(<App />);
-    // The sidebar starts open (isSidebarOpen=true)
-    expect(document.querySelector('[data-testid="sidebar"]')?.getAttribute('data-open')).toBe('true');
-
-    // Click all <button> elements - one of them is the toggle button
-    // When clicked, it fires () => setIsSidebarOpen((o) => !o) — covering line 73
-    const buttons = document.querySelectorAll('button');
-    for (const btn of Array.from(buttons)) {
-      await user.click(btn);
-    }
-
+    // Sidebar open/close state is now owned by PatternFly's Page (isManagedSidebar), not
+    // App's own code — see CLAUDE.md's PatternFly sidebar section for why. Nothing left in
+    // our own code to assert on beyond "the toggle button renders and is clickable".
+    const toggle = document.querySelector('[aria-label="Toggle sidebar"]') as HTMLButtonElement;
+    expect(toggle).toBeTruthy();
+    await user.click(toggle);
     expect(document.querySelector('[data-testid="sidebar"]')).toBeTruthy();
   });
 

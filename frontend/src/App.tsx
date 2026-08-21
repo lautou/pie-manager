@@ -14,11 +14,11 @@ import {
   PageSection, PageSectionVariants,
   PageSidebar,
   PageSidebarBody,
+  PageToggleButton,
   SkipToContent,
   Content, ContentVariants,
 } from '@patternfly/react-core';
-import { BarsIcon } from '@patternfly/react-icons';
-import { Component, useState } from 'react';
+import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 
 import { useQuery } from '@tanstack/react-query';
@@ -176,7 +176,6 @@ function PortfolioLayout({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation();
   const { portfolioId } = useParams<{ portfolioId: string }>();
   const navigate = useNavigate();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const { data: allPortfolios = [] } = usePortfolios();
   useAutoRefresh(portfolioId);
 
@@ -184,11 +183,9 @@ function PortfolioLayout({ children }: { children: React.ReactNode }) {
     <Masthead style={{ backgroundColor: '#1b1d21' }}>
       <MastheadMain>
         <MastheadToggle>
-          <Button
-            variant="plain"
-            onClick={() => setIsSidebarOpen((o) => !o)}
+          <PageToggleButton
+            isHamburgerButton
             aria-label="Toggle sidebar"
-            icon={<BarsIcon />}
             className="sidebar-toggle-button"
           />
         </MastheadToggle>
@@ -204,9 +201,10 @@ function PortfolioLayout({ children }: { children: React.ReactNode }) {
     <>
       <RefreshBanner />
     <Page
+      isManagedSidebar
       masthead={masthead}
       sidebar={
-        <PageSidebar isSidebarOpen={isSidebarOpen} className="dark-sidebar-container">
+        <PageSidebar className="dark-sidebar-container">
           <PageSidebarBody>
             {/* Portfolio switcher at top of sidebar */}
             <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.15)' }}>

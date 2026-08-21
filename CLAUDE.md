@@ -208,18 +208,33 @@ render prop — add it to any new `TreemapNode`-like interface, or those fields 
 back `undefined`. Trade-off accepted: v3's internal rewrite onto `@reduxjs/toolkit` adds ~8%
 to the production bundle size.
 
-**`App.tsx`'s `PortfolioLayout` uses PatternFly's `isManagedSidebar` on `<Page>` — never go
-back to a manual `useState` + `onClick` toggle for the sidebar.** Below PatternFly v6's `xl`
-breakpoint (1200px viewport width), `.pf-v6-c-page__sidebar` is off-canvas by default
-(`translateX(-100%)`, `opacity: 0`) and only becomes visible with the `.pf-m-expanded`
-modifier class, which PatternFly's `PageSidebar` only ever applies when `isMobile` is true —
-and `isMobile` is only tracked at all if `isManagedSidebar` (or `onPageResize`) is passed to
-`<Page>`. A manual/custom toggle that only flips `isSidebarOpen` can never apply that class, so
-the sidebar becomes permanently unreachable below 1200px, no matter how many times the toggle
-is clicked — while still working fine above it, which is what makes this easy to misdiagnose
-as an environment/display issue rather than a real, always-reproducible layout bug (issue
-#118 burned a full investigation blaming QXL/SPICE, RDP codecs, and host compositors before the
-real 1200px threshold was spotted from a user's own resolution testing).
+**`App.tsx`'s `PortfolioLayout` drives the sidebar's narrow-viewport visibility itself
+(`useNarrowViewport` + a direct inline `style` override on `<PageSidebar>`) — never go back to
+PatternFly's own `isManagedSidebar`/`onPageResize` mobile detection for this.** Below
+PatternFly v6's `xl` breakpoint (1200px viewport width), `.pf-v6-c-page__sidebar` is off-canvas
+by default (`translateX(-100%)`, `opacity: 0`) and only becomes visible via PatternFly's own
+CSS when its `.pf-m-expanded` modifier class is present — which `PageSidebar` only ever applies
+when its own `Page`-level `isMobile` context flag is true. That flag is computed once via a
+`ResizeObserver`/`componentDidMount` check on `Page`'s own container, and this measurement
+races the native WebView2 launcher's asynchronous initial window-bounds call: confirmed live
+(issue #118) via DevTools that `window.innerWidth`/`clientWidth` were genuinely narrow (1028)
+while the sidebar's class kept toggling between `pf-m-collapsed` and no modifier at all —
+`isMobile` stayed stuck `false` and never self-corrected, since the window is never resized
+again after launch. This is a real, unfixable-from-userland race in PatternFly's own detection
+in this specific host environment, not something `isManagedSidebar` (tried first, and itself
+initially believed to be the fix) can paper over. The actual fix: track narrowness with a plain
+`window.innerWidth` check + a `resize` listener + a deferred 500ms re-check (to absorb the
+startup race), and force the sidebar's `transform`/`opacity` via inline `style` (highest CSS
+specificity — wins regardless of whatever class PatternFly's own broken detection applies).
+Above 1200px, no override is applied and PatternFly's own root-level CSS var override makes the
+sidebar visible unconditionally, which needs no fix and must not be touched.
+
+This bug was easy to misdiagnose as an environment/display issue rather than a real,
+reproducible layout+timing bug — issue #118 went through three prior incorrect theories (QXL/
+SPICE virtual GPU, RDP codec/gfx pipeline, host-compositor stale repaint) before a user's own
+resolution testing (fails below ~1200px, works above it) pointed at a genuine CSS breakpoint,
+and even the first code fix based on that correct breakpoint diagnosis (`isManagedSidebar`)
+turned out not to work in the real native launcher, requiring the userland-tracking fix above.
 
 ## Mandatory conventions
 

@@ -3,7 +3,7 @@
  * Tests the root component with mocked routing and dependencies.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
+import { render, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import { pfCoreStubs, pfIconStubs } from '../tests/utils/patternfly-mocks';
@@ -32,20 +32,28 @@ vi.mock('react-router-dom', () => ({
   Outlet: () => null,
 }));
 
-// Capture sidebar toggle
-let capturedSidebarToggle: (() => void) | null = null;
 // Capture FormSelect onChange to test portfolio switching
 let capturedFormSelectOnChange: ((e: any, val: string) => void) | null = null;
 // Capture "Gérer les portefeuilles" button onClick
 let capturedGererPortefeuilles: (() => void) | null = null;
 
+/** Temporarily overrides window.innerWidth for a narrow/wide-viewport test, restoring it after. */
+function withWindowWidth(px: number, run: () => void) {
+  const original = window.innerWidth;
+  Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: px });
+  try {
+    run();
+  } finally {
+    Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: original });
+  }
+}
+
 // Mock PatternFly — use shared stubs, override Button and FormSelect to capture callbacks
 vi.mock('@patternfly/react-core', () => ({
   ...pfCoreStubs,
-  // Capture sidebar toggle (plain) and Gérer les portefeuilles (link) onClick handlers
+  // Capture "Gérer les portefeuilles" (link) button's onClick handler
   Button: ({ children, onClick, variant }: any) => {
     if (variant === 'link') capturedGererPortefeuilles = onClick;
-    if (variant === 'plain') capturedSidebarToggle = onClick;
     return <button onClick={onClick}>{children}</button>;
   },
   // Capture FormSelect onChange to test portfolio switching
@@ -212,7 +220,6 @@ describe('App', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     shouldThrow = false;
-    capturedSidebarToggle = null;
     capturedFormSelectOnChange = null;
     capturedGererPortefeuilles = null;
     mockNavigate.mockReset();
@@ -238,20 +245,6 @@ describe('App', () => {
     render(<App />);
     // The FormSelectOption for Portfolio 1 should appear (from the usePortfolios mock)
     expect(document.body.textContent).toContain('Portfolio 1');
-  });
-
-  it('sidebar toggle button toggles the sidebar open/closed (line 32 — AppNav / sidebar)', () => {
-    render(<App />);
-    // The sidebar starts open — toggle closes it
-    const sidebar = document.querySelector('[data-testid="sidebar"]');
-    expect(sidebar).toBeTruthy();
-    // Call the toggle captured from the plain Button
-    if (capturedSidebarToggle) {
-      capturedSidebarToggle();
-      // After re-render the sidebar should be closed
-      // We can't easily introspect React state here, but calling it must not throw
-    }
-    expect(true).toBeTruthy();
   });
 
   it('FormSelect onChange navigates when value changes (line 101)', () => {
@@ -304,16 +297,58 @@ describe('App', () => {
     expect(body).toContain('Indicateurs macro');
   });
 
-  it('renders the sidebar toggle button, delegating open/close state to PatternFly\'s managed sidebar', async () => {
+  it('sidebar toggle shows/hides the sidebar via a direct inline style at narrow widths (issue #118)', async () => {
+    // jsdom's default window.innerWidth is 1024 — already narrow, no override needed.
+    expect(window.innerWidth).toBeLessThan(1200);
     const user = userEvent.setup({ delay: null });
     render(<App />);
-    // Sidebar open/close state is now owned by PatternFly's Page (isManagedSidebar), not
-    // App's own code — see CLAUDE.md's PatternFly sidebar section for why. Nothing left in
-    // our own code to assert on beyond "the toggle button renders and is clickable".
     const toggle = document.querySelector('[aria-label="Toggle sidebar"]') as HTMLButtonElement;
+    const sidebar = document.querySelector('[data-testid="sidebar"]') as HTMLElement;
     expect(toggle).toBeTruthy();
+    // Starts open
+    expect(sidebar.style.transform).toBe('translateX(0)');
+    expect(sidebar.getAttribute('data-sidebar-open')).toBe('true');
     await user.click(toggle);
-    expect(document.querySelector('[data-testid="sidebar"]')).toBeTruthy();
+    expect(sidebar.style.transform).toBe('translateX(-100%)');
+    expect(sidebar.getAttribute('data-sidebar-open')).toBe('false');
+    await user.click(toggle);
+    expect(sidebar.style.transform).toBe('translateX(0)');
+  });
+
+  it('sidebar has no inline style override at wide widths, forced open regardless of toggle state', () => {
+    withWindowWidth(1400, () => {
+      render(<App />);
+      const sidebar = document.querySelector('[data-testid="sidebar"]') as HTMLElement;
+      expect(sidebar.getAttribute('style')).toBeFalsy();
+      expect(sidebar.getAttribute('data-sidebar-open')).toBe('true');
+    });
+  });
+
+  it('narrowness recomputes on a real window resize event, not just at mount', () => {
+    withWindowWidth(1400, () => {
+      render(<App />);
+      const sidebar = document.querySelector('[data-testid="sidebar"]') as HTMLElement;
+      expect(sidebar.getAttribute('style')).toBeFalsy();
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
+      act(() => { fireEvent(window, new Event('resize')); });
+      expect(sidebar.style.transform).toBe('translateX(0)');
+    });
+  });
+
+  it('re-checks narrowness shortly after mount to absorb a WebView2 startup sizing race', () => {
+    vi.useFakeTimers();
+    withWindowWidth(1400, () => {
+      render(<App />);
+      let sidebar = document.querySelector('[data-testid="sidebar"]') as HTMLElement;
+      expect(sidebar.getAttribute('style')).toBeFalsy();
+      // The native launcher's real window bounds settle narrower shortly after mount,
+      // before any real 'resize' event is dispatched (issue #118's WebView2 race).
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
+      act(() => { vi.advanceTimersByTime(500); });
+      sidebar = document.querySelector('[data-testid="sidebar"]') as HTMLElement;
+      expect(sidebar.style.transform).toBe('translateX(0)');
+    });
+    vi.useRealTimers();
   });
 
   // ── ErrorBoundary ─────────────────────────────────────────────────────────
@@ -390,7 +425,6 @@ describe('App — PortfolioLayout branch coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     shouldThrow = false;
-    capturedSidebarToggle = null;
     capturedFormSelectOnChange = null;
     capturedGererPortefeuilles = null;
     mockNavigate.mockReset();

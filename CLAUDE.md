@@ -229,21 +229,27 @@ broken detection applies). Above 1200px, no override is applied and PatternFly's
 CSS var override makes the sidebar visible unconditionally, which needs no fix and must not be
 touched.
 
-**A single deferred re-check of `window.innerWidth` after mount isn't enough either** — confirmed
-live that it can still read wrong well past a 500ms delay. The native launcher does real
-blocking work at startup (Postgres init, migrations, spawning the backend) before it's idle
-enough to process `WM_SIZE` and call `PutBounds` with the real window bounds, so the delay before
-the browser's own viewport settles isn't fixed or short. `useNarrowViewport` polls
-`window.innerWidth` every 300ms for up to 10s after mount instead of checking once, then relies
-on the `resize` listener alone after that window elapses.
+**Neither a single deferred re-check nor a bounded startup poll of `window.innerWidth` is
+enough** — both confirmed live to still read wrong well past their window (500ms, then a 10s
+poll, tried in that order). The native launcher does real blocking work at startup (Postgres
+init, migrations, spawning the backend) before it's idle enough to process `WM_SIZE` and call
+`PutBounds` with the real window bounds, and how long that takes isn't bounded (e.g. slower under
+virtualization) — there's also no guarantee WebView2 dispatches a real `resize` DOM event for a
+programmatic `PutBounds` call the way it does for an end-user drag-resize, so the `resize`
+listener can't be trusted as a fallback for this either. `useNarrowViewport` polls
+`window.innerWidth` every 500ms for the component's entire lifetime instead of any bounded
+window — cheap, since React bails out of re-rendering when `setState` receives an unchanged
+boolean, and the only approach that's correct regardless of how long the native launcher takes to
+settle.
 
 This bug was easy to misdiagnose as an environment/display issue rather than a real,
 reproducible layout+timing bug — issue #118 went through three prior incorrect theories (QXL/
 SPICE virtual GPU, RDP codec/gfx pipeline, host-compositor stale repaint) before a user's own
-resolution testing (fails below ~1200px, works above it) pointed at a genuine CSS breakpoint,
-and two more incorrect fix attempts after that (`isManagedSidebar`, then a single deferred
-re-check) before the actual working fix above — always verify the specific mechanism live in the
-native launcher rather than trusting that a plausible-looking timing fix landed correctly.
+resolution testing (fails below ~1200px, works above it) pointed at a genuine CSS breakpoint, and
+three more incorrect fix attempts after that (`isManagedSidebar`, a single deferred re-check,
+then a 10s bounded poll) before the actual working fix above — always verify the specific
+mechanism live in the native launcher rather than trusting that a plausible-looking timing fix
+landed correctly.
 
 ## Mandatory conventions
 

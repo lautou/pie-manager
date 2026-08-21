@@ -175,10 +175,9 @@ function AppNav({ portfolioId }: { portfolioId: string }) {
 // PatternFly's own `xl` breakpoint (--pf-v6-global--breakpoint--xl: 75rem).
 const SIDEBAR_NARROW_BREAKPOINT_PX = 1200;
 
-// How long after mount to keep polling window.innerWidth before trusting the resize
-// listener alone (see the doc comment on useNarrowViewport for why this is needed).
-const STARTUP_POLL_INTERVAL_MS = 300;
-const STARTUP_POLL_DURATION_MS = 10000;
+// How often to re-check window.innerWidth for the lifetime of the component (see the
+// doc comment on useNarrowViewport for why a bounded startup window isn't enough).
+const NARROW_CHECK_INTERVAL_MS = 500;
 
 /**
  * PatternFly's Page component (isManagedSidebar) tracks "mobile" via a ResizeObserver
@@ -191,24 +190,27 @@ const STARTUP_POLL_DURATION_MS = 10000;
  * own CSS, so it doesn't matter whether PatternFly's own isMobile ever gets detected
  * correctly).
  *
- * A single deferred re-check isn't enough either — confirmed live that window.innerWidth
- * can still be stuck wrong well past that. The native launcher does real blocking work at
- * startup (Postgres init, migrations, spawning the backend) before it's idle enough to
- * process WM_SIZE and call PutBounds with the real window bounds, so the delay before the
- * browser's own viewport settles isn't fixed or short. Poll for a while after mount
- * instead of checking once, then rely on the resize listener for anything after that.
+ * A single deferred re-check, and even a bounded 10s startup poll, both confirmed live
+ * to still not be enough: window.innerWidth can stay wrong well past either window. The
+ * native launcher does real blocking work at startup (Postgres init, migrations,
+ * spawning the backend) before it's idle enough to process WM_SIZE and call PutBounds
+ * with the real window bounds, and how long that takes isn't bounded or predictable
+ * (e.g. slower under virtualization). There is also no guarantee WebView2 dispatches a
+ * real 'resize' DOM event for a programmatic PutBounds call the way it does for an
+ * end-user drag-resize, so the resize listener alone can't be trusted as a fallback
+ * either. Poll for the component's entire lifetime instead of any bounded window — cheap
+ * (React bails out of re-rendering when setState receives the same boolean value), and
+ * the only way to be correct regardless of how long the native launcher takes to settle.
  */
 function useNarrowViewport(): boolean {
   const [isNarrow, setIsNarrow] = useState(() => window.innerWidth < SIDEBAR_NARROW_BREAKPOINT_PX);
   useEffect(() => {
     const check = () => setIsNarrow(window.innerWidth < SIDEBAR_NARROW_BREAKPOINT_PX);
     check();
-    const pollId = window.setInterval(check, STARTUP_POLL_INTERVAL_MS);
-    const stopPollId = window.setTimeout(() => window.clearInterval(pollId), STARTUP_POLL_DURATION_MS);
+    const pollId = window.setInterval(check, NARROW_CHECK_INTERVAL_MS);
     window.addEventListener('resize', check);
     return () => {
       window.clearInterval(pollId);
-      window.clearTimeout(stopPollId);
       window.removeEventListener('resize', check);
     };
   }, []);

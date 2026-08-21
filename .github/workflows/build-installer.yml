@@ -402,11 +402,22 @@ jobs:
             Remove-Item -Recurse -Force
 
       - name: Stage manifest with the real version
+        # A real tag push gets a stable X.Y.Z.0 -- this is the actual Store submission
+        # identity and must not vary run-to-run. A manual workflow_dispatch test build reuses
+        # the same X.Y.Z (see the "Determine version" step above) on every run, so it needs a
+        # distinct revision component per run instead, or Windows treats the reinstall as
+        # "already have this version" and silently keeps serving the previously-installed
+        # package's content -- confirmed live (issue #118), see AppxManifest.xml's own comment.
         working-directory: installer/launcher-native
         shell: pwsh
         run: |
           $version = "${{ needs.build.outputs.version }}"
-          (Get-Content AppxManifest.xml) -replace '__VERSION__', $version | Set-Content AppxManifest.xml
+          if ("${{ github.event_name }}" -eq "push") {
+            $fullVersion = "$version.0"
+          } else {
+            $fullVersion = "$version.${{ github.run_number }}"
+          }
+          (Get-Content AppxManifest.xml) -replace '__VERSION__', $fullVersion | Set-Content AppxManifest.xml
 
       - name: Locate Windows SDK packaging/signing tools
         working-directory: installer/launcher-native

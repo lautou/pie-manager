@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Button,
@@ -7,7 +7,7 @@ import {
   PageSection, PageSectionVariants,
   Content, ContentVariants, Title,
 } from '@patternfly/react-core';
-import { PlusCircleIcon } from '@patternfly/react-icons';
+import { CogIcon, PlusCircleIcon } from '@patternfly/react-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   usePools, usePoolProducts, useProducts, useAllBrokers,
@@ -254,6 +254,7 @@ function PoolManager({ portfolioId }: { portfolioId: string }) {
 
 function AccountAssignmentManager({ portfolioId }: { portfolioId: string }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const { data: allAccounts = [], isLoading } = useAllBrokers();
   const pid = Number(portfolioId);
@@ -275,7 +276,17 @@ function AccountAssignmentManager({ portfolioId }: { portfolioId: string }) {
   };
 
   if (isLoading) return <span style={{ color: '#6A6E73' }}>{t('common.loading')}</span>;
-  if (allAccounts.length === 0) return <span style={{ color: '#6A6E73' }}>{t('common.none')}</span>;
+  if (allAccounts.length === 0) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <span style={{ color: '#6A6E73' }}>{t('common.none')}</span>
+        <Button variant="link" isInline icon={<CogIcon />}
+          onClick={() => navigate(`/config?from=${portfolioId}`)}>
+          {t('nav.globalConfig')}
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>

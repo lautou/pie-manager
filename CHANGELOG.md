@@ -2,6 +2,22 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.5.2] - 2026-08-21
+
+### Added
+
+- **admin:** Add a "Configuration générale" button when no accounts are assigned
+
+### Fixed
+
+- **frontend:** Use PatternFly isManagedSidebar for the sidebar toggle
+- **frontend:** Drive sidebar narrow-viewport visibility ourselves, not via PatternFly
+- **frontend:** Poll window.innerWidth for several seconds after mount, not once
+- **frontend:** Poll window.innerWidth for the component's entire lifetime
+- **ci:** Give manual workflow_dispatch MSIX test builds a distinct version
+- **installer:** Remove invalid -- inside an XML comment in AppxManifest.xml
+- **backend:** Set Cache-Control on served frontend so WebView2 stops caching stale builds
+
 ## [1.5.1] - 2026-08-20
 
 ### Fixed

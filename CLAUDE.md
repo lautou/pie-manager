@@ -223,18 +223,27 @@ while the sidebar's class kept toggling between `pf-m-collapsed` and no modifier
 again after launch. This is a real, unfixable-from-userland race in PatternFly's own detection
 in this specific host environment, not something `isManagedSidebar` (tried first, and itself
 initially believed to be the fix) can paper over. The actual fix: track narrowness with a plain
-`window.innerWidth` check + a `resize` listener + a deferred 500ms re-check (to absorb the
-startup race), and force the sidebar's `transform`/`opacity` via inline `style` (highest CSS
-specificity — wins regardless of whatever class PatternFly's own broken detection applies).
-Above 1200px, no override is applied and PatternFly's own root-level CSS var override makes the
-sidebar visible unconditionally, which needs no fix and must not be touched.
+`window.innerWidth` check + a `resize` listener, and force the sidebar's `transform`/`opacity`
+via inline `style` (highest CSS specificity — wins regardless of whatever class PatternFly's own
+broken detection applies). Above 1200px, no override is applied and PatternFly's own root-level
+CSS var override makes the sidebar visible unconditionally, which needs no fix and must not be
+touched.
+
+**A single deferred re-check of `window.innerWidth` after mount isn't enough either** — confirmed
+live that it can still read wrong well past a 500ms delay. The native launcher does real
+blocking work at startup (Postgres init, migrations, spawning the backend) before it's idle
+enough to process `WM_SIZE` and call `PutBounds` with the real window bounds, so the delay before
+the browser's own viewport settles isn't fixed or short. `useNarrowViewport` polls
+`window.innerWidth` every 300ms for up to 10s after mount instead of checking once, then relies
+on the `resize` listener alone after that window elapses.
 
 This bug was easy to misdiagnose as an environment/display issue rather than a real,
 reproducible layout+timing bug — issue #118 went through three prior incorrect theories (QXL/
 SPICE virtual GPU, RDP codec/gfx pipeline, host-compositor stale repaint) before a user's own
 resolution testing (fails below ~1200px, works above it) pointed at a genuine CSS breakpoint,
-and even the first code fix based on that correct breakpoint diagnosis (`isManagedSidebar`)
-turned out not to work in the real native launcher, requiring the userland-tracking fix above.
+and two more incorrect fix attempts after that (`isManagedSidebar`, then a single deferred
+re-check) before the actual working fix above — always verify the specific mechanism live in the
+native launcher rather than trusting that a plausible-looking timing fix landed correctly.
 
 ## Mandatory conventions
 

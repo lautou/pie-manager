@@ -208,6 +208,19 @@ render prop — add it to any new `TreemapNode`-like interface, or those fields 
 back `undefined`. Trade-off accepted: v3's internal rewrite onto `@reduxjs/toolkit` adds ~8%
 to the production bundle size.
 
+**`App.tsx`'s `PortfolioLayout` uses PatternFly's `isManagedSidebar` on `<Page>` — never go
+back to a manual `useState` + `onClick` toggle for the sidebar.** Below PatternFly v6's `xl`
+breakpoint (1200px viewport width), `.pf-v6-c-page__sidebar` is off-canvas by default
+(`translateX(-100%)`, `opacity: 0`) and only becomes visible with the `.pf-m-expanded`
+modifier class, which PatternFly's `PageSidebar` only ever applies when `isMobile` is true —
+and `isMobile` is only tracked at all if `isManagedSidebar` (or `onPageResize`) is passed to
+`<Page>`. A manual/custom toggle that only flips `isSidebarOpen` can never apply that class, so
+the sidebar becomes permanently unreachable below 1200px, no matter how many times the toggle
+is clicked — while still working fine above it, which is what makes this easy to misdiagnose
+as an environment/display issue rather than a real, always-reproducible layout bug (issue
+#118 burned a full investigation blaming QXL/SPICE, RDP codecs, and host compositors before the
+real 1200px threshold was spotted from a user's own resolution testing).
+
 ## Mandatory conventions
 
 - **Code in English** — all source code, variable names, function names, comments, commit messages, and PR descriptions MUST be in English. Exception: README.md and user-facing documentation files may be in French. The UI itself is translated via i18n (fr/en).

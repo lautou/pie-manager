@@ -606,12 +606,17 @@ jobs:
         # what used to be a manual upload in Partner Center. A certification failure here
         # fails this job loudly rather than silently, matching the sanity-check install step
         # above; the GitHub release itself (previous step) is unaffected either way.
+        #
+        # --uploadTimeout is mandatory, not optional tuning: msstore-cli defaults it to 0 when
+        # omitted (System.CommandLine never runs the option's parser for an absent flag), which
+        # Azure.Storage.Blobs turns into an instant TaskCanceledException on every upload —
+        # see https://github.com/microsoft/msstore-cli/issues/162.
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' # DIAGNOSTIC, revert before merge
         working-directory: installer/launcher-native
         shell: pwsh
         run: |
           $version = "${{ needs.build.outputs.version }}"
-          msstore publish "pie-manager-native-launcher-$version.msix" -id 9PM8GPSMJG0N -v
+          msstore publish "pie-manager-native-launcher-$version.msix" -id 9PM8GPSMJG0N --uploadTimeout 600 -v
 
   test-macos:
     # Real Apple Silicon hardware — the only way to actually run this binary,

@@ -295,11 +295,12 @@ jobs:
     # alone package never did; that bundling mechanism was proven live via
     # installer/testing/native-launcher-poc before being promoted here (see CLAUDE.md).
     #
-    # Does NOT submit anything to the Microsoft Store — the "PIE Manager" Store listing is still
-    # an unpublished draft in Partner Center; uploading this .msix there is a manual step for
-    # now (see CLAUDE.md's #63 section for why, and issue #82 for what's still open). Runs on
-    # every release, not gated behind detect-installer-changes, matching package-launcher-msix's
-    # own reasoning: cheap, and keeps a submittable package available at every version.
+    # Also submits the built package to the Microsoft Store (see the "Publish to the Microsoft
+    # Store" step below) — the app is live on the Store since #82's certification passed on
+    # v1.4.8, and submission itself is automated via the Microsoft Store Developer CLI, not a
+    # manual Partner Center upload. Runs on every release, not gated behind
+    # detect-installer-changes, matching package-launcher-msix's own reasoning: cheap, and keeps
+    # a submittable package available at every version.
     needs: build
     runs-on: windows-latest
     permissions:
@@ -554,11 +555,11 @@ jobs:
           retention-days: 7
 
       - name: Attach MSIX to the GitHub release
-        # Unlike the workflow artifact above (7-day retention), the Store submission in
-        # Partner Center happens whenever the maintainer is ready — potentially long after this
-        # release — so the durable copy lives on the GitHub Release itself. Only reached if
-        # every step above (including the live install+launch test) succeeded, and never runs
-        # on a manual workflow_dispatch test run.
+        # Kept as a durable copy on the GitHub Release itself, independent of the Store
+        # submission step below (that one can fail certification independently — see #82's
+        # history — without losing the actual built package). Only reached if every step above
+        # (including the live install+launch test) succeeded, and never runs on a manual
+        # workflow_dispatch test run.
         if: github.event_name == 'push'
         working-directory: installer/launcher-native
         shell: pwsh
@@ -567,6 +568,37 @@ jobs:
         run: |
           $version = "${{ needs.build.outputs.version }}"
           gh release upload "${{ github.ref_name }}" "pie-manager-native-launcher-$version.msix" --repo "${{ github.repository }}" --clobber
+
+      - name: Setup Microsoft Store Developer CLI
+        # Automates the Partner Center submission that used to be a manual, whenever-the-
+        # maintainer-is-ready step. Real Store ID: PIEManager.PIEManager_9h5hzpm8nc7w0
+        # (9PM8GPSMJG0N), see CLAUDE.md. Only runs on a real tag push, never a manual
+        # workflow_dispatch test build.
+        if: github.event_name == 'push'
+        uses: microsoft/microsoft-store-apppublisher@v1.1
+
+      - name: Configure Microsoft Store Developer CLI
+        # Credentials for the "PIE Manager CI Publisher" Entra ID app, registered in its own
+        # dedicated organizational tenant (PIEMANAGER.onmicrosoft.com) and granted the Manager
+        # role in Partner Center's Microsoft Entra applications tab — the personal-Microsoft-
+        # account tenant this Partner Center account originally used cannot host app
+        # registrations at all (Microsoft deprecated creating apps outside a real directory).
+        if: github.event_name == 'push'
+        run: |
+          msstore reconfigure --tenantId ${{ secrets.AZURE_AD_TENANT_ID }} --sellerId ${{ secrets.SELLER_ID }} --clientId ${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }} --clientSecret ${{ secrets.AZURE_AD_APPLICATION_SECRET }}
+
+      - name: Publish to the Microsoft Store
+        # Submits and commits the new package for certification (omitting --noCommit, unlike
+        # a draft-only update) — this does not skip Microsoft's review, it only automates
+        # what used to be a manual upload in Partner Center. A certification failure here
+        # fails this job loudly rather than silently, matching the sanity-check install step
+        # above; the GitHub release itself (previous step) is unaffected either way.
+        if: github.event_name == 'push'
+        working-directory: installer/launcher-native
+        shell: pwsh
+        run: |
+          $version = "${{ needs.build.outputs.version }}"
+          msstore publish "pie-manager-native-launcher-$version.msix" -id 9PM8GPSMJG0N
 
   test-macos:
     # Real Apple Silicon hardware — the only way to actually run this binary,

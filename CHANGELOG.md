@@ -2,6 +2,12 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.5.4] - 2026-08-22
+
+### Added
+
+- **installer:** Publish the self-signed cert alongside each MSIX release
+
 ## [1.5.3] - 2026-08-22
 
 ### Fixed

@@ -2,6 +2,13 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.5.5] - 2026-08-22
+
+### Fixed
+
+- **ci:** Pass `--uploadTimeout` to `msstore publish` to fix an Azure blob upload failure that
+  blocked every automated Microsoft Store submission
+
 ## [1.5.4] - 2026-08-22
 
 ### Added

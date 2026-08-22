@@ -54,6 +54,21 @@ input[type='number'] {
   background-color: #1b1d21;
 }
 
+/* Below PatternFly's own xl breakpoint (1200px), its grid layout treats the sidebar as an
+   off-canvas overlay that covers the main content when expanded, by design — a single-column
+   grid with the sidebar and main content explicitly placed in the same cell (only the >=1200px
+   media query adds a real sidebar grid column). This app wants the sidebar to push content
+   aside at any width instead, matching desktop behavior — confirmed live (issue #118
+   follow-up) that leaving PatternFly's own overlay behavior in place left the sidebar covering
+   the dashboard content with no way to interact with it short of closing the sidebar again.
+   pie-sidebar-pushing is only applied while narrow and open (see App.tsx's useNarrowViewport +
+   isSidebarOpen) — the fallback matches PatternFly's own
+   --pf-v6-c-page__sidebar--Width--base value. */
+.pf-v6-c-page__sidebar.pie-sidebar-pushing + .pf-v6-c-page__main-container {
+  margin-inline-start: var(--pf-v6-c-page__sidebar--Width, 18.125rem);
+  transition: margin-inline-start 0.25s ease;
+}
+
 /* Dark sidebar nav. v6's default Nav link color token targets light backgrounds
    (a subtle gray), and its "current page" indicator is a light pill meant for a
    light background too — both need overriding to stay legible/consistent against

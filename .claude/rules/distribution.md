@@ -253,6 +253,26 @@ not a hypothetical, it's what actually happened here. If `mount_frontend` is eve
 (e.g., swapped for `StaticFiles`), preserve this exact split — don't let index.html fall back to
 default/heuristic caching again.
 
+**Second, independent staleness bug found in a #118 follow-up — the "both copies verified
+up-to-date" claim above was incomplete.** `stageBundledFiles` (`staging.go`) used to skip
+re-copying `frontend_dist` entirely once a marker file (`frontend_dist/index.html`) already
+existed from the very first install — meaning every later MSIX upgrade left the staged, writable
+`%USERPROFILE%\PieManager\frontend_dist` the backend actually serves from permanently frozen at
+whatever the first-ever install shipped, no matter how many newer packages were installed on top.
+This is easy to miss precisely *because* the installed MSIX's own read-only `frontend_dist`
+(inside the package) IS correctly updated on every upgrade — checking that copy alone (as the
+original #118 investigation did) looks like confirmation, while the copy actually served to the
+browser silently never changes. Confirmed live via WebView2 devtools: `document.scripts[0].src`
+pointed at a content hash that didn't match the just-installed package's own bundle at all, and
+fetching it confirmed the served JS predated a real, already-merged fix. **Fix**: `frontend_dist`
+now always wipes and re-copies on every launch (cheap — a few MB, unlike the ~130MB pgsql/python
+bundles that legitimately still use the skip-if-present check pending issue #65's real
+update/re-staging story). When debugging "a fix isn't taking effect" on the native launcher
+again, check what the browser actually loaded (`document.scripts[0].src` + `fetch(...).then(t =>
+t.includes(...))` in devtools) before trusting either the MSIX package contents or the Cache-Control
+header alone — three independent layers (package contents, staged copy, browser cache) can each
+look correct in isolation while the end-to-end result is still stale.
+
 ### Installed files (macOS)
 ```
 ~/Library/Application Support/PieManager/   compose-prod.yaml, haproxy.cfg, .env, pie-manager (binary), VERSION

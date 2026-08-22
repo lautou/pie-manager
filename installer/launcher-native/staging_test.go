@@ -121,14 +121,6 @@ func TestPythonStagedMarker(t *testing.T) {
 	}
 }
 
-func TestFrontendDistStagedMarker(t *testing.T) {
-	got := frontendDistStagedMarker(`C:\Users\pie`)
-	want := filepath.Join(frontendDistDir(`C:\Users\pie`), "index.html")
-	if got != want {
-		t.Errorf("frontendDistStagedMarker() = %q, want %q", got, want)
-	}
-}
-
 func TestStageBundledFiles_CopiesAllThreeTreesOnFirstCall(t *testing.T) {
 	pkgRoot := t.TempDir()
 	home := t.TempDir()
@@ -147,12 +139,12 @@ func TestStageBundledFiles_CopiesAllThreeTreesOnFirstCall(t *testing.T) {
 	if _, err := os.Stat(pythonStagedMarker(home)); err != nil {
 		t.Errorf("expected python to be staged: %v", err)
 	}
-	if _, err := os.Stat(frontendDistStagedMarker(home)); err != nil {
+	if _, err := os.Stat(filepath.Join(frontendDistDir(home), "index.html")); err != nil {
 		t.Errorf("expected frontend_dist to be staged: %v", err)
 	}
 }
 
-func TestStageBundledFiles_SkipsAlreadyStagedTrees(t *testing.T) {
+func TestStageBundledFiles_SkipsAlreadyStagedPgsqlAndPython(t *testing.T) {
 	pkgRoot := t.TempDir()
 	home := t.TempDir()
 
@@ -160,13 +152,11 @@ func TestStageBundledFiles_SkipsAlreadyStagedTrees(t *testing.T) {
 	writeTestFile(t, filepath.Join(pkgRoot, "python", "python.exe"), "py-binary")
 	writeTestFile(t, filepath.Join(pkgRoot, "frontend_dist", "index.html"), "<html></html>")
 
-	// Pre-stage all three markers directly, without a real source tree at all - if
-	// stageBundledFiles tried to copy anyway, it would fail (no matching source under pkgRoot
-	// for these specific marker paths' parent trees being absent is not the point here; the
-	// point is that a second call must not attempt the copy at all).
+	// Pre-stage the pgsql/python markers directly, without a matching real source tree under
+	// pkgRoot for either - if stageBundledFiles tried to copy them anyway, it would fail, so a
+	// clean pass here proves the skip-if-present check fired for both.
 	writeTestFile(t, pgsqlStagedMarker(home), "already-here")
 	writeTestFile(t, pythonStagedMarker(home), "already-here")
-	writeTestFile(t, frontendDistStagedMarker(home), "already-here")
 
 	if err := stageBundledFiles(pkgRoot, home); err != nil {
 		t.Fatalf("stageBundledFiles failed: %v", err)
@@ -177,7 +167,62 @@ func TestStageBundledFiles_SkipsAlreadyStagedTrees(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(got) != "already-here" {
-		t.Errorf("expected the pre-staged marker content to survive untouched, got %q", string(got))
+		t.Errorf("expected the pre-staged pgsql marker content to survive untouched, got %q", string(got))
+	}
+}
+
+func TestStageBundledFiles_AlwaysRestagesFrontendDistEvenWhenAlreadyPresent(t *testing.T) {
+	pkgRoot := t.TempDir()
+	home := t.TempDir()
+
+	writeTestFile(t, filepath.Join(pkgRoot, "pgsql", "bin", "postgres.exe"), "pg-binary")
+	writeTestFile(t, filepath.Join(pkgRoot, "python", "python.exe"), "py-binary")
+	writeTestFile(t, filepath.Join(pkgRoot, "frontend_dist", "index.html"), "<html>new build</html>")
+
+	// Simulate a previous install's staged frontend_dist: an old index.html plus a stale,
+	// content-hashed asset file that no longer exists in the new package at all (Vite renames
+	// hashed filenames on every build) - reproduces the real issue #118 follow-up bug, where an
+	// MSIX upgrade never re-copied frontend_dist because its marker (index.html) already existed.
+	staged := frontendDistDir(home)
+	writeTestFile(t, filepath.Join(staged, "index.html"), "<html>old build</html>")
+	writeTestFile(t, filepath.Join(staged, "assets", "index-oldhash123.js"), "stale JS")
+
+	if err := stageBundledFiles(pkgRoot, home); err != nil {
+		t.Fatalf("stageBundledFiles failed: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(staged, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "<html>new build</html>" {
+		t.Errorf("expected frontend_dist to be re-staged with the new content, got %q", string(got))
+	}
+	if _, err := os.Stat(filepath.Join(staged, "assets", "index-oldhash123.js")); !os.IsNotExist(err) {
+		t.Error("expected the stale content-hashed asset from the previous build to be removed")
+	}
+}
+
+func TestStageBundledFiles_ErrorWhenFrontendDistCannotBeCleared(t *testing.T) {
+	pkgRoot := t.TempDir()
+	home := t.TempDir()
+
+	writeTestFile(t, filepath.Join(pkgRoot, "pgsql", "bin", "postgres.exe"), "pg-binary")
+	writeTestFile(t, filepath.Join(pkgRoot, "python", "python.exe"), "py-binary")
+	writeTestFile(t, filepath.Join(pkgRoot, "frontend_dist", "index.html"), "<html></html>")
+
+	// Make the existing staged frontend_dist un-removable: a subdirectory with its permission
+	// bits stripped can't be traversed/deleted by os.RemoveAll. Restore permissions afterward
+	// so t.TempDir()'s own cleanup can still remove it.
+	locked := filepath.Join(frontendDistDir(home), "locked")
+	writeTestFile(t, filepath.Join(locked, "file.txt"), "content")
+	if err := os.Chmod(locked, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+
+	if err := stageBundledFiles(pkgRoot, home); err == nil {
+		t.Error("expected an error when the existing frontend_dist cannot be cleared")
 	}
 }
 

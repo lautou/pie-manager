@@ -202,8 +202,11 @@ Guide détaillé : [docs/SAUVEGARDE.md](docs/SAUVEGARDE.md).
 
 **Windows (Microsoft Store) :** l'app distribuée via le Store est signée et certifiée par
 Microsoft dans le cadre du processus de publication — aucun avertissement SmartScreen, aucune
-étape de contournement nécessaire. Le Store est désormais la seule voie d'installation sur
-Windows (l'ancien installateur WSL2/Podman a été retiré).
+étape de contournement nécessaire (l'ancien installateur WSL2/Podman a été retiré). Une
+alternative existe pour installer directement depuis une release GitHub sans passer par le
+Store — dans ce cas le package `.msix` est signé par un certificat auto-signé, pas par
+Microsoft, et nécessite une étape manuelle de mise en confiance : voir
+[docs/INSTALLATION.md](docs/INSTALLATION.md#alternative--installation-manuelle-depuis-github-sideload).
 
 Le binaire macOS n'est ni signé ni notarié — cela nécessiterait un compte Apple Developer
 Program payant (99$/an), qui n'est pas utilisé pour ce projet. macOS Gatekeeper bloquera donc

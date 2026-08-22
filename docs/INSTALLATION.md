@@ -201,8 +201,40 @@ pas de commande manuelle à relancer.
 
 **Historique :** cette distribution Store remplace intégralement l'ancien installateur
 WSL2/Podman pour Windows (issues #82/#83/#84). L'exécutable `pie-manager-windows-amd64.exe`
-n'est plus publié dans les releases GitHub — le Store est désormais la seule voie
-d'installation sur Windows.
+n'est plus publié dans les releases GitHub.
+
+### Alternative : installation manuelle depuis GitHub (sideload)
+
+Le Store reste la méthode **recommandée** (mises à jour automatiques, package certifié par
+Microsoft). Mais chaque [release GitHub](https://github.com/lautou/pie-manager/releases) publie
+aussi directement le package `.msix` et son certificat `.cer` — utile pour tester une version
+juste après sa sortie, avant la fin de la certification Microsoft (qui peut prendre jusqu'à 3
+jours ouvrés), ou pour installer sans passer par le Store.
+
+**⚠️ Ce package n'est pas certifié par Microsoft** — contrairement à la version Store, il faut
+faire confiance manuellement au certificat auto-signé qui l'a signé avant de pouvoir l'installer.
+Un nouveau certificat est généré à chaque build : téléchargez toujours le `.cer` de la **même**
+release que le `.msix`, jamais celui d'une version différente.
+
+Dans un **PowerShell en administrateur** (remplacer `X.Y.Z` par le numéro de la release) :
+
+```powershell
+$version = "X.Y.Z"
+$base = "https://github.com/lautou/pie-manager/releases/download/v$version"
+Invoke-WebRequest -Uri "$base/pie-manager-native-launcher-$version.msix" -OutFile "$env:USERPROFILE\Desktop\pie-manager.msix"
+Invoke-WebRequest -Uri "$base/pie-manager-native-launcher-$version.cer" -OutFile "$env:USERPROFILE\Desktop\pie-manager.cer"
+
+# Faire confiance au certificat
+Import-Certificate -FilePath "$env:USERPROFILE\Desktop\pie-manager.cer" -CertStoreLocation Cert:\LocalMachine\TrustedPeople
+Import-Certificate -FilePath "$env:USERPROFILE\Desktop\pie-manager.cer" -CertStoreLocation Cert:\LocalMachine\Root
+
+# Installer
+Add-AppxPackage -Path "$env:USERPROFILE\Desktop\pie-manager.msix"
+```
+
+Les mises à jour ne sont **pas** automatiques avec cette méthode — il faut retélécharger et
+réinstaller manuellement (`Add-AppxPackage` accepte une réinstallation par-dessus une version
+existante) à chaque nouvelle version souhaitée.
 
 ---
 

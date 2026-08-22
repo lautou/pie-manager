@@ -457,6 +457,7 @@ jobs:
         working-directory: installer/launcher-native
         shell: pwsh
         run: |
+          $version = "${{ needs.build.outputs.version }}"
           $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=2654AE3A-D473-41CE-8C17-0C2734C3B4A3" `
             -KeyUsage DigitalSignature -FriendlyName "PieManagerNativeLauncherPackaging" `
             -CertStoreLocation "Cert:\CurrentUser\My" `
@@ -464,9 +465,16 @@ jobs:
           $thumbprint = $cert.Thumbprint
           Add-Content -Path $env:GITHUB_ENV -Value "THUMBPRINT=$thumbprint"
 
-          Export-Certificate -Cert $cert -FilePath cert.cer | Out-Null
-          Import-Certificate -FilePath cert.cer -CertStoreLocation "Cert:\LocalMachine\TrustedPeople" | Out-Null
-          Import-Certificate -FilePath cert.cer -CertStoreLocation "Cert:\LocalMachine\Root" | Out-Null
+          # Named after the version (not a bare "cert.cer") so it survives being published
+          # alongside the MSIX on the GitHub release as its own downloadable asset (see the
+          # "Attach cert to the GitHub release" step below) — a sideloading user must fetch the
+          # exact .cer matching the .msix version they're installing, since a fresh cert is
+          # generated on every single build and never reused across releases.
+          $certFile = "pie-manager-native-launcher-$version.cer"
+          Add-Content -Path $env:GITHUB_ENV -Value "CERT_FILE=$certFile"
+          Export-Certificate -Cert $cert -FilePath $certFile | Out-Null
+          Import-Certificate -FilePath $certFile -CertStoreLocation "Cert:\LocalMachine\TrustedPeople" | Out-Null
+          Import-Certificate -FilePath $certFile -CertStoreLocation "Cert:\LocalMachine\Root" | Out-Null
 
       - name: Sign the bundled PostgreSQL executables
         # EDB's official Windows zip ships these four completely unsigned (confirmed by
@@ -544,21 +552,26 @@ jobs:
             Remove-Item "Cert:\CurrentUser\My\$env:THUMBPRINT" -ErrorAction SilentlyContinue
           }
 
-      - name: Upload MSIX as a workflow artifact
+      - name: Upload MSIX and certificate as a workflow artifact
         # Kept even on failure (unlike the release-attach step below) so a failed run's
         # package can still be downloaded and inspected/sideloaded manually for debugging.
         if: always()
         uses: actions/upload-artifact@v7.0.1
         with:
           name: pie-manager-native-launcher-msix
-          path: installer/launcher-native/pie-manager-native-launcher-*.msix
+          path: |
+            installer/launcher-native/pie-manager-native-launcher-*.msix
+            installer/launcher-native/pie-manager-native-launcher-*.cer
           retention-days: 7
 
-      - name: Attach MSIX to the GitHub release
-        # Kept as a durable copy on the GitHub Release itself, independent of the Store
-        # submission step below (that one can fail certification independently — see #82's
-        # history — without losing the actual built package). Only reached if every step above
-        # (including the live install+launch test) succeeded, and never runs on a manual
+      - name: Attach MSIX and certificate to the GitHub release
+        # The .cer is published alongside the .msix so a user sideloading directly from GitHub
+        # (instead of the Store — see docs/INSTALLATION.md's "Alternative : installation
+        # manuelle" section) can trust this exact build's self-signed certificate before running
+        # Add-AppxPackage. Kept as a durable copy on the GitHub Release itself, independent of
+        # the Store submission step below (that one can fail certification independently — see
+        # #82's history — without losing the actual built package). Only reached if every step
+        # above (including the live install+launch test) succeeded, and never runs on a manual
         # workflow_dispatch test run.
         if: github.event_name == 'push'
         working-directory: installer/launcher-native
@@ -567,7 +580,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $version = "${{ needs.build.outputs.version }}"
-          gh release upload "${{ github.ref_name }}" "pie-manager-native-launcher-$version.msix" --repo "${{ github.repository }}" --clobber
+          gh release upload "${{ github.ref_name }}" "pie-manager-native-launcher-$version.msix" "pie-manager-native-launcher-$version.cer" --repo "${{ github.repository }}" --clobber
 
       - name: Setup Microsoft Store Developer CLI
         # Automates the Partner Center submission that used to be a manual, whenever-the-

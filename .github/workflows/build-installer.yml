@@ -587,7 +587,7 @@ jobs:
         # maintainer-is-ready step. Real Store ID: PIEManager.PIEManager_9h5hzpm8nc7w0
         # (9PM8GPSMJG0N), see CLAUDE.md. Only runs on a real tag push, never a manual
         # workflow_dispatch test build.
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' # DIAGNOSTIC, revert before merge
         uses: microsoft/microsoft-store-apppublisher@v1.1
 
       - name: Configure Microsoft Store Developer CLI
@@ -596,7 +596,7 @@ jobs:
         # role in Partner Center's Microsoft Entra applications tab — the personal-Microsoft-
         # account tenant this Partner Center account originally used cannot host app
         # registrations at all (Microsoft deprecated creating apps outside a real directory).
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' # DIAGNOSTIC, revert before merge
         run: |
           msstore reconfigure --tenantId ${{ secrets.AZURE_AD_TENANT_ID }} --sellerId ${{ secrets.SELLER_ID }} --clientId ${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }} --clientSecret ${{ secrets.AZURE_AD_APPLICATION_SECRET }}
 
@@ -606,12 +606,12 @@ jobs:
         # what used to be a manual upload in Partner Center. A certification failure here
         # fails this job loudly rather than silently, matching the sanity-check install step
         # above; the GitHub release itself (previous step) is unaffected either way.
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' # DIAGNOSTIC, revert before merge
         working-directory: installer/launcher-native
         shell: pwsh
         run: |
           $version = "${{ needs.build.outputs.version }}"
-          msstore publish "pie-manager-native-launcher-$version.msix" -id 9PM8GPSMJG0N
+          msstore publish "pie-manager-native-launcher-$version.msix" -id 9PM8GPSMJG0N -v
 
   test-macos:
     # Real Apple Silicon hardware — the only way to actually run this binary,

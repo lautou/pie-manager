@@ -305,14 +305,19 @@ describe('App', () => {
     const toggle = document.querySelector('[aria-label="Toggle sidebar"]') as HTMLButtonElement;
     const sidebar = document.querySelector('[data-testid="sidebar"]') as HTMLElement;
     expect(toggle).toBeTruthy();
-    // Starts open
+    // Starts open — also pushes the main content aside (issue #118 follow-up: PatternFly's
+    // own CSS treats the sidebar as an off-canvas overlay below its xl breakpoint by default,
+    // which covered the dashboard content with no way to interact with it).
     expect(sidebar.style.transform).toBe('translateX(0)');
     expect(sidebar.getAttribute('data-sidebar-open')).toBe('true');
+    expect(sidebar.className).toContain('pie-sidebar-pushing');
     await user.click(toggle);
     expect(sidebar.style.transform).toBe('translateX(-100%)');
     expect(sidebar.getAttribute('data-sidebar-open')).toBe('false');
+    expect(sidebar.className).not.toContain('pie-sidebar-pushing');
     await user.click(toggle);
     expect(sidebar.style.transform).toBe('translateX(0)');
+    expect(sidebar.className).toContain('pie-sidebar-pushing');
   });
 
   it('sidebar has no inline style override at wide widths, forced open regardless of toggle state', () => {
@@ -321,6 +326,9 @@ describe('App', () => {
       const sidebar = document.querySelector('[data-testid="sidebar"]') as HTMLElement;
       expect(sidebar.getAttribute('style')).toBeFalsy();
       expect(sidebar.getAttribute('data-sidebar-open')).toBe('true');
+      // Wide viewports rely on PatternFly's own grid column for the sidebar, not the
+      // push-margin override, which only applies while narrow.
+      expect(sidebar.className).not.toContain('pie-sidebar-pushing');
     });
   });
 

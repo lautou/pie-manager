@@ -49,8 +49,8 @@ export const pfCoreStubs = {
   GalleryItem: Stub,
   PageSection: Stub,
   PageSectionVariants: { default: 'default' },
-  PageSidebar: ({ children, style, isSidebarOpen }: any) => (
-    <div data-testid="sidebar" style={style} data-sidebar-open={String(!!isSidebarOpen)}>{children}</div>
+  PageSidebar: ({ children, style, isSidebarOpen, className }: any) => (
+    <div data-testid="sidebar" style={style} data-sidebar-open={String(!!isSidebarOpen)} className={className}>{children}</div>
   ),
   PageSidebarBody: Stub,
   PageToggleButton: ({ 'aria-label': ariaLabel, className, onSidebarToggle, isSidebarOpen }: any) => (

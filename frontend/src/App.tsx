@@ -254,7 +254,7 @@ function PortfolioLayout({ children }: { children: React.ReactNode }) {
       masthead={masthead}
       sidebar={
         <PageSidebar
-          className="dark-sidebar-container"
+          className={isNarrow && isSidebarOpen ? 'dark-sidebar-container pie-sidebar-pushing' : 'dark-sidebar-container'}
           isSidebarOpen={isNarrow ? isSidebarOpen : true}
           style={isNarrow ? {
             transform: isSidebarOpen ? 'translateX(0)' : 'translateX(-100%)',

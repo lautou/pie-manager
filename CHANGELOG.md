@@ -2,6 +2,13 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.5.3] - 2026-08-22
+
+### Fixed
+
+- **frontend:** Push main content aside instead of letting the sidebar overlay it
+- **installer:** Always re-stage frontend_dist on every launch, not just first install
+
 ## [1.5.2] - 2026-08-21
 
 ### Added

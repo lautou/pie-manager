@@ -72,6 +72,14 @@ func postmasterPidPath(home string) string {
 	return filepath.Join(pgDataDir(home), "postmaster.pid")
 }
 
+// backendPidPath / workerPidPath are pid+start-time records this launcher writes itself right
+// after spawning the backend/worker (see backend.go's startBackend/startWorker) - unlike
+// postmasterPidPath above, whose format PostgreSQL itself owns, these are our own invention, so
+// crash_recovery.go can verify a live process's start time still matches what was recorded
+// before treating it as the same orphaned process to kill (see recoverOrphanedPythonProcess).
+func backendPidPath(home string) string { return filepath.Join(dataDir(home), "backend.pid") }
+func workerPidPath(home string) string  { return filepath.Join(dataDir(home), "worker.pid") }
+
 // ensureDataDirs creates every directory this app writes to under dataDir, if not already
 // present. Safe to call on every launch, not just first run.
 func ensureDataDirs(home string) error {

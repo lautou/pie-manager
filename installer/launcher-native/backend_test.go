@@ -72,6 +72,17 @@ func TestBuildPgqueuerArgs(t *testing.T) {
 	}
 }
 
+func TestRecordSpawnedPid_ErrorOnNonWindows(t *testing.T) {
+	// processStartTime (processtime_other.go) always errors outside Windows, so
+	// recordSpawnedPid can only ever be exercised through its error-propagation branch on this
+	// (Linux) CI runner - the happy path (a real process's start time, then writePidRecord)
+	// is exclusively a Windows behavior, same documented policy as startBackend/startWorker.
+	err := recordSpawnedPid(filepath.Join(t.TempDir(), "backend.pid"), 1)
+	if err == nil {
+		t.Error("expected an error since processStartTime always fails on non-Windows")
+	}
+}
+
 func TestRunMigrations_UsesBackendAppDirAndDatabaseURL(t *testing.T) {
 	// runMigrations itself execs a real process (python.exe, not available here) - covered by
 	// the CI install+launch smoke test, same documented policy as postgres.go's process-spawning

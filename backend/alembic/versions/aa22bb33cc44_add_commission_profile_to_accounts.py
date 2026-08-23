@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """add commission_profile to accounts
 
 Revision ID: aa22bb33cc44

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Tests for POST /api/transactions/import/validate — dry-run validation over HTTP,
 including duplicate detection (in-DB and in-file) and malformed-file handling.

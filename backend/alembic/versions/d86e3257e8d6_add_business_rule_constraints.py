@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """add_business_rule_constraints
 
 Revision ID: d86e3257e8d6

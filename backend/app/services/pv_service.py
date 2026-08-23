@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Capital gains service using the WACOP (Weighted Average Cost Of Purchase) method
 (known as CUMP in France — Coût Unitaire Moyen Pondéré).

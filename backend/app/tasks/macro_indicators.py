@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Macro indicators daily refresh — runs once a day via PgQueuer (see app/tasks/pgq_app.py).
 

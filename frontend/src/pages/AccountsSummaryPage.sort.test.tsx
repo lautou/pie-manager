@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Sort-coverage tests for SyntheseComptesPage:
  * - Line 109: default: return 0 in summary sort switch

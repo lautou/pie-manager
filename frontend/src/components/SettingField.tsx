@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSetSystemSetting, useSystemSetting } from '../api/queries';

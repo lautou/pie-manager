@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Live price refresh — runs every 15 min via PgQueuer (see app/tasks/pgq_app.py).
 

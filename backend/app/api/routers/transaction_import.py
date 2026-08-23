@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Bulk transaction import — download a filled-in Excel template, validate it (dry-run, no DB
 writes), then commit the rows the user selects. See CLAUDE.md's "Bulk transaction import

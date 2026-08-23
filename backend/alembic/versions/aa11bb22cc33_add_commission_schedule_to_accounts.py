@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """add commission_schedule to accounts
 
 Revision ID: aa11bb22cc33

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """add fx commission params to accounts (generic monthly-limit model)
 
 Replaces the hardcoded commission_profile='revolut_fx' with configurable fields:

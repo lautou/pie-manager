@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Centralized formatting utilities — always use fr-FR locale
  * regardless of browser/OS regional settings.

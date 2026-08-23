@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """add is_cto to accounts
 
 Revision ID: f6e5d4c3b2a1

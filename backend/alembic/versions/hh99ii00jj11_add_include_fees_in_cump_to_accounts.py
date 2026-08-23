@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """add include_fees_in_cump to accounts
 
 Revision ID: hh99ii00jj11

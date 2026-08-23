@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 PgQueuer worker process (issue #66 steps 3+4) — real handlers for all 6 registered tasks.
 

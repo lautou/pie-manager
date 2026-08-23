@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Add equity_label/bond_label to macro_regions (descriptive names instead of raw tickers)
 
 Revision ID: qq00rr11ss22

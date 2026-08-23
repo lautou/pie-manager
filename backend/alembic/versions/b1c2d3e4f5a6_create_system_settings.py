@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """create system_settings table
 
 Revision ID: b1c2d3e4f5a6

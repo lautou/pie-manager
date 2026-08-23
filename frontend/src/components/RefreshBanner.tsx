@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { useIsFetching } from '@tanstack/react-query';
 import { Spinner } from '@patternfly/react-core';
 import { useTranslation } from 'react-i18next';

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Shared hover-crosshair tooltip for custom time-series charts (drag-to-zoom + a vertical
  * dashed guide line + a compact dark tooltip: date header, then one colored-bullet row per

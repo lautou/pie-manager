@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Add macro_regions table (user-managed growth/inflation regions)
 
 Revision ID: pp99qq00rr11

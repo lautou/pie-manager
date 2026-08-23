@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Tests for app/main.py — covers the lifespan startup/shutdown event.
 

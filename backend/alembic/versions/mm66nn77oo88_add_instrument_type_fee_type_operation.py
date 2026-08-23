@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Add instrument_type/fee_type to products, operation to transactions
 
 Revision ID: mm66nn77oo88

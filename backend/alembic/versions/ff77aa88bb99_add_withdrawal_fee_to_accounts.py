@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """add withdrawal_fee_eur and withdrawal_first_free to accounts
 
 Revision ID: ff77aa88bb99

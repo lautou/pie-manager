@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Tests for Part 1 and Part 2 changes:
   - _to_eur() currency conversion helper

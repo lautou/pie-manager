@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Postgres-backed foundation for background-job progress/status tracking (issue #66).
 

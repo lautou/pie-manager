@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """create fiscal carry forward
 
 Revision ID: c3d4e5f6a7b8

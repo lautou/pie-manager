@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Tests for App.tsx
  * Tests the root component with mocked routing and dependencies.

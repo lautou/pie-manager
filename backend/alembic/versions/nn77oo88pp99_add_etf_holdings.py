@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Add ETF look-through holdings tables and bond-fund metrics on products
 
 Revision ID: nn77oo88pp99

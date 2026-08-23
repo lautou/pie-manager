@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Generic (series, date, value) time-series storage on top of MacroSeriesPrice — shared by
 every feature that stores a daily Yahoo Finance series keyed by an arbitrary string (macro

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Covers the default: return 0 cases in PVPage sort functions:
  * - Line 68: default in sortTickers switch

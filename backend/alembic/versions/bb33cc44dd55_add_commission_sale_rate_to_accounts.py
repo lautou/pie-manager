@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """add commission_sale_rate to accounts
 
 Revision ID: bb33cc44dd55

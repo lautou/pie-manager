@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Covers the default: return 0 cases in SyntheseComptesPage sort switches:
  * - Line 109: default in summary sort switch (summSortIndex outside 0-4)

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Pure unit tests for app/services/import_service.py's resolve_row — no DB, no HTTP.
 

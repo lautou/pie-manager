@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Command gen-assets renders the real "PIE Manager" brand icon (the same 256x256 PNG
 // embedded in launcher.exe/pie-manager.exe via winres, see ../256x256.png) down to the
 // sizes required by AppxManifest.xml (Square44x44Logo, Square150x150Logo).

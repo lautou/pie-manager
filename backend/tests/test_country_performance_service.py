@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Non-regression tests for the country performance leaderboard service
 (app/services/country_performance_service.py).

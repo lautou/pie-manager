@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """rename_product_currencies_to_currency
 
 Revision ID: f1a2b3c4d5e6

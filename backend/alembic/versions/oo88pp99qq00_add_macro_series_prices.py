@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Add macro_series_prices table (global growth/inflation indicators)
 
 Revision ID: oo88pp99qq00

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """add_cash_balance_eur_to_accounts
 
 Revision ID: c65f3ee73576

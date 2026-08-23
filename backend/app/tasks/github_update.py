@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 GitHub-release update check (issue #113) — scheduled via app/tasks/pgq_app.py, every 6h.
 

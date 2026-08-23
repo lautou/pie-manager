@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Custom Vitest reporter that post-processes coverage-final.json to mark
  * statements that are decorated with `/* istanbul ignore next *\/` (or are

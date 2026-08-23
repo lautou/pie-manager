@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Global macro indicators — growth (equity/oil) and inflation (government bond/gold) ratio
 charts, per user-managed region (see MacroRegion). Not scoped to a portfolio: a single set of
 series shared across the whole app."""

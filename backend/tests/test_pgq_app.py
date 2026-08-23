@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Tests for app/tasks/pgq_app.py — schedule/entrypoint registration, the shared _run_tracked/
 _decode_trigger glue, all 6 real handlers, and main()'s connect/close lifecycle (issue #66

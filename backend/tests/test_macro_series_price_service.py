@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Non-regression tests for the shared (series, date, value) time-series storage
 (app/services/macro_series_price_service.py).

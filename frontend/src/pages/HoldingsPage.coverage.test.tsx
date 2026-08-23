@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Additional sort-coverage tests for PositionsPage:
  * - Line 92: case POS_COL.totalEur — numeric comparator

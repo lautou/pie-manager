@@ -21,10 +21,9 @@ func pythonExePath(home string) string { return filepath.Join(pythonDir(home), "
 
 // backendAppDir is where the backend's Python source (the "app" package) is staged, alongside
 // the embeddable interpreter's own site-packages, so "app.main" resolves via uvicorn's
-// --app-dir without a separate PYTHONPATH configuration. Exactly how it gets staged there is a
-// packaging-pipeline concern (issue #82's later "full MSIX packaging pipeline" step) - this
-// orchestration code only needs to know where to find it once staged, the same way postgres.go
-// doesn't know how pgBinDir's contents got there either.
+// --app-dir without a separate PYTHONPATH configuration. Sharing pythonDir(home) with the
+// interpreter itself means the two need very different re-staging treatment on every launch,
+// not just at first install - see staging.go's stageBackendAppSource (issue #121).
 func backendAppDir(home string) string { return pythonDir(home) }
 
 // databaseURL builds the SQLAlchemy/asyncpg connection string for the bundled, trust-auth

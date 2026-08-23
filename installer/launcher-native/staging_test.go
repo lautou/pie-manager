@@ -18,6 +18,16 @@ func writeTestFile(t *testing.T, path, content string) {
 	}
 }
 
+// writeBackendAppSourceFixtures populates pkgRoot/python's app/alembic content - shared by every
+// stageBundledFiles test below that needs to get past stageBackendAppSource to exercise a
+// different step, plus the "happy path" stageBackendAppSource test itself.
+func writeBackendAppSourceFixtures(t *testing.T, pkgRoot string) {
+	t.Helper()
+	writeTestFile(t, filepath.Join(pkgRoot, "python", "app", "main.py"), "app-source")
+	writeTestFile(t, filepath.Join(pkgRoot, "python", "alembic", "versions", "0001_init.py"), "migration")
+	writeTestFile(t, filepath.Join(pkgRoot, "python", "alembic.ini"), "[alembic]")
+}
+
 func TestCopyFileContents(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "src.txt")
@@ -123,12 +133,13 @@ func TestPythonStagedMarker(t *testing.T) {
 	}
 }
 
-func TestStageBundledFiles_CopiesAllThreeTreesOnFirstCall(t *testing.T) {
+func TestStageBundledFiles_StagesEverythingOnFirstCall(t *testing.T) {
 	pkgRoot := t.TempDir()
 	home := t.TempDir()
 
 	writeTestFile(t, filepath.Join(pkgRoot, "pgsql", "bin", "postgres.exe"), "pg-binary")
 	writeTestFile(t, filepath.Join(pkgRoot, "python", "python.exe"), "py-binary")
+	writeBackendAppSourceFixtures(t, pkgRoot)
 	writeTestFile(t, filepath.Join(pkgRoot, "frontend_dist", "index.html"), "<html></html>")
 
 	if err := stageBundledFiles(pkgRoot, home); err != nil {
@@ -141,6 +152,12 @@ func TestStageBundledFiles_CopiesAllThreeTreesOnFirstCall(t *testing.T) {
 	if _, err := os.Stat(pythonStagedMarker(home)); err != nil {
 		t.Errorf("expected python to be staged: %v", err)
 	}
+	if _, err := os.Stat(filepath.Join(backendAppDir(home), "app", "main.py")); err != nil {
+		t.Errorf("expected the backend app source to be staged: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(backendAppDir(home), "alembic.ini")); err != nil {
+		t.Errorf("expected alembic.ini to be staged: %v", err)
+	}
 	if _, err := os.Stat(filepath.Join(frontendDistDir(home), "index.html")); err != nil {
 		t.Errorf("expected frontend_dist to be staged: %v", err)
 	}
@@ -152,6 +169,7 @@ func TestStageBundledFiles_SkipsAlreadyStagedPgsqlAndPython(t *testing.T) {
 
 	writeTestFile(t, filepath.Join(pkgRoot, "pgsql", "bin", "postgres.exe"), "pg-binary")
 	writeTestFile(t, filepath.Join(pkgRoot, "python", "python.exe"), "py-binary")
+	writeBackendAppSourceFixtures(t, pkgRoot)
 	writeTestFile(t, filepath.Join(pkgRoot, "frontend_dist", "index.html"), "<html></html>")
 
 	// Pre-stage the pgsql/python markers directly, without a matching real source tree under
@@ -179,6 +197,7 @@ func TestStageBundledFiles_AlwaysRestagesFrontendDistEvenWhenAlreadyPresent(t *t
 
 	writeTestFile(t, filepath.Join(pkgRoot, "pgsql", "bin", "postgres.exe"), "pg-binary")
 	writeTestFile(t, filepath.Join(pkgRoot, "python", "python.exe"), "py-binary")
+	writeBackendAppSourceFixtures(t, pkgRoot)
 	writeTestFile(t, filepath.Join(pkgRoot, "frontend_dist", "index.html"), "<html>new build</html>")
 
 	// Simulate a previous install's staged frontend_dist: an old index.html plus a stale,
@@ -211,6 +230,7 @@ func TestStageBundledFiles_ErrorWhenFrontendDistCannotBeCleared(t *testing.T) {
 
 	writeTestFile(t, filepath.Join(pkgRoot, "pgsql", "bin", "postgres.exe"), "pg-binary")
 	writeTestFile(t, filepath.Join(pkgRoot, "python", "python.exe"), "py-binary")
+	writeBackendAppSourceFixtures(t, pkgRoot)
 	writeTestFile(t, filepath.Join(pkgRoot, "frontend_dist", "index.html"), "<html></html>")
 
 	// Make the existing staged frontend_dist un-removable: a subdirectory with its permission
@@ -251,17 +271,171 @@ func TestStageBundledFiles_ErrorWhenPythonSourceMissing(t *testing.T) {
 	}
 }
 
+func TestStageBundledFiles_ErrorWhenBackendAppSourceMissing(t *testing.T) {
+	pkgRoot := t.TempDir()
+	home := t.TempDir()
+	// pgsql/ and python/ are present and stage successfully; python/app (the backend app
+	// source stageBackendAppSource needs) is missing.
+	writeTestFile(t, filepath.Join(pkgRoot, "pgsql", "bin", "postgres.exe"), "pg-binary")
+	writeTestFile(t, filepath.Join(pkgRoot, "python", "python.exe"), "py-binary")
+
+	if err := stageBundledFiles(pkgRoot, home); err == nil {
+		t.Error("expected an error when the source backend app tree is missing")
+	}
+	if _, err := os.Stat(pythonStagedMarker(home)); err != nil {
+		t.Errorf("expected python to still have staged successfully before the backend app source error: %v", err)
+	}
+}
+
 func TestStageBundledFiles_ErrorWhenFrontendDistSourceMissing(t *testing.T) {
 	pkgRoot := t.TempDir()
 	home := t.TempDir()
-	// pgsql/ and python/ are present and stage successfully; frontend_dist/ is missing.
+	// pgsql/, python/, and the backend app source are present and stage successfully;
+	// frontend_dist/ is missing.
 	writeTestFile(t, filepath.Join(pkgRoot, "pgsql", "bin", "postgres.exe"), "pg-binary")
 	writeTestFile(t, filepath.Join(pkgRoot, "python", "python.exe"), "py-binary")
+	writeBackendAppSourceFixtures(t, pkgRoot)
 
 	if err := stageBundledFiles(pkgRoot, home); err == nil {
 		t.Error("expected an error when the source frontend_dist tree is missing")
 	}
 	if _, err := os.Stat(pythonStagedMarker(home)); err != nil {
 		t.Errorf("expected python to still have staged successfully before the frontend_dist error: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(backendAppDir(home), "app", "main.py")); err != nil {
+		t.Errorf("expected the backend app source to still have staged successfully before the frontend_dist error: %v", err)
+	}
+}
+
+func TestStageBackendAppSource_StagesAppAndAlembic(t *testing.T) {
+	pkgRoot := t.TempDir()
+	home := t.TempDir()
+	writeBackendAppSourceFixtures(t, pkgRoot)
+
+	if err := stageBackendAppSource(pkgRoot, home); err != nil {
+		t.Fatalf("stageBackendAppSource failed: %v", err)
+	}
+
+	appDir := backendAppDir(home)
+	for path, want := range map[string]string{
+		filepath.Join(appDir, "app", "main.py"):                     "app-source",
+		filepath.Join(appDir, "alembic", "versions", "0001_init.py"): "migration",
+		filepath.Join(appDir, "alembic.ini"):                         "[alembic]",
+	} {
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Errorf("expected %s to exist: %v", path, err)
+			continue
+		}
+		if string(got) != want {
+			t.Errorf("%s content = %q, want %q", path, string(got), want)
+		}
+	}
+}
+
+func TestStageBackendAppSource_AlwaysRestagesEvenWhenAlreadyPresent(t *testing.T) {
+	pkgRoot := t.TempDir()
+	home := t.TempDir()
+
+	writeTestFile(t, filepath.Join(pkgRoot, "python", "app", "main.py"), "new app source")
+	writeTestFile(t, filepath.Join(pkgRoot, "python", "alembic", "versions", "0002_add_col.py"), "new migration")
+	writeTestFile(t, filepath.Join(pkgRoot, "python", "alembic.ini"), "[alembic] new")
+
+	// Simulate a previous install's staged app/alembic content, including a migration script
+	// that's since been removed from the package entirely (e.g. squashed) - reproduces the same
+	// class of bug already covered for frontend_dist's stale-asset test above, applied to #121.
+	appDir := backendAppDir(home)
+	writeTestFile(t, filepath.Join(appDir, "app", "main.py"), "old app source")
+	writeTestFile(t, filepath.Join(appDir, "alembic", "versions", "0001_init.py"), "old migration")
+	writeTestFile(t, filepath.Join(appDir, "alembic.ini"), "[alembic] old")
+
+	if err := stageBackendAppSource(pkgRoot, home); err != nil {
+		t.Fatalf("stageBackendAppSource failed: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(appDir, "app", "main.py"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "new app source" {
+		t.Errorf("app/main.py content = %q, want %q", string(got), "new app source")
+	}
+	if _, err := os.Stat(filepath.Join(appDir, "alembic", "versions", "0001_init.py")); !os.IsNotExist(err) {
+		t.Error("expected the removed migration script from the previous release to be gone")
+	}
+	got, err = os.ReadFile(filepath.Join(appDir, "alembic", "versions", "0002_add_col.py"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "new migration" {
+		t.Errorf("alembic/versions/0002_add_col.py content = %q, want %q", string(got), "new migration")
+	}
+}
+
+func TestStageBackendAppSource_ErrorWhenAppSourceMissing(t *testing.T) {
+	pkgRoot := t.TempDir()
+	home := t.TempDir()
+	// No python/app under pkgRoot at all.
+	if err := stageBackendAppSource(pkgRoot, home); err == nil {
+		t.Error("expected an error when the source app tree is missing")
+	}
+}
+
+func TestStageBackendAppSource_ErrorWhenAlembicSourceMissing(t *testing.T) {
+	pkgRoot := t.TempDir()
+	home := t.TempDir()
+	writeTestFile(t, filepath.Join(pkgRoot, "python", "app", "main.py"), "app-source")
+	// python/alembic is missing under pkgRoot.
+
+	if err := stageBackendAppSource(pkgRoot, home); err == nil {
+		t.Error("expected an error when the source alembic tree is missing")
+	}
+}
+
+func TestStageBackendAppSource_ErrorWhenAlembicIniMissing(t *testing.T) {
+	pkgRoot := t.TempDir()
+	home := t.TempDir()
+	writeTestFile(t, filepath.Join(pkgRoot, "python", "app", "main.py"), "app-source")
+	writeTestFile(t, filepath.Join(pkgRoot, "python", "alembic", "versions", "0001_init.py"), "migration")
+	// python/alembic.ini is missing under pkgRoot.
+
+	if err := stageBackendAppSource(pkgRoot, home); err == nil {
+		t.Error("expected an error when the source alembic.ini file is missing")
+	}
+}
+
+func TestStageBackendAppSource_ErrorWhenAppDirCannotBeCleared(t *testing.T) {
+	pkgRoot := t.TempDir()
+	home := t.TempDir()
+	writeBackendAppSourceFixtures(t, pkgRoot)
+
+	// Make the previously-staged app/ directory un-removable, same technique as
+	// TestStageBundledFiles_ErrorWhenFrontendDistCannotBeCleared above.
+	locked := filepath.Join(backendAppDir(home), "app", "locked")
+	writeTestFile(t, filepath.Join(locked, "file.txt"), "content")
+	if err := os.Chmod(locked, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+
+	if err := stageBackendAppSource(pkgRoot, home); err == nil {
+		t.Error("expected an error when the existing app directory cannot be cleared")
+	}
+}
+
+func TestStageBackendAppSource_ErrorWhenAlembicDirCannotBeCleared(t *testing.T) {
+	pkgRoot := t.TempDir()
+	home := t.TempDir()
+	writeBackendAppSourceFixtures(t, pkgRoot)
+
+	locked := filepath.Join(backendAppDir(home), "alembic", "locked")
+	writeTestFile(t, filepath.Join(locked, "file.txt"), "content")
+	if err := os.Chmod(locked, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+
+	if err := stageBackendAppSource(pkgRoot, home); err == nil {
+		t.Error("expected an error when the existing alembic directory cannot be cleared")
 	}
 }

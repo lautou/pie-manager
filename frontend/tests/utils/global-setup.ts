@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Vitest global setup — kept as documentation only.
  * The actual hang fix is via `timeout` in package.json scripts.

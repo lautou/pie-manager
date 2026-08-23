@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { Button } from '@patternfly/react-core';
 
 // Composition data (top holdings / sector weightings) only exists for these instrument

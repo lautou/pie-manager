@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """add linked_transaction_id and subcategory to transactions
 
 Revision ID: a1b2c3d4e5f6

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Non-regression tests for app/tasks/github_update.py (issue #113).
 

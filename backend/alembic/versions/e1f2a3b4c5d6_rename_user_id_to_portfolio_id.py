@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """rename_user_id_to_portfolio_id
 
 Revision ID: e1f2a3b4c5d6

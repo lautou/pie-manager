@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Tests for useMacroSyncStatus.ts — mirrors useSyncStatus.test.ts's hook-test pattern.
  */

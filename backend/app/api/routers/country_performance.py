@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Country stock-market performance leaderboard — Top-N ranking (trailing 1 year,
 EUR-adjusted) shown on the "Performance des marchés" tab of the Indicateurs page. Mounted
 at the same /api/indicators prefix as indicators.py (same page, same global/portfolio-

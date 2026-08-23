@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { useState, useMemo } from 'react';
 
 type SortDir = 'asc' | 'desc';

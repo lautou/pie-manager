@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Drop job_runs.pgq_job_id's unique constraint (issue #66 step 3, resilience finding)
 
 Revision ID: vv55ww66xx77

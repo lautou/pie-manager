@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Non-regression tests for the macro indicators service (app/services/macro_indicators_service.py).
 """

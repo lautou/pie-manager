@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /** Pure date-conversion helpers for FrDatePicker — exported for testability. */
 
 export const dateFormat = (date: Date): string =>

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Tests for POST /api/transactions/import/commit — atomic, all-or-nothing insertion,
 force-including flagged duplicates, fee auto-linking (proving reuse of

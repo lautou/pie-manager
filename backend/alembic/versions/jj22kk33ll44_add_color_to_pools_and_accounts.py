@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """add color to pools and accounts
 
 Revision ID: jj22kk33ll44

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Coverage tests for PortfolioSelectPage:
  * - Line 62: early return in handleDelete when deleteConfirmName !== deleteTarget.name

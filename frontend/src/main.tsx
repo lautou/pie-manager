@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import '@patternfly/react-core/dist/styles/base.css';
 import './index.css';
 import './i18n';

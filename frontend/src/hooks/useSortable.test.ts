@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Tests for useSortable hook (lines 31-35 — toggle function branches).
  */

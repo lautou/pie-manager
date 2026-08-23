@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Integration tests for /api/prices — list with filters, upsert, and delete.
 

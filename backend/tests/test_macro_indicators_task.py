@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Non-regression tests for the macro indicators refresh task (app/tasks/macro_indicators.py).
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   Card, CardBody, CardTitle,

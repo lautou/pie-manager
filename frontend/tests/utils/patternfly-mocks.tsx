@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Centralised PatternFly mock stubs for Vitest tests.
  *

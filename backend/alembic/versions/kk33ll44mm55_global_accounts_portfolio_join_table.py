@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """global accounts: replace portfolio_id FK with portfolio_accounts join table
 
 Revision ID: kk33ll44mm55

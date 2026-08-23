@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """drop subcategory from transactions
 
 Revision ID: b2c3d4e5f6a7

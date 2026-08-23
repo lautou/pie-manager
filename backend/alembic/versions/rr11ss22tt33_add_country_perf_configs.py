@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Add country_perf_configs table (Top-N market-performance leaderboard universe)
 
 Revision ID: rr11ss22tt33

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Download the official Windows 11 x64 multi-edition ISO straight from Microsoft,
 without going through the interactive software-download page.
 

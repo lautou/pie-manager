@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 PgQueuer asyncpg pool + Queries for the web process (issue #66 step 3).
 

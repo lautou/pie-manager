@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Tests for app/utils/datetime_utils.py — the shared naive-UTC-to-unambiguous-ISO8601 helper
 (issue #72: sync badges displayed UTC time as if it were local, off by the browser's UTC offset).

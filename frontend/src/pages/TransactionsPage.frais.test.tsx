@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Coverage test for TransactionsPage line 97:
  *   if (editingTx?.type === 'Frais') return editingTx.quantity === -1;

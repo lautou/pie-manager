@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Sort-coverage tests for PVPage — covers lines 60-68 (sortTickers switch cases)
  * and lines 195-200 (sortEvents switch cases).

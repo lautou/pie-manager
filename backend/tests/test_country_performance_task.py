@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Non-regression tests for the country performance refresh task
 (app/tasks/country_performance.py).

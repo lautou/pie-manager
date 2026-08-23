@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Broker rename: accounts→brokers, cash_balance_eur on portfolio_accounts, duplicate merge
 
 Revision ID: ll55mm66nn77

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Add job_runs table (progress/status foundation for the Celery->PgQueuer migration)
 
 Revision ID: tt33uu44vv55

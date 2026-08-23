@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import React from 'react';
 import { I18nextProvider } from 'react-i18next';
 import i18n from '../../src/i18n';

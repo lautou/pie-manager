@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """add is_ttf_eligible to products
 
 Revision ID: dd44ee55ff66

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Add PgQueuer's own schema (viability POC for issue #66)
 
 Revision ID: uu44vv55ww66

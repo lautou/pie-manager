@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Covers the default: return 0 case in PositionsPage sort switch (line 110).
  *

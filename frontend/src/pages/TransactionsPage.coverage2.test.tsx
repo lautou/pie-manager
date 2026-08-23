@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Additional branch coverage tests for TransactionsPage.tsx
  * Targets uncovered branches: 93, 137, 181, 224, 227, 362, 363, 370, 392-403,

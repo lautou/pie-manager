@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Non-regression tests for the job_runs progress/status helpers (app/tasks/job_runs.py).
 

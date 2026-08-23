@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Tests for app/frontend.py — the native-Windows-port MVP's (issue #82) conditional frontend
 static-file serving.

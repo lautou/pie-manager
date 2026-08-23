@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Shared Yahoo Finance chart-endpoint fetch-with-retry logic, used by every task that reads
 query1.finance.yahoo.com/v8/finance/chart/{ticker} (prices.py's single latest quote,

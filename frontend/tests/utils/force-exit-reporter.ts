@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Vitest custom reporter — forces the main process to exit after all tests.
  *

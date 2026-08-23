@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 ETF look-through holdings: DB-only helpers (no HTTP) for storing Yahoo Finance's top-10
 holdings/sector-weightings data and aggregating it into a pool-wide sector/company allocation.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Country stock-market performance leaderboard: DB-only helpers (no HTTP) for the curated
 country universe CRUD and the trailing-1-year, EUR-adjusted Top-N ranking shown on the

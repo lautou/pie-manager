@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * FiscalitePage — Moins-values reportables (tax carry-forward tracker).
  *

@@ -262,6 +262,11 @@ landed correctly.
 - HAProxy internal port: **8080** (not 80 — rootless Podman cannot bind privileged ports < 1024)
 - **Library/framework APIs**: when searching for solutions involving a library or framework component, always check the official component documentation website first — never guess API signatures or behavior from memory.
 - **Destructive action confirmation**: never use `window.confirm()` — use the reusable `<ConfirmModal>` component (`frontend/src/components/ConfirmModal.tsx`) so confirmation dialogs match the PatternFly design system.
+- **SPDX license header on every source file** — every `.py`/`.ts`/`.tsx`/`.go` file must start with
+  `SPDX-License-Identifier: AGPL-3.0-or-later` (right after a shebang or a Go `//go:build` block,
+  otherwise as line 1). This is GNU's own recommended practice so the license travels with a file
+  even if it's copied out of the repo — the root `LICENSE` file alone doesn't. Applied repo-wide
+  in one pass; new files must carry it from creation.
 
 ## Key commands
 

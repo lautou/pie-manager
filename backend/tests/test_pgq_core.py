@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Tests for app/core/pgq.py — the asyncpg pool/Queries wiring for the web process (issue #66
 step 3). Resets the module's global state after each test since it holds process-lifetime

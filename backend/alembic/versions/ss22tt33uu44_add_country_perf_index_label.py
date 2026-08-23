@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Add index_label to country_perf_configs (descriptive index name instead of raw ticker)
 
 Revision ID: ss22tt33uu44

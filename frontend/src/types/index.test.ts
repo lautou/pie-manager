@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Minimal test to ensure the types module is importable.
  * TypeScript interfaces compile to empty JS, so there's nothing to test at runtime.

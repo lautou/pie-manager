@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Global macro indicators: DB-only helpers (no HTTP) for storing daily Yahoo Finance series
 values and computing the growth (equity/oil) and inflation (government bond/gold) ratio

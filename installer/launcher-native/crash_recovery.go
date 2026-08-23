@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -95,19 +96,30 @@ func recoverFromPreviousSession(home string) error {
 	return nil
 }
 
-// recoverOrphanedPostgres kills a postgres.exe left running by a previous session, identified by
-// the PID Postgres itself recorded in postmaster.pid. Postgres's own WAL-based crash recovery
+// recoverOrphanedPostgres stops a postgres server left running by a previous session, identified
+// by the PID Postgres itself recorded in postmaster.pid. Postgres's own WAL-based crash recovery
 // already handles data-integrity concerns on its next start regardless of how it was stopped,
 // and a stale (dead-PID) lock file is cleaned up by Postgres itself on its own next start — the
 // gap this specifically closes is that a fresh pg_ctl start against the SAME pgdata directory
 // fails outright while a previous postgres instance is still alive (Postgres enforces
 // single-instance-per-data-directory locking via this same file).
 //
+// Uses "pg_ctl stop -w -m immediate", not a raw kill on the postmaster pid alone (like killPid
+// below) — confirmed live during issue #119's real-VM testing that a bare kill of just the
+// postmaster process is not enough: Postgres's Windows EXEC_BACKEND architecture spawns every
+// backend (checkpointer, autovacuum launcher, WAL writer, background writer, ...) as its own
+// separate OS process, and these do not exit instantly when the postmaster dies. Killing only
+// the postmaster PID left several of these still running for a real, non-negligible window,
+// during which stageIfBundleChanged's os.RemoveAll lost the race against them and failed with
+// "The process cannot access the file because it is being used by another process" — observed
+// live, not theoretical. "-w" makes pg_ctl wait until every one of them has actually exited
+// before returning, which a bare proc.Kill() on one pid has no equivalent of.
+//
 // Unlike recoverOrphanedPythonProcess below, this cannot also verify the live process's start
-// time before killing it — postmaster.pid's format is PostgreSQL's own, with no start-time field
-// to compare against, and no record of postgres's own start time exists on our side to have
-// captured in the first place (accepted narrow risk, same as isPidRunning's own doc comment: a
-// recycled PID could false-positive here, same as it always could).
+// time before stopping it — postmaster.pid's format is PostgreSQL's own, with no start-time
+// field to compare against, and no record of postgres's own start time exists on our side to
+// have captured in the first place (accepted narrow risk, same as isPidRunning's own doc
+// comment: a recycled PID could false-positive here, same as it always could).
 func recoverOrphanedPostgres(home string) error {
 	pid, ok := readPostmasterPid(home)
 	if !ok {
@@ -116,7 +128,10 @@ func recoverOrphanedPostgres(home string) error {
 	if !isPidRunning(pid) {
 		return nil // stale lock file from an unclean shutdown; Postgres cleans this up itself
 	}
-	return killPid(pid, "postgres")
+	if err := runCapturedCommand(pgCtlExePath(home), filepath.Join(logDir(home), "pgctl-stop-orphan.log"), buildPgCtlStopImmediateArgs(home)...); err != nil {
+		return fmt.Errorf("stopping orphaned postgres: %w", err)
+	}
+	return nil
 }
 
 // recoverOrphanedPythonProcess kills a backend/worker python.exe left running by a previous

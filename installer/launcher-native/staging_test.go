@@ -28,6 +28,22 @@ func writeBackendAppSourceFixtures(t *testing.T, pkgRoot string) {
 	writeTestFile(t, filepath.Join(pkgRoot, "python", "alembic.ini"), "[alembic]")
 }
 
+// writePgsqlFixture / writePythonFixture populate pkgRoot with a real pgsql/python payload plus
+// its bundle-id.txt manifest (see staging.go's pgsqlBundleIDPath/pythonBundleIDPath) - shared by
+// every stageBundledFiles test below that needs pgsql/python to stage (or skip) successfully in
+// order to exercise a different, later step.
+func writePgsqlFixture(t *testing.T, pkgRoot, bundleID string) {
+	t.Helper()
+	writeTestFile(t, filepath.Join(pkgRoot, "pgsql", "bin", "postgres.exe"), "pg-binary")
+	writeTestFile(t, pgsqlBundleIDPath(pkgRoot), bundleID)
+}
+
+func writePythonFixture(t *testing.T, pkgRoot, bundleID string) {
+	t.Helper()
+	writeTestFile(t, filepath.Join(pkgRoot, "python", "python.exe"), "py-binary")
+	writeTestFile(t, pythonBundleIDPath(pkgRoot), bundleID)
+}
+
 func TestCopyFileContents(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "src.txt")
@@ -117,19 +133,170 @@ func TestCopyTree_ErrorMissingSrc(t *testing.T) {
 	}
 }
 
-func TestPgsqlStagedMarker(t *testing.T) {
-	got := pgsqlStagedMarker(`C:\Users\pie`)
-	want := postgresExePath(`C:\Users\pie`)
-	if got != want {
-		t.Errorf("pgsqlStagedMarker() = %q, want %q", got, want)
+func TestStageIfBundleChanged_StagesOnFirstCall(t *testing.T) {
+	src := t.TempDir()
+	dst := filepath.Join(t.TempDir(), "dst")
+	writeTestFile(t, filepath.Join(src, "bin", "tool.exe"), "content")
+	bundleIDPath := filepath.Join(t.TempDir(), "bundle-id.txt")
+	writeTestFile(t, bundleIDPath, "v1")
+	stagedIDPath := filepath.Join(dst, "staged-bundle-id.txt")
+
+	if err := stageIfBundleChanged(src, dst, bundleIDPath, stagedIDPath); err != nil {
+		t.Fatalf("stageIfBundleChanged failed: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(dst, "bin", "tool.exe"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "content" {
+		t.Errorf("bin/tool.exe content = %q, want %q", string(got), "content")
+	}
+	gotID, err := os.ReadFile(stagedIDPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotID) != "v1" {
+		t.Errorf("staged bundle id = %q, want %q", string(gotID), "v1")
 	}
 }
 
-func TestPythonStagedMarker(t *testing.T) {
-	got := pythonStagedMarker(`C:\Users\pie`)
-	want := pythonExePath(`C:\Users\pie`)
-	if got != want {
-		t.Errorf("pythonStagedMarker() = %q, want %q", got, want)
+func TestStageIfBundleChanged_SkipsWhenBundleIDUnchanged(t *testing.T) {
+	// src has no real content at all - if stageIfBundleChanged tried to copy anyway, it would
+	// fail, so a clean pass here proves the skip-when-unchanged branch fired.
+	src := filepath.Join(t.TempDir(), "does-not-exist")
+	dst := t.TempDir()
+	bundleIDPath := filepath.Join(t.TempDir(), "bundle-id.txt")
+	writeTestFile(t, bundleIDPath, "v1")
+	stagedIDPath := filepath.Join(dst, "staged-bundle-id.txt")
+	writeTestFile(t, stagedIDPath, "v1")
+
+	if err := stageIfBundleChanged(src, dst, bundleIDPath, stagedIDPath); err != nil {
+		t.Fatalf("stageIfBundleChanged failed: %v", err)
+	}
+}
+
+func TestStageIfBundleChanged_RestagesWhenBundleIDChanged(t *testing.T) {
+	src := t.TempDir()
+	writeTestFile(t, filepath.Join(src, "bin", "tool.exe"), "new content")
+	dst := t.TempDir()
+	// A previously-staged file that's since been removed from the package entirely - proves
+	// re-staging really wipes dst first, not just overlays new content onto the old tree.
+	writeTestFile(t, filepath.Join(dst, "bin", "removed-tool.exe"), "gone now")
+	bundleIDPath := filepath.Join(t.TempDir(), "bundle-id.txt")
+	writeTestFile(t, bundleIDPath, "v2")
+	stagedIDPath := filepath.Join(dst, "staged-bundle-id.txt")
+	writeTestFile(t, stagedIDPath, "v1")
+
+	if err := stageIfBundleChanged(src, dst, bundleIDPath, stagedIDPath); err != nil {
+		t.Fatalf("stageIfBundleChanged failed: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(dst, "bin", "tool.exe"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "new content" {
+		t.Errorf("bin/tool.exe content = %q, want %q", string(got), "new content")
+	}
+	if _, err := os.Stat(filepath.Join(dst, "bin", "removed-tool.exe")); !os.IsNotExist(err) {
+		t.Error("expected the file removed from the new bundle to be gone after re-staging")
+	}
+	gotID, err := os.ReadFile(stagedIDPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotID) != "v2" {
+		t.Errorf("staged bundle id = %q, want %q", string(gotID), "v2")
+	}
+}
+
+func TestStageIfBundleChanged_RestagesWhenNoStagedIDExistsYet(t *testing.T) {
+	// Reproduces migrating an install that predates issue #119 - real content already staged
+	// (the old exe-presence marker this launcher used to rely on) but no staged-bundle-id.txt file
+	// at all, since that concept didn't exist yet.
+	src := t.TempDir()
+	writeTestFile(t, filepath.Join(src, "bin", "tool.exe"), "new content")
+	dst := t.TempDir()
+	writeTestFile(t, filepath.Join(dst, "bin", "tool.exe"), "old content")
+	bundleIDPath := filepath.Join(t.TempDir(), "bundle-id.txt")
+	writeTestFile(t, bundleIDPath, "v1")
+	stagedIDPath := filepath.Join(dst, "staged-bundle-id.txt")
+
+	if err := stageIfBundleChanged(src, dst, bundleIDPath, stagedIDPath); err != nil {
+		t.Fatalf("stageIfBundleChanged failed: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(dst, "bin", "tool.exe"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "new content" {
+		t.Errorf("expected a pre-#119 install with no staged bundle id to be migrated, got %q", string(got))
+	}
+}
+
+func TestStageIfBundleChanged_ErrorWhenBundleIDFileMissing(t *testing.T) {
+	src := t.TempDir()
+	dst := t.TempDir()
+	bundleIDPath := filepath.Join(t.TempDir(), "bundle-id.txt") // never written
+	stagedIDPath := filepath.Join(dst, "staged-bundle-id.txt")
+
+	if err := stageIfBundleChanged(src, dst, bundleIDPath, stagedIDPath); err == nil {
+		t.Error("expected an error when the package carries no bundle id at all")
+	}
+}
+
+func TestStageIfBundleChanged_ErrorWhenSourceMissing(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "does-not-exist")
+	dst := t.TempDir()
+	bundleIDPath := filepath.Join(t.TempDir(), "bundle-id.txt")
+	writeTestFile(t, bundleIDPath, "v1")
+	stagedIDPath := filepath.Join(dst, "staged-bundle-id.txt")
+	writeTestFile(t, stagedIDPath, "some-other-version") // forces the mismatch branch to run
+
+	if err := stageIfBundleChanged(src, dst, bundleIDPath, stagedIDPath); err == nil {
+		t.Error("expected an error when the source tree is missing")
+	}
+}
+
+func TestStageIfBundleChanged_ErrorWhenDestinationCannotBeCleared(t *testing.T) {
+	src := t.TempDir()
+	writeTestFile(t, filepath.Join(src, "bin", "tool.exe"), "content")
+	dst := t.TempDir()
+	// Same technique as TestCopyTree_ErrorWhenDestinationFileBlockedByDirectory's sibling tests:
+	// a permission-stripped subdirectory can't be traversed/deleted by os.RemoveAll.
+	locked := filepath.Join(dst, "locked")
+	writeTestFile(t, filepath.Join(locked, "file.txt"), "content")
+	if err := os.Chmod(locked, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+	bundleIDPath := filepath.Join(t.TempDir(), "bundle-id.txt")
+	writeTestFile(t, bundleIDPath, "v2")
+	stagedIDPath := filepath.Join(dst, "staged-bundle-id.txt")
+	writeTestFile(t, stagedIDPath, "v1")
+
+	if err := stageIfBundleChanged(src, dst, bundleIDPath, stagedIDPath); err == nil {
+		t.Error("expected an error when the existing destination cannot be cleared")
+	}
+}
+
+func TestStageIfBundleChanged_ErrorWhenStagedIDCannotBeWritten(t *testing.T) {
+	src := t.TempDir()
+	writeTestFile(t, filepath.Join(src, "bin", "tool.exe"), "content")
+	dst := t.TempDir()
+	bundleIDPath := filepath.Join(t.TempDir(), "bundle-id.txt")
+	writeTestFile(t, bundleIDPath, "v1")
+	// A subdirectory copyTree never creates (src has no "no-such-dir") - os.WriteFile doesn't
+	// create missing parent directories, so writing here fails cleanly after a successful copy.
+	stagedIDPath := filepath.Join(dst, "no-such-dir", "staged-bundle-id.txt")
+
+	if err := stageIfBundleChanged(src, dst, bundleIDPath, stagedIDPath); err == nil {
+		t.Error("expected an error when the staged bundle id cannot be written")
+	}
+	if _, err := os.Stat(filepath.Join(dst, "bin", "tool.exe")); err != nil {
+		t.Errorf("expected the copy itself to have already succeeded: %v", err)
 	}
 }
 
@@ -137,8 +304,8 @@ func TestStageBundledFiles_StagesEverythingOnFirstCall(t *testing.T) {
 	pkgRoot := t.TempDir()
 	home := t.TempDir()
 
-	writeTestFile(t, filepath.Join(pkgRoot, "pgsql", "bin", "postgres.exe"), "pg-binary")
-	writeTestFile(t, filepath.Join(pkgRoot, "python", "python.exe"), "py-binary")
+	writePgsqlFixture(t, pkgRoot, "postgresql-16.14")
+	writePythonFixture(t, pkgRoot, "3.14.0|abc123")
 	writeBackendAppSourceFixtures(t, pkgRoot)
 	writeTestFile(t, filepath.Join(pkgRoot, "frontend_dist", "index.html"), "<html></html>")
 
@@ -146,10 +313,10 @@ func TestStageBundledFiles_StagesEverythingOnFirstCall(t *testing.T) {
 		t.Fatalf("stageBundledFiles failed: %v", err)
 	}
 
-	if _, err := os.Stat(pgsqlStagedMarker(home)); err != nil {
+	if _, err := os.Stat(postgresExePath(home)); err != nil {
 		t.Errorf("expected pgsql to be staged: %v", err)
 	}
-	if _, err := os.Stat(pythonStagedMarker(home)); err != nil {
+	if _, err := os.Stat(pythonExePath(home)); err != nil {
 		t.Errorf("expected python to be staged: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(backendAppDir(home), "app", "main.py")); err != nil {
@@ -161,33 +328,88 @@ func TestStageBundledFiles_StagesEverythingOnFirstCall(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(frontendDistDir(home), "index.html")); err != nil {
 		t.Errorf("expected frontend_dist to be staged: %v", err)
 	}
+
+	gotPgID, err := os.ReadFile(pgsqlStagedBundleIDPath(home))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotPgID) != "postgresql-16.14" {
+		t.Errorf("staged pgsql bundle id = %q, want %q", string(gotPgID), "postgresql-16.14")
+	}
+	gotPyID, err := os.ReadFile(pythonStagedBundleIDPath(home))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotPyID) != "3.14.0|abc123" {
+		t.Errorf("staged python bundle id = %q, want %q", string(gotPyID), "3.14.0|abc123")
+	}
 }
 
-func TestStageBundledFiles_SkipsAlreadyStagedPgsqlAndPython(t *testing.T) {
+func TestStageBundledFiles_SkipsPgsqlAndPythonWhenBundleIDUnchanged(t *testing.T) {
 	pkgRoot := t.TempDir()
 	home := t.TempDir()
 
-	writeTestFile(t, filepath.Join(pkgRoot, "pgsql", "bin", "postgres.exe"), "pg-binary")
-	writeTestFile(t, filepath.Join(pkgRoot, "python", "python.exe"), "py-binary")
+	// Only the bundle-id.txt manifests exist under pkgRoot - no real pgsql/bin or python.exe
+	// content at all. If stageBundledFiles tried to copy either anyway, it would fail, so a
+	// clean pass here proves the skip-when-unchanged branch fired for both.
+	writeTestFile(t, pgsqlBundleIDPath(pkgRoot), "postgresql-16.14")
+	writeTestFile(t, pythonBundleIDPath(pkgRoot), "3.14.0|abc123")
 	writeBackendAppSourceFixtures(t, pkgRoot)
 	writeTestFile(t, filepath.Join(pkgRoot, "frontend_dist", "index.html"), "<html></html>")
 
-	// Pre-stage the pgsql/python markers directly, without a matching real source tree under
-	// pkgRoot for either - if stageBundledFiles tried to copy them anyway, it would fail, so a
-	// clean pass here proves the skip-if-present check fired for both.
-	writeTestFile(t, pgsqlStagedMarker(home), "already-here")
-	writeTestFile(t, pythonStagedMarker(home), "already-here")
+	writeTestFile(t, pgsqlStagedBundleIDPath(home), "postgresql-16.14")
+	writeTestFile(t, pythonStagedBundleIDPath(home), "3.14.0|abc123")
 
 	if err := stageBundledFiles(pkgRoot, home); err != nil {
 		t.Fatalf("stageBundledFiles failed: %v", err)
 	}
 
-	got, err := os.ReadFile(pgsqlStagedMarker(home))
+	got, err := os.ReadFile(pgsqlStagedBundleIDPath(home))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != "already-here" {
-		t.Errorf("expected the pre-staged pgsql marker content to survive untouched, got %q", string(got))
+	if string(got) != "postgresql-16.14" {
+		t.Errorf("expected the pre-staged pgsql bundle id to survive untouched, got %q", string(got))
+	}
+}
+
+func TestStageBundledFiles_RestagesPgsqlAndPythonWhenBundleIDChanged(t *testing.T) {
+	pkgRoot := t.TempDir()
+	home := t.TempDir()
+
+	writePgsqlFixture(t, pkgRoot, "postgresql-16.15")
+	writePythonFixture(t, pkgRoot, "3.14.1|def456")
+	writeBackendAppSourceFixtures(t, pkgRoot)
+	writeTestFile(t, filepath.Join(pkgRoot, "frontend_dist", "index.html"), "<html></html>")
+
+	// Simulate a previously-staged older bundle, including a pgsql tool that's since been
+	// removed from the package entirely.
+	writeTestFile(t, postgresExePath(home), "old-pg-binary")
+	writeTestFile(t, filepath.Join(dataDir(home), "pgsql", "bin", "removed-tool.exe"), "gone now")
+	writeTestFile(t, pgsqlStagedBundleIDPath(home), "postgresql-16.14")
+	writeTestFile(t, pythonExePath(home), "old-py-binary")
+	writeTestFile(t, pythonStagedBundleIDPath(home), "3.14.0|abc123")
+
+	if err := stageBundledFiles(pkgRoot, home); err != nil {
+		t.Fatalf("stageBundledFiles failed: %v", err)
+	}
+
+	gotPg, err := os.ReadFile(postgresExePath(home))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotPg) != "pg-binary" {
+		t.Errorf("postgres.exe content = %q, want %q", string(gotPg), "pg-binary")
+	}
+	if _, err := os.Stat(filepath.Join(dataDir(home), "pgsql", "bin", "removed-tool.exe")); !os.IsNotExist(err) {
+		t.Error("expected the pgsql tool removed from the new package to be gone")
+	}
+	gotPy, err := os.ReadFile(pythonExePath(home))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotPy) != "py-binary" {
+		t.Errorf("python.exe content = %q, want %q", string(gotPy), "py-binary")
 	}
 }
 
@@ -195,8 +417,8 @@ func TestStageBundledFiles_AlwaysRestagesFrontendDistEvenWhenAlreadyPresent(t *t
 	pkgRoot := t.TempDir()
 	home := t.TempDir()
 
-	writeTestFile(t, filepath.Join(pkgRoot, "pgsql", "bin", "postgres.exe"), "pg-binary")
-	writeTestFile(t, filepath.Join(pkgRoot, "python", "python.exe"), "py-binary")
+	writePgsqlFixture(t, pkgRoot, "postgresql-16.14")
+	writePythonFixture(t, pkgRoot, "3.14.0|abc123")
 	writeBackendAppSourceFixtures(t, pkgRoot)
 	writeTestFile(t, filepath.Join(pkgRoot, "frontend_dist", "index.html"), "<html>new build</html>")
 
@@ -228,8 +450,8 @@ func TestStageBundledFiles_ErrorWhenFrontendDistCannotBeCleared(t *testing.T) {
 	pkgRoot := t.TempDir()
 	home := t.TempDir()
 
-	writeTestFile(t, filepath.Join(pkgRoot, "pgsql", "bin", "postgres.exe"), "pg-binary")
-	writeTestFile(t, filepath.Join(pkgRoot, "python", "python.exe"), "py-binary")
+	writePgsqlFixture(t, pkgRoot, "postgresql-16.14")
+	writePythonFixture(t, pkgRoot, "3.14.0|abc123")
 	writeBackendAppSourceFixtures(t, pkgRoot)
 	writeTestFile(t, filepath.Join(pkgRoot, "frontend_dist", "index.html"), "<html></html>")
 
@@ -251,9 +473,21 @@ func TestStageBundledFiles_ErrorWhenFrontendDistCannotBeCleared(t *testing.T) {
 func TestStageBundledFiles_ErrorWhenPgsqlSourceMissing(t *testing.T) {
 	pkgRoot := t.TempDir()
 	home := t.TempDir()
-	// No pgsql/ under pkgRoot at all.
+	// No pgsql/ under pkgRoot at all - not even a bundle-id.txt manifest.
 	if err := stageBundledFiles(pkgRoot, home); err == nil {
 		t.Error("expected an error when the source pgsql tree is missing")
+	}
+}
+
+func TestStageBundledFiles_ErrorWhenPgsqlBundleIDMissing(t *testing.T) {
+	pkgRoot := t.TempDir()
+	home := t.TempDir()
+	// pgsql/ has real content but no bundle-id.txt manifest - a malformed/broken package, distinct
+	// from the payload being entirely absent above.
+	writeTestFile(t, filepath.Join(pkgRoot, "pgsql", "bin", "postgres.exe"), "pg-binary")
+
+	if err := stageBundledFiles(pkgRoot, home); err == nil {
+		t.Error("expected an error when the package's pgsql bundle id is missing")
 	}
 }
 
@@ -261,12 +495,12 @@ func TestStageBundledFiles_ErrorWhenPythonSourceMissing(t *testing.T) {
 	pkgRoot := t.TempDir()
 	home := t.TempDir()
 	// pgsql/ is present and stages successfully; python/ is missing under pkgRoot.
-	writeTestFile(t, filepath.Join(pkgRoot, "pgsql", "bin", "postgres.exe"), "pg-binary")
+	writePgsqlFixture(t, pkgRoot, "postgresql-16.14")
 
 	if err := stageBundledFiles(pkgRoot, home); err == nil {
 		t.Error("expected an error when the source python tree is missing")
 	}
-	if _, err := os.Stat(pgsqlStagedMarker(home)); err != nil {
+	if _, err := os.Stat(postgresExePath(home)); err != nil {
 		t.Errorf("expected pgsql to still have staged successfully before the python error: %v", err)
 	}
 }
@@ -276,13 +510,13 @@ func TestStageBundledFiles_ErrorWhenBackendAppSourceMissing(t *testing.T) {
 	home := t.TempDir()
 	// pgsql/ and python/ are present and stage successfully; python/app (the backend app
 	// source stageBackendAppSource needs) is missing.
-	writeTestFile(t, filepath.Join(pkgRoot, "pgsql", "bin", "postgres.exe"), "pg-binary")
-	writeTestFile(t, filepath.Join(pkgRoot, "python", "python.exe"), "py-binary")
+	writePgsqlFixture(t, pkgRoot, "postgresql-16.14")
+	writePythonFixture(t, pkgRoot, "3.14.0|abc123")
 
 	if err := stageBundledFiles(pkgRoot, home); err == nil {
 		t.Error("expected an error when the source backend app tree is missing")
 	}
-	if _, err := os.Stat(pythonStagedMarker(home)); err != nil {
+	if _, err := os.Stat(pythonExePath(home)); err != nil {
 		t.Errorf("expected python to still have staged successfully before the backend app source error: %v", err)
 	}
 }
@@ -292,14 +526,14 @@ func TestStageBundledFiles_ErrorWhenFrontendDistSourceMissing(t *testing.T) {
 	home := t.TempDir()
 	// pgsql/, python/, and the backend app source are present and stage successfully;
 	// frontend_dist/ is missing.
-	writeTestFile(t, filepath.Join(pkgRoot, "pgsql", "bin", "postgres.exe"), "pg-binary")
-	writeTestFile(t, filepath.Join(pkgRoot, "python", "python.exe"), "py-binary")
+	writePgsqlFixture(t, pkgRoot, "postgresql-16.14")
+	writePythonFixture(t, pkgRoot, "3.14.0|abc123")
 	writeBackendAppSourceFixtures(t, pkgRoot)
 
 	if err := stageBundledFiles(pkgRoot, home); err == nil {
 		t.Error("expected an error when the source frontend_dist tree is missing")
 	}
-	if _, err := os.Stat(pythonStagedMarker(home)); err != nil {
+	if _, err := os.Stat(pythonExePath(home)); err != nil {
 		t.Errorf("expected python to still have staged successfully before the frontend_dist error: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(backendAppDir(home), "app", "main.py")); err != nil {
@@ -318,7 +552,7 @@ func TestStageBackendAppSource_StagesAppAndAlembic(t *testing.T) {
 
 	appDir := backendAppDir(home)
 	for path, want := range map[string]string{
-		filepath.Join(appDir, "app", "main.py"):                     "app-source",
+		filepath.Join(appDir, "app", "main.py"):                      "app-source",
 		filepath.Join(appDir, "alembic", "versions", "0001_init.py"): "migration",
 		filepath.Join(appDir, "alembic.ini"):                         "[alembic]",
 	} {

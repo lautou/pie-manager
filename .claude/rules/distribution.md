@@ -266,8 +266,8 @@ browser silently never changes. Confirmed live via WebView2 devtools: `document.
 pointed at a content hash that didn't match the just-installed package's own bundle at all, and
 fetching it confirmed the served JS predated a real, already-merged fix. **Fix**: `frontend_dist`
 now always wipes and re-copies on every launch (cheap — a few MB, unlike the ~130MB pgsql/Python
-interpreter bundles that legitimately still use the skip-if-present check pending issue #119's
-real version-aware re-staging story). When debugging "a fix isn't taking effect" on the native
+interpreter bundles, which use a real content-based check instead — see the #119 entry below).
+When debugging "a fix isn't taking effect" on the native
 launcher again, check what the browser actually loaded (`document.scripts[0].src` + `fetch(...).then(t =>
 t.includes(...))` in devtools) before trusting either the MSIX package contents or the Cache-Control
 header alone — three independent layers (package contents, staged copy, browser cache) can each
@@ -285,7 +285,41 @@ against these exact staged scripts on every launch, so a frozen `alembic/` tree 
 migration was never applied at all for an existing user, not just never displayed. **Fix**:
 `staging.go`'s `stageBackendAppSource` now always wipes and re-copies `app/`, `alembic/`, and
 `alembic.ini` on every launch, same pattern as `frontend_dist` — only the interpreter and its
-site-packages still use the skip-if-present marker, tracked separately in #119.
+site-packages use a different mechanism, described next.
+
+**Fourth entry, resolving the original scope of #119 itself: pgsql/the Python interpreter now
+re-stage on a real content-based check, not an exe-presence marker at all.** The old
+`pgsqlStagedMarker`/`pythonStagedMarker` (presence of `postgres.exe`/`python.exe`) had two
+problems beyond just "no update story": it couldn't detect a genuine content change even if one
+ever happened, and — since `filepath.WalkDir` visits a directory's entries in lexical order —
+`bin/postgres.exe` (alphabetically before `lib/`, `share/`) could already exist after a copy
+interrupted partway through, so the marker could misread a partial copy as "fully staged" with
+no way to ever self-correct. **Fix**: `build-installer.yml` now writes a `bundle-id.txt`
+manifest into `pkgRoot/pgsql/` and `pkgRoot/python/` at packaging time, computed from each
+payload's actual build inputs (the pgsql download URL; the Python version + a `Get-FileHash` of
+`requirements.txt`) — deliberately **not** this app's own release `Version`, which changes every
+release regardless of whether these payloads did, which would have forced a needless
+~150-250MB re-copy on every ordinary update. `staging.go`'s `stageIfBundleChanged` compares this
+against a `staged-bundle-id.txt` it writes into the data directory only *after* `copyTree`
+fully succeeds (never before), re-staging whenever they differ or no staged id exists yet (which
+also means one unavoidable one-time re-stage for every install that predates this fix, migrating
+it off the old marker). One MakeAppx gotcha caught before it could bite in the field: the
+manifest files are named `bundle-id.txt`, not `.bundle-id` — **MakeAppx excludes
+dot-prefixed files/folders from a package by default**, which would have silently dropped the
+manifest from every real MSIX build while every local Go test kept passing.
+
+Re-staging pgsql/the interpreter this way needs any orphaned `postgres.exe`/`python.exe` from a
+previous, uncleanly-terminated session cleared first — Windows locks a directory a running
+executable still holds open, so `os.RemoveAll` would fail otherwise. `crash_recovery.go`'s
+`recoverFromPreviousSession` now runs before `stageBundledFiles` (not just before
+`startPostgres`), and also covers the backend/worker — which had no orphan-recovery at all
+before, unlike Postgres's own `postmaster.pid` — via a `backend.pid`/`worker.pid` record this
+launcher writes itself right after spawning each process (`writePidRecord`, `backend.go`'s
+`recordSpawnedPid`). Since that file format is entirely ours (unlike `postmaster.pid`, which
+PostgreSQL itself owns), it also records the process's start time (`processStartTime`,
+`processtime_windows.go`, via `GetProcessTimes`) and re-verifies it before killing anything —
+closing the PID-reuse false-positive gap `isPidRunning`'s own doc comment accepts as a narrow,
+unfixed risk for Postgres specifically.
 
 ### Installed files (macOS)
 ```

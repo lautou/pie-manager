@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -52,47 +53,97 @@ func copyTree(src, dst string) error {
 	})
 }
 
-// pgsqlStagedMarker / pythonStagedMarker are files only present once a real staging copy has
-// completed - used to skip re-copying ~130 MB of already-staged files on every subsequent
-// launch, not just to detect first run (isFirstRun in paths.go answers a different question:
-// whether Postgres itself has ever been initialized, which requires pgsql to already be staged
-// - staging must always be checked independently, since a user could in principle delete just
-// the staged pgsql/python folders without touching pgdata).
-func pgsqlStagedMarker(home string) string  { return postgresExePath(home) }
-func pythonStagedMarker(home string) string { return pythonExePath(home) }
+// pgsqlBundleIDPath / pythonBundleIDPath point at a small file build-installer.yml drops
+// directly into the package, recording an identifier derived from that payload's actual build
+// inputs (the pinned download URL for pgsql; the pinned Python version + a hash of
+// requirements.txt for python - see that workflow's own comments). Deliberately NOT this app's
+// own release Version (backend.go): Version changes on every single release regardless of
+// whether pgsql/the interpreter+site-packages actually changed, which would force a needless
+// ~150-250MB re-copy on every update if used here - the whole point of #119's version-aware
+// re-staging is to only pay that cost when the bundled content itself actually changed.
+func pgsqlBundleIDPath(pkgRoot string) string {
+	return filepath.Join(pkgRoot, "pgsql", "bundle-id.txt")
+}
+func pythonBundleIDPath(pkgRoot string) string {
+	return filepath.Join(pkgRoot, "python", "bundle-id.txt")
+}
+
+// pgsqlStagedBundleIDPath / pythonStagedBundleIDPath record, inside the writable data directory,
+// which bundle-id was actually staged there - written only after copyTree fully succeeds (see
+// stageIfBundleChanged), never before. This also closes a latent gap the old exe-presence-only
+// marker had: filepath.WalkDir visits a directory's entries in lexical order, so pgsql's own
+// bin/postgres.exe (alphabetically before lib/, share/) could already exist even after a copy
+// interrupted partway through - the old marker would have misread that as "fully staged".
+func pgsqlStagedBundleIDPath(home string) string {
+	return filepath.Join(dataDir(home), "pgsql", "staged-bundle-id.txt")
+}
+func pythonStagedBundleIDPath(home string) string {
+	return filepath.Join(pythonDir(home), "staged-bundle-id.txt")
+}
+
+// stageIfBundleChanged re-stages src into dst whenever the package's own bundle-id (read from
+// bundleIDPath) differs from what's already recorded at stagedIDPath, or no id was ever
+// recorded there at all - which also covers migrating an install that predates this mechanism
+// (issue #119): such an install has no staged-bundle-id.txt file, so its first launch after this
+// fix ships pays one unavoidable full re-stage even if pgsql/the interpreter didn't actually
+// change, purely because there was previously no way to tell.
+func stageIfBundleChanged(src, dst, bundleIDPath, stagedIDPath string) error {
+	wantID, err := os.ReadFile(bundleIDPath)
+	if err != nil {
+		return fmt.Errorf("reading bundle id from package: %w", err)
+	}
+	gotID, _ := os.ReadFile(stagedIDPath) // missing/unreadable => empty => always mismatches below
+	if bytes.Equal(wantID, gotID) {
+		return nil
+	}
+	if err := os.RemoveAll(dst); err != nil {
+		return fmt.Errorf("clearing stale content before re-staging: %w", err)
+	}
+	if err := copyTree(src, dst); err != nil {
+		return fmt.Errorf("copying: %w", err)
+	}
+	if err := os.WriteFile(stagedIDPath, wantID, 0o644); err != nil {
+		return fmt.Errorf("recording staged bundle id: %w", err)
+	}
+	return nil
+}
 
 // stageBundledFiles copies pgsql/, the Python interpreter, the backend's own app source, and
 // frontend_dist/ from the package's own read-only install directory (pkgRoot) into this app's
-// writable data directory. pgsql/the interpreter skip the copy if already staged; the backend
-// app source and frontend_dist always re-stage (see below).
+// writable data directory. pgsql/the interpreter re-stage only when their bundle-id changed
+// (see stageIfBundleChanged); the backend app source and frontend_dist always re-stage (below).
 //
-// pgsql/the Python interpreter+site-packages have no update/re-staging story yet (skipped
-// entirely if the marker exists, regardless of whether the package itself was updated to a
-// newer version with different bundled content) - matches this epic's own explicitly-deferred
-// scope (issue #65: "no migration path... fresh-install only"). Tracked separately in #119: these
-// are large (~150-250MB combined) and, unlike the app source below, don't actually change
-// between releases in practice (PostgreSQL major version and the Python version are both
-// project-wide pinned invariants), so a version-aware re-staging story is lower urgency.
+// pgsql/the Python interpreter+site-packages are large (~150-250MB combined) and, unlike the app
+// source below, only rarely actually change between releases (PostgreSQL/Python versions are
+// project-wide pinned invariants, and requirements.txt only moves on a Dependabot bump) - so
+// gating them behind a real content-based check, rather than unconditionally re-copying like
+// frontend_dist, avoids paying that cost on every ordinary release.
 //
-// frontend_dist and the backend app source are the two exceptions, both fixed after real
+// frontend_dist and the backend app source always re-stage unconditionally, after real
 // silent-staleness bugs were found in the field: frontend_dist after issue #118's follow-up
 // investigation found every MSIX upgrade was silently still serving the very first version's
-// frontend forever, and the backend app source (issue #121) after finding the same marker-skip
-// check gated the FastAPI "app" package and Alembic migration scripts too - see
+// frontend forever, and the backend app source (issue #121) after finding the old exe-presence
+// marker gated the FastAPI "app" package and Alembic migration scripts too - see
 // stageBackendAppSource below. Both are small, rebuilt-every-release plain source/asset trees -
 // cheap enough to unconditionally wipe and re-copy on every launch, which also guarantees no
 // stale content-hashed asset file (e.g. an old index-XXXXXXXX.js) or removed migration script
 // ever lingers alongside newer content.
 func stageBundledFiles(pkgRoot, home string) error {
-	if _, err := os.Stat(pgsqlStagedMarker(home)); os.IsNotExist(err) {
-		if err := copyTree(filepath.Join(pkgRoot, "pgsql"), filepath.Join(dataDir(home), "pgsql")); err != nil {
-			return fmt.Errorf("staging pgsql: %w", err)
-		}
+	if err := stageIfBundleChanged(
+		filepath.Join(pkgRoot, "pgsql"), filepath.Join(dataDir(home), "pgsql"),
+		pgsqlBundleIDPath(pkgRoot), pgsqlStagedBundleIDPath(home),
+	); err != nil {
+		return fmt.Errorf("staging pgsql: %w", err)
 	}
-	if _, err := os.Stat(pythonStagedMarker(home)); os.IsNotExist(err) {
-		if err := copyTree(filepath.Join(pkgRoot, "python"), pythonDir(home)); err != nil {
-			return fmt.Errorf("staging python: %w", err)
-		}
+	// Re-staging the interpreter here (on a bundle-id mismatch) also wipes and recreates app/
+	// alembic/alembic.ini, since pkgRoot/python bundles them all in one tree (see
+	// build-installer.yml's packaging step) - harmless, stageBackendAppSource below
+	// unconditionally re-copies them again immediately after regardless.
+	if err := stageIfBundleChanged(
+		filepath.Join(pkgRoot, "python"), pythonDir(home),
+		pythonBundleIDPath(pkgRoot), pythonStagedBundleIDPath(home),
+	); err != nil {
+		return fmt.Errorf("staging python: %w", err)
 	}
 	if err := stageBackendAppSource(pkgRoot, home); err != nil {
 		return err

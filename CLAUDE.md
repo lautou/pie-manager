@@ -142,9 +142,29 @@ acceptable for a system-interaction binary.
   found" on a real install. Found by reading `admin.py` directly, not assumed — confirmed nothing
   else in this launcher previously set `PATH` at all. Not yet covered by CI (see #114).
 
+  **Issue #119 (version-aware re-staging for pgsql/the Python interpreter, plus orphan recovery
+  for the backend/worker):** `staging.go`'s `stageIfBundleChanged` replaces the old
+  exe-presence-only marker with a `bundle-id.txt` manifest `build-installer.yml` computes from
+  each payload's actual build inputs (the pgsql download URL; the Python version + a hash of
+  `requirements.txt`) — deliberately never this app's own release `Version`, which changes every
+  release regardless of whether these large (~150-250MB), rarely-changing payloads actually did.
+  Fully tested (100% covered), same as the rest of `staging.go`. Re-staging on a mismatch needs
+  any orphaned `postgres.exe`/`python.exe` cleared first (Windows locks a directory a running
+  executable still holds open), so `recoverFromPreviousSession` (`crash_recovery.go`) now also
+  runs before `stageBundledFiles`, not just before `startPostgres` — and covers the backend/worker
+  too, via a self-written `backend.pid`/`worker.pid` record (`writePidRecord`/`readPidRecord`,
+  fully tested) whose live process is re-verified by start time (`processStartTime`,
+  `processtime_windows.go`/`processtime_other.go` — same Windows-only-real-implementation split
+  as `hideWindow`) before being killed — closing the PID-reuse false-positive gap
+  `isPidRunning`'s own doc comment accepts for Postgres, whose `postmaster.pid` format isn't ours
+  to extend the same way.
+
   **Intentionally untestable** (real process spawns/OS liveness checks, same class as the
   Podman-based installer's own untestable bucket) — `runInitdb`, `stopPostgres`,
   `createAppDatabase`, `startBackend`, `startWorker`, `isPidRunning`, `recoverFromPreviousSession`,
+  `recoverOrphanedPostgres`, `recoverOrphanedPythonProcess`, `killPid` (issue #119's own recovery
+  functions — the pure "nothing to recover" early-return paths are tested, the real
+  liveness-check/kill paths are not),
   `startupSequence` (the top-level orchestrator — every decision it makes is already covered by
   testing the pure functions it calls; the function itself is thin sequencing glue), and all of
   `main.go` (WebView2/window glue). Covered instead by the CI install+launch smoke test in

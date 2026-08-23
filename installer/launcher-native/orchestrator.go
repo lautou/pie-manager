@@ -55,6 +55,15 @@ func startupSequence(pkgRoot, home string, onProgress func(string)) (*nativeSess
 		return nil, fmt.Errorf("preparing data directories: %w", err)
 	}
 
+	// Must run before stageBundledFiles, not after (issue #119): once staging can delete+recopy
+	// pgsql/the Python interpreter on a bundle-id mismatch, os.RemoveAll fails on Windows if an
+	// orphaned postgres.exe/python.exe from a previous, uncleanly-terminated session still holds
+	// that directory open - any such orphan must be cleared out first.
+	report("Checking for a previous session…")
+	if err := recoverFromPreviousSession(home); err != nil {
+		return nil, fmt.Errorf("recovering from a previous session: %w", err)
+	}
+
 	// Confirmed live (a real end-to-end test of this exact orchestration, before this fix):
 	// initdb.exe fails with "fork/exec ... le fichier spécifié est introuvable" without this -
 	// ensureDataDirs only creates empty directories, it never populates them from the package's
@@ -66,10 +75,6 @@ func startupSequence(pkgRoot, home string, onProgress func(string)) (*nativeSess
 	}
 
 	firstRun := isFirstRun(home)
-
-	if err := recoverFromPreviousSession(home); err != nil {
-		return nil, fmt.Errorf("recovering from a previous session: %w", err)
-	}
 
 	p := selectPorts()
 

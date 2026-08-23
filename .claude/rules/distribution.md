@@ -265,13 +265,27 @@ original #118 investigation did) looks like confirmation, while the copy actuall
 browser silently never changes. Confirmed live via WebView2 devtools: `document.scripts[0].src`
 pointed at a content hash that didn't match the just-installed package's own bundle at all, and
 fetching it confirmed the served JS predated a real, already-merged fix. **Fix**: `frontend_dist`
-now always wipes and re-copies on every launch (cheap — a few MB, unlike the ~130MB pgsql/python
-bundles that legitimately still use the skip-if-present check pending issue #65's real
-update/re-staging story). When debugging "a fix isn't taking effect" on the native launcher
-again, check what the browser actually loaded (`document.scripts[0].src` + `fetch(...).then(t =>
+now always wipes and re-copies on every launch (cheap — a few MB, unlike the ~130MB pgsql/Python
+interpreter bundles that legitimately still use the skip-if-present check pending issue #119's
+real version-aware re-staging story). When debugging "a fix isn't taking effect" on the native
+launcher again, check what the browser actually loaded (`document.scripts[0].src` + `fetch(...).then(t =>
 t.includes(...))` in devtools) before trusting either the MSIX package contents or the Cache-Control
 header alone — three independent layers (package contents, staged copy, browser cache) can each
 look correct in isolation while the end-to-end result is still stale.
+
+**Third staleness bug, same root cause, found while triaging #119 — the backend's own app
+source and Alembic migrations, not just its binaries, were frozen the same way (issue #121).**
+`build-installer.yml`'s packaging step copies `backend/app`, `backend/alembic.ini`, and
+`backend/alembic` directly into the same `python/` tree as the embeddable interpreter
+(`backendAppDir(home)` is literally `pythonDir(home)`, see `backend.go`) — so the same
+`pythonStagedMarker` skip-if-present check that's legitimately fine for the interpreter/
+site-packages also gated the FastAPI app code and migration scripts, which change on nearly
+every release. Worse than the frontend case: `runMigrations` runs `alembic upgrade head`
+against these exact staged scripts on every launch, so a frozen `alembic/` tree meant a new
+migration was never applied at all for an existing user, not just never displayed. **Fix**:
+`staging.go`'s `stageBackendAppSource` now always wipes and re-copies `app/`, `alembic/`, and
+`alembic.ini` on every launch, same pattern as `frontend_dist` — only the interpreter and its
+site-packages still use the skip-if-present marker, tracked separately in #119.
 
 ### Installed files (macOS)
 ```

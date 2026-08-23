@@ -71,6 +71,14 @@ func buildPgCtlStopArgs(home string) []string {
 	return []string{"-D", pgDataDir(home), "-w", "stop", "-m", "fast"}
 }
 
+// buildPgCtlStopImmediateArgs uses "immediate" mode - see recoverOrphanedPostgres
+// (crash_recovery.go), the only caller: cleaning up a previous session's orphaned postmaster,
+// where there's no live connection to gracefully disconnect and Postgres's own WAL-based crash
+// recovery already handles data-integrity concerns on its next start regardless.
+func buildPgCtlStopImmediateArgs(home string) []string {
+	return []string{"-D", pgDataDir(home), "-w", "stop", "-m", "immediate"}
+}
+
 // buildCreateDbArgs targets the same dynamically-selected port startPostgres just bound to.
 func buildCreateDbArgs(port int) []string {
 	return []string{"-h", "127.0.0.1", "-p", fmt.Sprintf("%d", port), "-U", pgSuperuser, pgDatabaseName}

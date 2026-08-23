@@ -72,6 +72,22 @@ func TestPostmasterPidPath(t *testing.T) {
 	}
 }
 
+func TestBackendPidPath(t *testing.T) {
+	got := backendPidPath(`C:\Users\pie`)
+	want := filepath.Join(`C:\Users\pie`, "PieManager", "backend.pid")
+	if got != want {
+		t.Errorf("backendPidPath() = %q, want %q", got, want)
+	}
+}
+
+func TestWorkerPidPath(t *testing.T) {
+	got := workerPidPath(`C:\Users\pie`)
+	want := filepath.Join(`C:\Users\pie`, "PieManager", "worker.pid")
+	if got != want {
+		t.Errorf("workerPidPath() = %q, want %q", got, want)
+	}
+}
+
 func TestIsFirstRun_TrueWhenNoDataDir(t *testing.T) {
 	home := t.TempDir()
 	if !isFirstRun(home) {

@@ -74,6 +74,17 @@ func TestBuildPgCtlStopArgs(t *testing.T) {
 	}
 }
 
+func TestBuildPgCtlStopImmediateArgs(t *testing.T) {
+	args := buildPgCtlStopImmediateArgs(`C:\Users\pie`)
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "-m immediate") {
+		t.Errorf("expected immediate shutdown mode in args, got %v", args)
+	}
+	if !strings.Contains(joined, pgDataDir(`C:\Users\pie`)) {
+		t.Errorf("expected pgdata path in args, got %v", args)
+	}
+}
+
 func TestCreatedbExePath(t *testing.T) {
 	got := createdbExePath(`C:\Users\pie`)
 	want := filepath.Join(`C:\Users\pie`, "PieManager", "pgsql", "bin", "createdb.exe")

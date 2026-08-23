@@ -92,6 +92,9 @@ func runMigrations(home string, pgPort int) error {
 // process-spawning functions. The caller is responsible for eventually stopping the returned
 // *exec.Cmd's process (see stopChildProcess).
 //
+// Records its own pid (see recordSpawnedPid) so a future launch's recoverOrphanedPythonProcess
+// (crash_recovery.go, issue #119) can clean it up if this session ends uncleanly.
+//
 // PATH is explicitly prefixed with pgBinDir so admin.py's backup/restore endpoints (which shell
 // out to bare "pg_dump"/"pg_restore" by name, relying on PATH resolution — matching the
 // container image, where postgresql-client tooling is already on PATH) can actually find our
@@ -128,7 +131,24 @@ func startBackend(home string, backendPort, pgPort int) (*exec.Cmd, error) {
 		out.Close()
 		return nil, fmt.Errorf("starting backend: %w", err)
 	}
+	if err := recordSpawnedPid(backendPidPath(home), cmd.Process.Pid); err != nil {
+		_ = stopChildProcess(cmd)
+		return nil, fmt.Errorf("recording backend pid: %w", err)
+	}
 	return cmd, nil
+}
+
+// recordSpawnedPid writes pid's own current start time (queried immediately after spawning it,
+// not passed down from the caller - cmd.Start() returning successfully is itself the signal that
+// the process now exists to query) into path via writePidRecord (crash_recovery.go), so a future
+// launch's recoverOrphanedPythonProcess can tell this exact process instance apart from an
+// unrelated one that later reuses the same pid. Shared by startBackend and startWorker below.
+func recordSpawnedPid(path string, pid int) error {
+	startTime, err := processStartTime(pid)
+	if err != nil {
+		return fmt.Errorf("reading start time for pid %d: %w", pid, err)
+	}
+	return writePidRecord(path, pid, startTime)
 }
 
 // startWorker spawns the bundled PgQueuer worker (issue #83) as a second long-lived child
@@ -149,6 +169,8 @@ func startBackend(home string, backendPort, pgPort int) (*exec.Cmd, error) {
 // already embeds the verbatim output of "pgq sql install" for the pinned pgqueuer version, so
 // runMigrations (already run on every launch) creates it — confirmed by reading that migration
 // directly, not assumed.
+//
+// Also records its own pid via recordSpawnedPid, same as startBackend above.
 func startWorker(home string, pgPort int) (*exec.Cmd, error) {
 	if err := os.MkdirAll(logDir(home), 0o755); err != nil {
 		return nil, fmt.Errorf("creating log directory: %w", err)
@@ -167,6 +189,10 @@ func startWorker(home string, pgPort int) (*exec.Cmd, error) {
 	if err := cmd.Start(); err != nil {
 		out.Close()
 		return nil, fmt.Errorf("starting worker: %w", err)
+	}
+	if err := recordSpawnedPid(workerPidPath(home), cmd.Process.Pid); err != nil {
+		_ = stopChildProcess(cmd)
+		return nil, fmt.Errorf("recording worker pid: %w", err)
 	}
 	return cmd, nil
 }

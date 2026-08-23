@@ -360,6 +360,13 @@ jobs:
           Copy-Item pg_extracted\pgsql\commandlinetools_3rd_party_licenses.txt pgsql\commandlinetools_3rd_party_licenses.txt
           Remove-Item -Recurse -Force pg_extracted, pg.zip
 
+          # Issue #119: staging.go's stageIfBundleChanged re-stages pgsql/ on an already-installed
+          # user's machine only when this identifier differs from what it last staged - derived
+          # directly from the download URL above (the one thing that actually determines this
+          # payload's content), so bumping the pinned version there is the only edit ever needed;
+          # nothing here duplicates that version as a second, independently-maintained constant.
+          [System.IO.Path]::GetFileNameWithoutExtension($url) | Set-Content -Path pgsql\bundle-id.txt -NoNewline -Encoding utf8NoBOM
+
       - name: Bundle the VC++ Redistributable app-local (no system-wide install needed)
         # Store-distributable apps can't run an elevated external installer at activation, so
         # the runtime DLLs are copied in app-local instead — same rationale as #76/#82's pocs.
@@ -379,7 +386,8 @@ jobs:
         shell: pwsh
         run: |
           $ProgressPreference = 'SilentlyContinue'
-          Invoke-WebRequest -Uri "https://www.python.org/ftp/python/3.14.0/python-3.14.0-embed-amd64.zip" -OutFile python-embed.zip
+          $pythonVersion = "3.14.0"
+          Invoke-WebRequest -Uri "https://www.python.org/ftp/python/$pythonVersion/python-$pythonVersion-embed-amd64.zip" -OutFile python-embed.zip
           Expand-Archive -Path python-embed.zip -DestinationPath python -Force
           Remove-Item python-embed.zip
 
@@ -395,6 +403,16 @@ jobs:
             Write-Host "::error::pip install failed with exit code $LASTEXITCODE"
             exit 1
           }
+
+          # Issue #119: staging.go's stageIfBundleChanged re-stages the interpreter+site-packages
+          # on an already-installed user's machine only when this identifier changes. Combines
+          # $pythonVersion with a hash of requirements.txt so a Dependabot dependency bump - which
+          # never changes $pythonVersion itself - is detected too, not just a Python version bump;
+          # a version-only identifier would silently miss that case. Deliberately excludes
+          # app/alembic below: staging.go's stageBackendAppSource always re-copies those on every
+          # launch regardless, so they need no identifier of their own at all.
+          $reqHash = (Get-FileHash ..\..\backend\requirements.txt -Algorithm SHA256).Hash
+          "$pythonVersion|$reqHash" | Set-Content -Path python\bundle-id.txt -NoNewline -Encoding utf8NoBOM
 
           Copy-Item -Recurse ..\..\backend\app python\app
           Copy-Item ..\..\backend\alembic.ini python\alembic.ini

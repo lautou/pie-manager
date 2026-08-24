@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.country_performance import CountryPerfConfig
 from app.models.system_setting import SystemSetting
+from app.services.code_keyed_crud import make_code_keyed_crud
 from app.services.macro_series_price_service import get_series
 from app.services.performance_math import ASOF_TOLERANCE_DAYS, TRAILING_WINDOW_DAYS, compute_trailing_performance
 
@@ -41,62 +42,45 @@ TOP_N_SETTING_KEY = "country_perf.top_n"
 
 
 # ---------------------------------------------------------------------------
-# Country CRUD — user-managed leaderboard universe
+# Country CRUD — user-managed leaderboard universe. No "last remaining row" guard, unlike
+# MacroRegion's CRUD — an emptied-out universe simply yields an empty leaderboard, a valid
+# (if degenerate) state, not a broken page.
 # ---------------------------------------------------------------------------
 
+_country_crud = make_code_keyed_crud(
+    model_cls=CountryPerfConfig,
+    code_re=_COUNTRY_CODE_RE,
+    invalid_code_message=lambda code: f"Invalid country code: {code!r} (lowercase letters, 2-3 chars)",
+    duplicate_message=lambda code: f"Country '{code}' already exists",
+    field_validators={
+        "currency": (_CURRENCY_RE, lambda v: f"Invalid currency: {v!r} (uppercase ISO 4217, 3 letters)"),
+    },
+)
+
+
 async def list_country_configs(db: AsyncSession) -> list[CountryPerfConfig]:
-    result = await db.execute(select(CountryPerfConfig).order_by(CountryPerfConfig.code))
-    return list(result.scalars().all())
+    return await _country_crud.list(db)
 
 
 async def create_country_config(
     db: AsyncSession, code: str, label: str, index_ticker: str, currency: str, index_label: str,
 ) -> CountryPerfConfig:
-    """Raises ValueError (client-facing message) on an invalid code/currency or a duplicate."""
-    if not _COUNTRY_CODE_RE.match(code):
-        raise ValueError(f"Invalid country code: {code!r} (lowercase letters, 2-3 chars)")
-    if not _CURRENCY_RE.match(currency):
-        raise ValueError(f"Invalid currency: {currency!r} (uppercase ISO 4217, 3 letters)")
-    if await db.get(CountryPerfConfig, code) is not None:
-        raise ValueError(f"Country '{code}' already exists")
-    country = CountryPerfConfig(
-        code=code, label=label, index_ticker=index_ticker, currency=currency, index_label=index_label,
+    return await _country_crud.create(
+        db, code, label=label, index_ticker=index_ticker, currency=currency, index_label=index_label,
     )
-    db.add(country)
-    await db.commit()
-    await db.refresh(country)
-    return country
 
 
 async def update_country_config(
     db: AsyncSession, code: str, label: str, index_ticker: str, currency: str, index_label: str,
 ) -> Optional[CountryPerfConfig]:
-    """`code` is immutable — it's the macro_series_prices series-key suffix. Returns None if
-    the country doesn't exist. Raises ValueError on an invalid currency."""
-    country = await db.get(CountryPerfConfig, code)
-    if country is None:
-        return None
-    if not _CURRENCY_RE.match(currency):
-        raise ValueError(f"Invalid currency: {currency!r} (uppercase ISO 4217, 3 letters)")
-    country.label = label
-    country.index_ticker = index_ticker
-    country.currency = currency
-    country.index_label = index_label
-    await db.commit()
-    await db.refresh(country)
-    return country
+    """`code` is immutable — it's the macro_series_prices series-key suffix."""
+    return await _country_crud.update(
+        db, code, label=label, index_ticker=index_ticker, currency=currency, index_label=index_label,
+    )
 
 
 async def delete_country_config(db: AsyncSession, code: str) -> Optional[bool]:
-    """Returns None if the country doesn't exist, True on success. Unlike MacroRegion's
-    CRUD, there is no "last remaining row" guard — an emptied-out universe simply yields an
-    empty leaderboard, a valid (if degenerate) state, not a broken page."""
-    country = await db.get(CountryPerfConfig, code)
-    if country is None:
-        return None
-    await db.delete(country)
-    await db.commit()
-    return True
+    return await _country_crud.delete(db, code)
 
 
 # ---------------------------------------------------------------------------

@@ -30,6 +30,7 @@ import { useSystemSetting, useSetSystemSetting, useAllBrokers, usePortfolios,
 } from '../api/queries';
 import { useSortable } from '../hooks/useSortable';
 import ConfirmModal from '../components/ConfirmModal';
+import CrudManager from '../components/CrudManager';
 import TickerLink from '../components/TickerLink';
 import EtfCompositionModal from '../components/EtfCompositionModal';
 import SettingField from '../components/SettingField';
@@ -673,15 +674,7 @@ function ProductManager() {
 
 // ── Macro indicators region manager ───────────────────────────────────────
 
-interface RegionForm {
-  code: string;
-  label: string;
-  equity_ticker: string;
-  bond_ticker: string;
-  equity_label: string;
-  bond_label: string;
-}
-const EMPTY_REGION_FORM: RegionForm = {
+const EMPTY_REGION_FORM: MacroRegionConfig = {
   code: '', label: '', equity_ticker: '', bond_ticker: '', equity_label: '', bond_label: '',
 };
 
@@ -690,544 +683,139 @@ function RegionManager() {
   const qc = useQueryClient();
   const { data: regions = [], refetch } = useMacroRegions();
 
-  const [modalMode, setModalMode] = useState<'add' | 'edit' | null>(null);
-  const [editingRegion, setEditingRegion] = useState<MacroRegionConfig | null>(null);
-  const [form, setForm] = useState<RegionForm>(EMPTY_REGION_FORM);
-  const [formError, setFormError] = useState('');
-  const [deleteError, setDeleteError] = useState<{ code: string; message: string } | null>(null);
-  const [regionDeleteTarget, setRegionDeleteTarget] = useState<MacroRegionConfig | null>(null);
-  const [isDeletingRegion, setIsDeletingRegion] = useState(false);
-
-  const openAdd = () => { setForm(EMPTY_REGION_FORM); setFormError(''); setEditingRegion(null); setModalMode('add'); };
-  const openEdit = (r: MacroRegionConfig) => {
-    setForm({
-      code: r.code, label: r.label, equity_ticker: r.equity_ticker, bond_ticker: r.bond_ticker,
-      equity_label: r.equity_label, bond_label: r.bond_label,
-    });
-    setFormError(''); setEditingRegion(r); setModalMode('edit');
-  };
-  const closeModal = () => { setModalMode(null); setEditingRegion(null); setFormError(''); };
-
-  const invalidateMacroQueries = () => {
+  const onMutated = () => {
+    refetch();
     qc.invalidateQueries({ queryKey: ['macro-regions'] });
     qc.invalidateQueries({ queryKey: ['macro-growth'] });
     qc.invalidateQueries({ queryKey: ['macro-inflation'] });
   };
 
-  const handleSave = async () => {
-    if (!form.code.trim()) { setFormError(t('indicators.validation.codeRequired')); return; }
-    if (!form.label.trim()) { setFormError(t('indicators.validation.labelRequired')); return; }
-    if (!form.equity_ticker.trim()) { setFormError(t('indicators.validation.equityTickerRequired')); return; }
-    if (!form.bond_ticker.trim()) { setFormError(t('indicators.validation.bondTickerRequired')); return; }
-    if (!form.equity_label.trim()) { setFormError(t('indicators.validation.equityLabelRequired')); return; }
-    if (!form.bond_label.trim()) { setFormError(t('indicators.validation.bondLabelRequired')); return; }
-    try {
-      if (modalMode === 'add') {
-        await createMacroRegion({
-          code: form.code.trim().toLowerCase(), label: form.label.trim(),
-          equity_ticker: form.equity_ticker.trim(), bond_ticker: form.bond_ticker.trim(),
-          equity_label: form.equity_label.trim(), bond_label: form.bond_label.trim(),
-        });
-      } else {
-        /* v8 ignore next -- @preserve */
-        if (editingRegion) {
-          await updateMacroRegion(editingRegion.code, {
-            label: form.label.trim(), equity_ticker: form.equity_ticker.trim(), bond_ticker: form.bond_ticker.trim(),
-            equity_label: form.equity_label.trim(), bond_label: form.bond_label.trim(),
-          });
-        }
-      }
-      closeModal(); refetch(); invalidateMacroQueries();
-    } catch (e: any) {
-      setFormError(e?.response?.data?.detail ?? 'Erreur lors de l\'enregistrement');
-    }
-  };
-
-  const handleDelete = (r: MacroRegionConfig) => { setDeleteError(null); setRegionDeleteTarget(r); };
-
-  const handleConfirmDeleteRegion = async () => {
-    /* v8 ignore next -- @preserve */
-    if (!regionDeleteTarget) return;
-    setIsDeletingRegion(true);
-    try {
-      await deleteMacroRegion(regionDeleteTarget.code);
-      refetch(); invalidateMacroQueries();
-      setRegionDeleteTarget(null);
-    } catch (e: any) {
-      setDeleteError({ code: regionDeleteTarget.code, message: e?.response?.data?.detail ?? 'Erreur lors de la suppression' });
-    } finally { setIsDeletingRegion(false); }
-  };
-
-  const inputSt: React.CSSProperties = { padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', fontSize: '0.9rem', width: '100%' };
-  const tdSt: React.CSSProperties = { padding: '6px 8px', fontSize: '0.9rem', borderBottom: '1px solid #eee' };
-  const thSt: React.CSSProperties = { padding: '6px 8px', textAlign: 'left', borderBottom: '1px solid #ddd', fontSize: '0.85rem', color: '#6A6E73' };
-  const btnSm = (extra?: React.CSSProperties): React.CSSProperties => ({ padding: '3px 8px', borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem', border: 'none', ...extra });
-
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-        <span style={{ fontSize: '0.85rem', color: '#6A6E73' }}>{regions.length} région(s)</span>
-        <Button variant="primary" icon={<PlusCircleIcon />} size="sm" onClick={openAdd}>{t('indicators.newRegion')}</Button>
-      </div>
-      {deleteError && <Alert variant="danger" isInline title={t('error.deleteFailed')} style={{ marginBottom: '0.75rem' }}>{deleteError.message}</Alert>}
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-          <thead>
-            <tr style={{ background: '#f5f5f5' }}>
-              <th style={thSt}>{t('indicators.regionCode')}</th>
-              <th style={thSt}>{t('indicators.regionLabel')}</th>
-              <th style={thSt}>{t('indicators.regionEquityLabel')}</th>
-              <th style={thSt}>{t('indicators.tickerEquity')}</th>
-              <th style={thSt}>{t('indicators.regionBondLabel')}</th>
-              <th style={thSt}>{t('indicators.tickerBond')}</th>
-              <th style={thSt}>{t('common.actions')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {regions.map(r => (
-              <tr key={r.code}>
-                <td style={{ ...tdSt, fontFamily: 'monospace', fontWeight: 600 }}>{r.code}</td>
-                <td style={tdSt}>{r.label}</td>
-                <td style={tdSt}>{r.equity_label}</td>
-                <td style={{ ...tdSt, fontFamily: 'monospace' }}>{r.equity_ticker}</td>
-                <td style={tdSt}>{r.bond_label}</td>
-                <td style={{ ...tdSt, fontFamily: 'monospace' }}>{r.bond_ticker}</td>
-                <td style={{ ...tdSt, whiteSpace: 'nowrap' }}>
-                  <button aria-label={`${t('common.edit')} ${r.code}`} style={btnSm({ marginRight: 4, background: '#f5f5f5', border: '1px solid #ccc' })} onClick={() => openEdit(r)}><PencilAltIcon /></button>
-                  <button aria-label={`${t('common.delete')} ${r.code}`} style={btnSm({ background: '#FAEAE8', border: '1px solid #C9190B', color: '#C9190B' })} onClick={() => handleDelete(r)}><TrashIcon /></button>
-                </td>
-              </tr>
-            ))}
-            {regions.length === 0 && <tr><td colSpan={7} style={{ ...tdSt, color: '#6A6E73', textAlign: 'center' }}>{t('indicators.noRegions')}</td></tr>}
-          </tbody>
-        </table>
-      </div>
-      <Modal variant={ModalVariant.medium}
-        isOpen={modalMode !== null} onClose={closeModal}>
-        <ModalHeader title={modalMode === 'add' ? t('indicators.newRegion') : `${t('indicators.editRegion')} — ${editingRegion?.code}`} />
-        <ModalBody>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('indicators.regionCode')} {modalMode === 'add' && <span style={{ color: '#C9190B' }}>*</span>}</label>
-            {modalMode === 'add' ? (
-              <input aria-label={t('indicators.regionCode')} value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toLowerCase() }))} placeholder="Ex: de" style={inputSt} />
-            ) : (
-              <input aria-label={t('indicators.regionCode')} value={form.code} disabled style={{ ...inputSt, background: '#f5f5f5', color: '#6A6E73' }} />
-            )}
-          </div>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('indicators.regionLabel')} <span style={{ color: '#C9190B' }}>*</span></label>
-            <input aria-label={t('indicators.regionLabel')} value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} placeholder="Ex: Allemagne" style={inputSt} />
-          </div>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('indicators.tickerEquity')} <span style={{ color: '#C9190B' }}>*</span></label>
-            <input aria-label={t('indicators.tickerEquity')} value={form.equity_ticker} onChange={e => setForm(f => ({ ...f, equity_ticker: e.target.value }))} placeholder="Ex: ^GDAXI" style={inputSt} />
-          </div>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('indicators.regionEquityLabel')} <span style={{ color: '#C9190B' }}>*</span></label>
-            <input aria-label={t('indicators.regionEquityLabel')} value={form.equity_label} onChange={e => setForm(f => ({ ...f, equity_label: e.target.value }))} placeholder="Ex: DAX 40" style={inputSt} />
-          </div>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('indicators.tickerBond')} <span style={{ color: '#C9190B' }}>*</span></label>
-            <input aria-label={t('indicators.tickerBond')} value={form.bond_ticker} onChange={e => setForm(f => ({ ...f, bond_ticker: e.target.value }))} placeholder="Ex: BUND" style={inputSt} />
-          </div>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('indicators.regionBondLabel')} <span style={{ color: '#C9190B' }}>*</span></label>
-            <input aria-label={t('indicators.regionBondLabel')} value={form.bond_label} onChange={e => setForm(f => ({ ...f, bond_label: e.target.value }))} placeholder="Ex: Bund 10 ans" style={inputSt} />
-          </div>
-          {formError && <div style={{ color: '#C9190B', fontSize: '0.85rem' }}>{formError}</div>}
-        </div>
-        </ModalBody>
-        <ModalFooter>
-          <Button key="save" variant="primary" onClick={handleSave}>{t('common.save')}</Button>
-          <Button key="cancel" variant="link" onClick={closeModal}>{t('common.cancel')}</Button>
-        </ModalFooter>
-      </Modal>
-
-      <ConfirmModal
-        isOpen={!!regionDeleteTarget}
-        title={t('common.confirmDeleteTitle')}
-        message={regionDeleteTarget
-          ? t('indicators.deleteRegionConfirm', { name: `${regionDeleteTarget.code} — ${regionDeleteTarget.label}` })
-          : ''}
-        isLoading={isDeletingRegion}
-        onConfirm={handleConfirmDeleteRegion}
-        onCancel={() => setRegionDeleteTarget(null)}
-      />
-    </div>
+    <CrudManager<MacroRegionConfig>
+      items={regions}
+      emptyForm={EMPTY_REGION_FORM}
+      codeLabel={t('indicators.regionCode')}
+      codePlaceholder="Ex: de"
+      codeValidationMessage={t('indicators.validation.codeRequired')}
+      fields={[
+        { key: 'label', label: t('indicators.regionLabel'), placeholder: 'Ex: Allemagne', validationMessage: t('indicators.validation.labelRequired') },
+        { key: 'equity_label', label: t('indicators.regionEquityLabel'), placeholder: 'Ex: DAX 40', validationMessage: t('indicators.validation.equityLabelRequired') },
+        { key: 'equity_ticker', label: t('indicators.tickerEquity'), placeholder: 'Ex: ^GDAXI', monospace: true, validationMessage: t('indicators.validation.equityTickerRequired') },
+        { key: 'bond_label', label: t('indicators.regionBondLabel'), placeholder: 'Ex: Bund 10 ans', validationMessage: t('indicators.validation.bondLabelRequired') },
+        { key: 'bond_ticker', label: t('indicators.tickerBond'), placeholder: 'Ex: BUND', monospace: true, validationMessage: t('indicators.validation.bondTickerRequired') },
+      ]}
+      modalOrder={['label', 'equity_ticker', 'equity_label', 'bond_ticker', 'bond_label']}
+      validationOrder={['label', 'equity_ticker', 'bond_ticker', 'equity_label', 'bond_label']}
+      ariaNoun=""
+      countLabel={`${regions.length} région(s)`}
+      newLabel={t('indicators.newRegion')}
+      editLabel={t('indicators.editRegion')}
+      emptyLabel={t('indicators.noRegions')}
+      deleteConfirmMessage={(item) => t('indicators.deleteRegionConfirm', { name: `${item.code} — ${item.label}` })}
+      onCreate={createMacroRegion}
+      onUpdate={updateMacroRegion}
+      onDelete={deleteMacroRegion}
+      onMutated={onMutated}
+    />
   );
 }
 
 // ── Market Country Manager (country-performance leaderboard universe) ──────
 
-interface CountryForm {
-  code: string;
-  label: string;
-  index_ticker: string;
-  currency: string;
-  index_label: string;
-}
-const EMPTY_COUNTRY_FORM: CountryForm = { code: '', label: '', index_ticker: '', currency: '', index_label: '' };
+const EMPTY_COUNTRY_FORM: CountryPerfConfig = { code: '', label: '', index_ticker: '', currency: '', index_label: '' };
 
 function MarketCountryManager() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const { data: countries = [], refetch } = useCountryPerfConfigs();
 
-  const [modalMode, setModalMode] = useState<'add' | 'edit' | null>(null);
-  const [editingCountry, setEditingCountry] = useState<CountryPerfConfig | null>(null);
-  const [form, setForm] = useState<CountryForm>(EMPTY_COUNTRY_FORM);
-  const [formError, setFormError] = useState('');
-  const [deleteError, setDeleteError] = useState<{ code: string; message: string } | null>(null);
-  const [countryDeleteTarget, setCountryDeleteTarget] = useState<CountryPerfConfig | null>(null);
-  const [isDeletingCountry, setIsDeletingCountry] = useState(false);
-
-  const openAdd = () => { setForm(EMPTY_COUNTRY_FORM); setFormError(''); setEditingCountry(null); setModalMode('add'); };
-  const openEdit = (c: CountryPerfConfig) => {
-    setForm({
-      code: c.code, label: c.label, index_ticker: c.index_ticker, currency: c.currency,
-      index_label: c.index_label,
-    });
-    setFormError(''); setEditingCountry(c); setModalMode('edit');
-  };
-  const closeModal = () => { setModalMode(null); setEditingCountry(null); setFormError(''); };
-
-  const invalidateCountryQueries = () => {
+  const onMutated = () => {
+    refetch();
     qc.invalidateQueries({ queryKey: ['country-perf-configs'] });
     qc.invalidateQueries({ queryKey: ['country-performance'] });
   };
 
-  const handleSave = async () => {
-    if (!form.code.trim()) { setFormError(t('marketPerformance.validation.codeRequired')); return; }
-    if (!form.label.trim()) { setFormError(t('marketPerformance.validation.labelRequired')); return; }
-    if (!form.index_ticker.trim()) { setFormError(t('marketPerformance.validation.indexTickerRequired')); return; }
-    if (!form.currency.trim()) { setFormError(t('marketPerformance.validation.currencyRequired')); return; }
-    if (!form.index_label.trim()) { setFormError(t('marketPerformance.validation.indexLabelRequired')); return; }
-    try {
-      if (modalMode === 'add') {
-        await createCountryPerfConfig({
-          code: form.code.trim().toLowerCase(), label: form.label.trim(),
-          index_ticker: form.index_ticker.trim(), currency: form.currency.trim().toUpperCase(),
-          index_label: form.index_label.trim(),
-        });
-      } else {
-        /* v8 ignore next -- @preserve */
-        if (editingCountry) {
-          await updateCountryPerfConfig(editingCountry.code, {
-            label: form.label.trim(), index_ticker: form.index_ticker.trim(),
-            currency: form.currency.trim().toUpperCase(), index_label: form.index_label.trim(),
-          });
-        }
-      }
-      closeModal(); refetch(); invalidateCountryQueries();
-    } catch (e: any) {
-      setFormError(e?.response?.data?.detail ?? 'Erreur lors de l\'enregistrement');
-    }
-  };
-
-  const handleDelete = (c: CountryPerfConfig) => { setDeleteError(null); setCountryDeleteTarget(c); };
-
-  const handleConfirmDeleteCountry = async () => {
-    /* v8 ignore next -- @preserve */
-    if (!countryDeleteTarget) return;
-    setIsDeletingCountry(true);
-    try {
-      await deleteCountryPerfConfig(countryDeleteTarget.code);
-      refetch(); invalidateCountryQueries();
-      setCountryDeleteTarget(null);
-    } catch (e: any) {
-      setDeleteError({ code: countryDeleteTarget.code, message: e?.response?.data?.detail ?? 'Erreur lors de la suppression' });
-    } finally { setIsDeletingCountry(false); }
-  };
-
-  const inputSt: React.CSSProperties = { padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', fontSize: '0.9rem', width: '100%' };
-  const tdSt: React.CSSProperties = { padding: '6px 8px', fontSize: '0.9rem', borderBottom: '1px solid #eee' };
-  const thSt: React.CSSProperties = { padding: '6px 8px', textAlign: 'left', borderBottom: '1px solid #ddd', fontSize: '0.85rem', color: '#6A6E73' };
-  const btnSm = (extra?: React.CSSProperties): React.CSSProperties => ({ padding: '3px 8px', borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem', border: 'none', ...extra });
-
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-        <span style={{ fontSize: '0.85rem', color: '#6A6E73' }}>{countries.length} pays</span>
-        <Button variant="primary" icon={<PlusCircleIcon />} size="sm" onClick={openAdd}>{t('marketPerformance.newCountry')}</Button>
-      </div>
-      {deleteError && <Alert variant="danger" isInline title={t('error.deleteFailed')} style={{ marginBottom: '0.75rem' }}>{deleteError.message}</Alert>}
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-          <thead>
-            <tr style={{ background: '#f5f5f5' }}>
-              <th style={thSt}>{t('marketPerformance.countryCode')}</th>
-              <th style={thSt}>{t('marketPerformance.countryLabel')}</th>
-              <th style={thSt}>{t('marketPerformance.indexLabel')}</th>
-              <th style={thSt}>{t('marketPerformance.indexTicker')}</th>
-              <th style={thSt}>{t('marketPerformance.currency')}</th>
-              <th style={thSt}>{t('common.actions')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {countries.map(c => (
-              <tr key={c.code}>
-                <td style={{ ...tdSt, fontFamily: 'monospace', fontWeight: 600 }}>{c.code}</td>
-                <td style={tdSt}>{c.label}</td>
-                <td style={tdSt}>{c.index_label}</td>
-                <td style={{ ...tdSt, fontFamily: 'monospace' }}>{c.index_ticker}</td>
-                <td style={{ ...tdSt, fontFamily: 'monospace' }}>{c.currency}</td>
-                <td style={{ ...tdSt, whiteSpace: 'nowrap' }}>
-                  {/* "pays" distinguishes these from RegionManager's "Modifier fr"/"Supprimer fr" —
-                      both managers can have a row with the same code (e.g. "fr"), which made
-                      their aria-labels collide on the same page until this was caught in a real
-                      browser check (unit tests used non-overlapping fixture codes, hiding it). */}
-                  <button aria-label={`${t('common.edit')} pays ${c.code}`} style={btnSm({ marginRight: 4, background: '#f5f5f5', border: '1px solid #ccc' })} onClick={() => openEdit(c)}><PencilAltIcon /></button>
-                  <button aria-label={`${t('common.delete')} pays ${c.code}`} style={btnSm({ background: '#FAEAE8', border: '1px solid #C9190B', color: '#C9190B' })} onClick={() => handleDelete(c)}><TrashIcon /></button>
-                </td>
-              </tr>
-            ))}
-            {countries.length === 0 && <tr><td colSpan={6} style={{ ...tdSt, color: '#6A6E73', textAlign: 'center' }}>{t('marketPerformance.noCountries')}</td></tr>}
-          </tbody>
-        </table>
-      </div>
-      <Modal variant={ModalVariant.medium}
-        isOpen={modalMode !== null} onClose={closeModal}>
-        <ModalHeader title={modalMode === 'add' ? t('marketPerformance.newCountry') : `${t('marketPerformance.editCountry')} — ${editingCountry?.code}`} />
-        <ModalBody>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('marketPerformance.countryCode')} {modalMode === 'add' && <span style={{ color: '#C9190B' }}>*</span>}</label>
-            {modalMode === 'add' ? (
-              <input aria-label={t('marketPerformance.countryCode')} value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toLowerCase() }))} placeholder="Ex: de" style={inputSt} />
-            ) : (
-              <input aria-label={t('marketPerformance.countryCode')} value={form.code} disabled style={{ ...inputSt, background: '#f5f5f5', color: '#6A6E73' }} />
-            )}
-          </div>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('marketPerformance.countryLabel')} <span style={{ color: '#C9190B' }}>*</span></label>
-            <input aria-label={t('marketPerformance.countryLabel')} value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} placeholder="Ex: Allemagne" style={inputSt} />
-          </div>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('marketPerformance.indexLabel')} <span style={{ color: '#C9190B' }}>*</span></label>
-            <input aria-label={t('marketPerformance.indexLabel')} value={form.index_label} onChange={e => setForm(f => ({ ...f, index_label: e.target.value }))} placeholder="Ex: DAX 40" style={inputSt} />
-          </div>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('marketPerformance.indexTicker')} <span style={{ color: '#C9190B' }}>*</span></label>
-            <input aria-label={t('marketPerformance.indexTicker')} value={form.index_ticker} onChange={e => setForm(f => ({ ...f, index_ticker: e.target.value }))} placeholder="Ex: ^GDAXI" style={inputSt} />
-          </div>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('marketPerformance.currency')} <span style={{ color: '#C9190B' }}>*</span></label>
-            <input aria-label={t('marketPerformance.currency')} value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value.toUpperCase() }))} placeholder="Ex: EUR" style={inputSt} />
-          </div>
-          {formError && <div style={{ color: '#C9190B', fontSize: '0.85rem' }}>{formError}</div>}
-        </div>
-        </ModalBody>
-        <ModalFooter>
-          <Button key="save" variant="primary" onClick={handleSave}>{t('common.save')}</Button>
-          <Button key="cancel" variant="link" onClick={closeModal}>{t('common.cancel')}</Button>
-        </ModalFooter>
-      </Modal>
-
-      <ConfirmModal
-        isOpen={!!countryDeleteTarget}
-        title={t('common.confirmDeleteTitle')}
-        message={countryDeleteTarget
-          ? t('marketPerformance.deleteCountryConfirm', { name: `${countryDeleteTarget.code} — ${countryDeleteTarget.label}` })
-          : ''}
-        isLoading={isDeletingCountry}
-        onConfirm={handleConfirmDeleteCountry}
-        onCancel={() => setCountryDeleteTarget(null)}
-      />
-    </div>
+    <CrudManager<CountryPerfConfig>
+      items={countries}
+      emptyForm={EMPTY_COUNTRY_FORM}
+      codeLabel={t('marketPerformance.countryCode')}
+      codePlaceholder="Ex: de"
+      codeValidationMessage={t('marketPerformance.validation.codeRequired')}
+      fields={[
+        { key: 'label', label: t('marketPerformance.countryLabel'), placeholder: 'Ex: Allemagne', validationMessage: t('marketPerformance.validation.labelRequired') },
+        { key: 'index_label', label: t('marketPerformance.indexLabel'), placeholder: 'Ex: DAX 40', validationMessage: t('marketPerformance.validation.indexLabelRequired') },
+        { key: 'index_ticker', label: t('marketPerformance.indexTicker'), placeholder: 'Ex: ^GDAXI', monospace: true, validationMessage: t('marketPerformance.validation.indexTickerRequired') },
+        { key: 'currency', label: t('marketPerformance.currency'), placeholder: 'Ex: EUR', monospace: true, transform: (v) => v.toUpperCase(), validationMessage: t('marketPerformance.validation.currencyRequired') },
+      ]}
+      validationOrder={['label', 'index_ticker', 'currency', 'index_label']}
+      // "pays" distinguishes these from RegionManager's bare "Modifier fr"/"Supprimer fr" —
+      // both managers can have a row with the same code (e.g. "fr"), which made their
+      // aria-labels collide on the same page until this was caught in a real browser check
+      // (unit tests used non-overlapping fixture codes, hiding it).
+      ariaNoun="pays"
+      countLabel={`${countries.length} pays`}
+      newLabel={t('marketPerformance.newCountry')}
+      editLabel={t('marketPerformance.editCountry')}
+      emptyLabel={t('marketPerformance.noCountries')}
+      deleteConfirmMessage={(item) => t('marketPerformance.deleteCountryConfirm', { name: `${item.code} — ${item.label}` })}
+      onCreate={createCountryPerfConfig}
+      onUpdate={updateCountryPerfConfig}
+      onDelete={deleteCountryPerfConfig}
+      onMutated={onMutated}
+    />
   );
 }
 
 // ── Sector Manager (sector-performance fixed universe) ──────────────────────
 
-interface SectorForm {
-  code: string;
-  label: string;
-  index_ticker: string;
-  currency: string;
-  index_label: string;
-}
-const EMPTY_SECTOR_FORM: SectorForm = { code: '', label: '', index_ticker: '', currency: '', index_label: '' };
+const EMPTY_SECTOR_FORM: SectorPerfConfig = { code: '', label: '', index_ticker: '', currency: '', index_label: '' };
 
 function SectorManager() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const { data: sectors = [], refetch } = useSectorPerfConfigs();
 
-  const [modalMode, setModalMode] = useState<'add' | 'edit' | null>(null);
-  const [editingSector, setEditingSector] = useState<SectorPerfConfig | null>(null);
-  const [form, setForm] = useState<SectorForm>(EMPTY_SECTOR_FORM);
-  const [formError, setFormError] = useState('');
-  const [deleteError, setDeleteError] = useState<{ code: string; message: string } | null>(null);
-  const [sectorDeleteTarget, setSectorDeleteTarget] = useState<SectorPerfConfig | null>(null);
-  const [isDeletingSector, setIsDeletingSector] = useState(false);
-
-  const openAdd = () => { setForm(EMPTY_SECTOR_FORM); setFormError(''); setEditingSector(null); setModalMode('add'); };
-  const openEdit = (s: SectorPerfConfig) => {
-    setForm({
-      code: s.code, label: s.label, index_ticker: s.index_ticker, currency: s.currency,
-      index_label: s.index_label,
-    });
-    setFormError(''); setEditingSector(s); setModalMode('edit');
-  };
-  const closeModal = () => { setModalMode(null); setEditingSector(null); setFormError(''); };
-
-  const invalidateSectorQueries = () => {
+  const onMutated = () => {
+    refetch();
     qc.invalidateQueries({ queryKey: ['sector-perf-configs'] });
     qc.invalidateQueries({ queryKey: ['sector-performance'] });
   };
 
-  const handleSave = async () => {
-    if (!form.code.trim()) { setFormError(t('sectorPerformance.validation.codeRequired')); return; }
-    if (!form.label.trim()) { setFormError(t('sectorPerformance.validation.labelRequired')); return; }
-    if (!form.index_ticker.trim()) { setFormError(t('sectorPerformance.validation.indexTickerRequired')); return; }
-    if (!form.currency.trim()) { setFormError(t('sectorPerformance.validation.currencyRequired')); return; }
-    if (!form.index_label.trim()) { setFormError(t('sectorPerformance.validation.indexLabelRequired')); return; }
-    try {
-      if (modalMode === 'add') {
-        await createSectorPerfConfig({
-          code: form.code.trim().toLowerCase(), label: form.label.trim(),
-          index_ticker: form.index_ticker.trim(), currency: form.currency.trim().toUpperCase(),
-          index_label: form.index_label.trim(),
-        });
-      } else {
-        /* v8 ignore next -- @preserve */
-        if (editingSector) {
-          await updateSectorPerfConfig(editingSector.code, {
-            label: form.label.trim(), index_ticker: form.index_ticker.trim(),
-            currency: form.currency.trim().toUpperCase(), index_label: form.index_label.trim(),
-          });
-        }
-      }
-      closeModal(); refetch(); invalidateSectorQueries();
-    } catch (e: any) {
-      setFormError(e?.response?.data?.detail ?? 'Erreur lors de l\'enregistrement');
-    }
-  };
-
-  const handleDelete = (s: SectorPerfConfig) => { setDeleteError(null); setSectorDeleteTarget(s); };
-
-  const handleConfirmDeleteSector = async () => {
-    /* v8 ignore next -- @preserve */
-    if (!sectorDeleteTarget) return;
-    setIsDeletingSector(true);
-    try {
-      await deleteSectorPerfConfig(sectorDeleteTarget.code);
-      refetch(); invalidateSectorQueries();
-      setSectorDeleteTarget(null);
-    } catch (e: any) {
-      setDeleteError({ code: sectorDeleteTarget.code, message: e?.response?.data?.detail ?? 'Erreur lors de la suppression' });
-    } finally { setIsDeletingSector(false); }
-  };
-
-  const inputSt: React.CSSProperties = { padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', fontSize: '0.9rem', width: '100%' };
-  const tdSt: React.CSSProperties = { padding: '6px 8px', fontSize: '0.9rem', borderBottom: '1px solid #eee' };
-  const thSt: React.CSSProperties = { padding: '6px 8px', textAlign: 'left', borderBottom: '1px solid #ddd', fontSize: '0.85rem', color: '#6A6E73' };
-  const btnSm = (extra?: React.CSSProperties): React.CSSProperties => ({ padding: '3px 8px', borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem', border: 'none', ...extra });
-
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-        <span style={{ fontSize: '0.85rem', color: '#6A6E73' }}>{sectors.length} secteurs</span>
-        <Button variant="primary" icon={<PlusCircleIcon />} size="sm" onClick={openAdd}>{t('sectorPerformance.newSector')}</Button>
-      </div>
-      {deleteError && <Alert variant="danger" isInline title={t('error.deleteFailed')} style={{ marginBottom: '0.75rem' }}>{deleteError.message}</Alert>}
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-          <thead>
-            <tr style={{ background: '#f5f5f5' }}>
-              <th style={thSt}>{t('sectorPerformance.sectorCode')}</th>
-              <th style={thSt}>{t('sectorPerformance.sectorLabel')}</th>
-              <th style={thSt}>{t('sectorPerformance.indexLabel')}</th>
-              <th style={thSt}>{t('sectorPerformance.indexTicker')}</th>
-              <th style={thSt}>{t('sectorPerformance.currency')}</th>
-              <th style={thSt}>{t('common.actions')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sectors.map(s => (
-              <tr key={s.code}>
-                <td style={{ ...tdSt, fontFamily: 'monospace', fontWeight: 600 }}>{s.code}</td>
-                <td style={tdSt}>{s.label}</td>
-                <td style={tdSt}>{s.index_label}</td>
-                <td style={{ ...tdSt, fontFamily: 'monospace' }}>{s.index_ticker}</td>
-                <td style={{ ...tdSt, fontFamily: 'monospace' }}>{s.currency}</td>
-                <td style={{ ...tdSt, whiteSpace: 'nowrap' }}>
-                  {/* "secteur" disambiguates from RegionManager's/MarketCountryManager's own
-                      aria-labels — same collision-avoidance rule as "pays" above, applied
-                      defensively even though sector codes don't currently overlap either. */}
-                  <button aria-label={`${t('common.edit')} secteur ${s.code}`} style={btnSm({ marginRight: 4, background: '#f5f5f5', border: '1px solid #ccc' })} onClick={() => openEdit(s)}><PencilAltIcon /></button>
-                  <button aria-label={`${t('common.delete')} secteur ${s.code}`} style={btnSm({ background: '#FAEAE8', border: '1px solid #C9190B', color: '#C9190B' })} onClick={() => handleDelete(s)}><TrashIcon /></button>
-                </td>
-              </tr>
-            ))}
-            {sectors.length === 0 && <tr><td colSpan={6} style={{ ...tdSt, color: '#6A6E73', textAlign: 'center' }}>{t('sectorPerformance.noSectors')}</td></tr>}
-          </tbody>
-        </table>
-      </div>
-      <Modal variant={ModalVariant.medium}
-        isOpen={modalMode !== null} onClose={closeModal}>
-        <ModalHeader title={modalMode === 'add' ? t('sectorPerformance.newSector') : `${t('sectorPerformance.editSector')} — ${editingSector?.code}`} />
-        <ModalBody>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('sectorPerformance.sectorCode')} {modalMode === 'add' && <span style={{ color: '#C9190B' }}>*</span>}</label>
-            {modalMode === 'add' ? (
-              <input aria-label={t('sectorPerformance.sectorCode')} value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toLowerCase() }))} placeholder="Ex: metaux" style={inputSt} />
-            ) : (
-              <input aria-label={t('sectorPerformance.sectorCode')} value={form.code} disabled style={{ ...inputSt, background: '#f5f5f5', color: '#6A6E73' }} />
-            )}
-          </div>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('sectorPerformance.sectorLabel')} <span style={{ color: '#C9190B' }}>*</span></label>
-            <input aria-label={t('sectorPerformance.sectorLabel')} value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} placeholder="Ex: Métaux industriels" style={inputSt} />
-          </div>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('sectorPerformance.indexLabel')} <span style={{ color: '#C9190B' }}>*</span></label>
-            <input aria-label={t('sectorPerformance.indexLabel')} value={form.index_label} onChange={e => setForm(f => ({ ...f, index_label: e.target.value }))} placeholder="Ex: Invesco DB Base Metals Fund" style={inputSt} />
-          </div>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('sectorPerformance.indexTicker')} <span style={{ color: '#C9190B' }}>*</span></label>
-            <input aria-label={t('sectorPerformance.indexTicker')} value={form.index_ticker} onChange={e => setForm(f => ({ ...f, index_ticker: e.target.value }))} placeholder="Ex: DBB" style={inputSt} />
-          </div>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('sectorPerformance.currency')} <span style={{ color: '#C9190B' }}>*</span></label>
-            <input aria-label={t('sectorPerformance.currency')} value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value.toUpperCase() }))} placeholder="Ex: USD" style={inputSt} />
-          </div>
-          {formError && <div style={{ color: '#C9190B', fontSize: '0.85rem' }}>{formError}</div>}
-        </div>
-        </ModalBody>
-        <ModalFooter>
-          <Button key="save" variant="primary" onClick={handleSave}>{t('common.save')}</Button>
-          <Button key="cancel" variant="link" onClick={closeModal}>{t('common.cancel')}</Button>
-        </ModalFooter>
-      </Modal>
-
-      <ConfirmModal
-        isOpen={!!sectorDeleteTarget}
-        title={t('common.confirmDeleteTitle')}
-        message={sectorDeleteTarget
-          ? t('sectorPerformance.deleteSectorConfirm', { name: `${sectorDeleteTarget.code} — ${sectorDeleteTarget.label}` })
-          : ''}
-        isLoading={isDeletingSector}
-        onConfirm={handleConfirmDeleteSector}
-        onCancel={() => setSectorDeleteTarget(null)}
-      />
-    </div>
+    <CrudManager<SectorPerfConfig>
+      items={sectors}
+      emptyForm={EMPTY_SECTOR_FORM}
+      codeLabel={t('sectorPerformance.sectorCode')}
+      codePlaceholder="Ex: metaux"
+      codeValidationMessage={t('sectorPerformance.validation.codeRequired')}
+      fields={[
+        { key: 'label', label: t('sectorPerformance.sectorLabel'), placeholder: 'Ex: Métaux industriels', validationMessage: t('sectorPerformance.validation.labelRequired') },
+        { key: 'index_label', label: t('sectorPerformance.indexLabel'), placeholder: 'Ex: Invesco DB Base Metals Fund', validationMessage: t('sectorPerformance.validation.indexLabelRequired') },
+        { key: 'index_ticker', label: t('sectorPerformance.indexTicker'), placeholder: 'Ex: DBB', monospace: true, validationMessage: t('sectorPerformance.validation.indexTickerRequired') },
+        { key: 'currency', label: t('sectorPerformance.currency'), placeholder: 'Ex: USD', monospace: true, transform: (v) => v.toUpperCase(), validationMessage: t('sectorPerformance.validation.currencyRequired') },
+      ]}
+      validationOrder={['label', 'index_ticker', 'currency', 'index_label']}
+      // "secteur" disambiguates from RegionManager's/MarketCountryManager's own aria-labels —
+      // same collision-avoidance rule as "pays" above, applied defensively even though sector
+      // codes don't currently overlap either.
+      ariaNoun="secteur"
+      countLabel={`${sectors.length} secteurs`}
+      newLabel={t('sectorPerformance.newSector')}
+      editLabel={t('sectorPerformance.editSector')}
+      emptyLabel={t('sectorPerformance.noSectors')}
+      deleteConfirmMessage={(item) => t('sectorPerformance.deleteSectorConfirm', { name: `${item.code} — ${item.label}` })}
+      onCreate={createSectorPerfConfig}
+      onUpdate={updateSectorPerfConfig}
+      onDelete={deleteSectorPerfConfig}
+      onMutated={onMutated}
+    />
   );
 }
 
 // ── Equity Premium Manager (equity risk premium universe) ───────────────────
 
-interface EquityPremiumForm {
-  code: string;
-  label: string;
-  equity_ticker: string;
-  bond_ticker: string;
-  equity_label: string;
-  bond_label: string;
-}
-const EMPTY_EQUITY_PREMIUM_FORM: EquityPremiumForm = {
+const EMPTY_EQUITY_PREMIUM_FORM: EquityPremiumConfig = {
   code: '', label: '', equity_ticker: '', bond_ticker: '', equity_label: '', bond_label: '',
 };
 
@@ -1236,173 +824,41 @@ function EquityPremiumManager() {
   const qc = useQueryClient();
   const { data: countries = [], refetch } = useEquityPremiumConfigs();
 
-  const [modalMode, setModalMode] = useState<'add' | 'edit' | null>(null);
-  const [editingCountry, setEditingCountry] = useState<EquityPremiumConfig | null>(null);
-  const [form, setForm] = useState<EquityPremiumForm>(EMPTY_EQUITY_PREMIUM_FORM);
-  const [formError, setFormError] = useState('');
-  const [deleteError, setDeleteError] = useState<{ code: string; message: string } | null>(null);
-  const [countryDeleteTarget, setCountryDeleteTarget] = useState<EquityPremiumConfig | null>(null);
-  const [isDeletingCountry, setIsDeletingCountry] = useState(false);
-
-  const openAdd = () => { setForm(EMPTY_EQUITY_PREMIUM_FORM); setFormError(''); setEditingCountry(null); setModalMode('add'); };
-  const openEdit = (c: EquityPremiumConfig) => {
-    setForm({
-      code: c.code, label: c.label, equity_ticker: c.equity_ticker, bond_ticker: c.bond_ticker,
-      equity_label: c.equity_label, bond_label: c.bond_label,
-    });
-    setFormError(''); setEditingCountry(c); setModalMode('edit');
-  };
-  const closeModal = () => { setModalMode(null); setEditingCountry(null); setFormError(''); };
-
-  const invalidateEquityPremiumQueries = () => {
+  const onMutated = () => {
+    refetch();
     qc.invalidateQueries({ queryKey: ['equity-premium-configs'] });
     qc.invalidateQueries({ queryKey: ['equity-premium'] });
   };
 
-  const handleSave = async () => {
-    if (!form.code.trim()) { setFormError(t('equityPremium.validation.codeRequired')); return; }
-    if (!form.label.trim()) { setFormError(t('equityPremium.validation.labelRequired')); return; }
-    if (!form.equity_ticker.trim()) { setFormError(t('equityPremium.validation.equityTickerRequired')); return; }
-    if (!form.bond_ticker.trim()) { setFormError(t('equityPremium.validation.bondTickerRequired')); return; }
-    if (!form.equity_label.trim()) { setFormError(t('equityPremium.validation.equityLabelRequired')); return; }
-    if (!form.bond_label.trim()) { setFormError(t('equityPremium.validation.bondLabelRequired')); return; }
-    try {
-      if (modalMode === 'add') {
-        await createEquityPremiumConfig({
-          code: form.code.trim().toLowerCase(), label: form.label.trim(),
-          equity_ticker: form.equity_ticker.trim(), bond_ticker: form.bond_ticker.trim(),
-          equity_label: form.equity_label.trim(), bond_label: form.bond_label.trim(),
-        });
-      } else {
-        /* v8 ignore next -- @preserve */
-        if (editingCountry) {
-          await updateEquityPremiumConfig(editingCountry.code, {
-            label: form.label.trim(), equity_ticker: form.equity_ticker.trim(), bond_ticker: form.bond_ticker.trim(),
-            equity_label: form.equity_label.trim(), bond_label: form.bond_label.trim(),
-          });
-        }
-      }
-      closeModal(); refetch(); invalidateEquityPremiumQueries();
-    } catch (e: any) {
-      setFormError(e?.response?.data?.detail ?? 'Erreur lors de l\'enregistrement');
-    }
-  };
-
-  const handleDelete = (c: EquityPremiumConfig) => { setDeleteError(null); setCountryDeleteTarget(c); };
-
-  const handleConfirmDeleteCountry = async () => {
-    /* v8 ignore next -- @preserve */
-    if (!countryDeleteTarget) return;
-    setIsDeletingCountry(true);
-    try {
-      await deleteEquityPremiumConfig(countryDeleteTarget.code);
-      refetch(); invalidateEquityPremiumQueries();
-      setCountryDeleteTarget(null);
-    } catch (e: any) {
-      setDeleteError({ code: countryDeleteTarget.code, message: e?.response?.data?.detail ?? 'Erreur lors de la suppression' });
-    } finally { setIsDeletingCountry(false); }
-  };
-
-  const inputSt: React.CSSProperties = { padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', fontSize: '0.9rem', width: '100%' };
-  const tdSt: React.CSSProperties = { padding: '6px 8px', fontSize: '0.9rem', borderBottom: '1px solid #eee' };
-  const thSt: React.CSSProperties = { padding: '6px 8px', textAlign: 'left', borderBottom: '1px solid #ddd', fontSize: '0.85rem', color: '#6A6E73' };
-  const btnSm = (extra?: React.CSSProperties): React.CSSProperties => ({ padding: '3px 8px', borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem', border: 'none', ...extra });
-
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-        <span style={{ fontSize: '0.85rem', color: '#6A6E73' }}>{countries.length} pays</span>
-        <Button variant="primary" icon={<PlusCircleIcon />} size="sm" onClick={openAdd}>{t('equityPremium.newCountry')}</Button>
-      </div>
-      {deleteError && <Alert variant="danger" isInline title={t('error.deleteFailed')} style={{ marginBottom: '0.75rem' }}>{deleteError.message}</Alert>}
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-          <thead>
-            <tr style={{ background: '#f5f5f5' }}>
-              <th style={thSt}>{t('equityPremium.countryCode')}</th>
-              <th style={thSt}>{t('equityPremium.countryLabel')}</th>
-              <th style={thSt}>{t('equityPremium.equityLabel')}</th>
-              <th style={thSt}>{t('equityPremium.equityTicker')}</th>
-              <th style={thSt}>{t('equityPremium.bondLabel')}</th>
-              <th style={thSt}>{t('equityPremium.bondTicker')}</th>
-              <th style={thSt}>{t('common.actions')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {countries.map(c => (
-              <tr key={c.code}>
-                <td style={{ ...tdSt, fontFamily: 'monospace', fontWeight: 600 }}>{c.code}</td>
-                <td style={tdSt}>{c.label}</td>
-                <td style={tdSt}>{c.equity_label}</td>
-                <td style={{ ...tdSt, fontFamily: 'monospace' }}>{c.equity_ticker}</td>
-                <td style={tdSt}>{c.bond_label}</td>
-                <td style={{ ...tdSt, fontFamily: 'monospace' }}>{c.bond_ticker}</td>
-                <td style={{ ...tdSt, whiteSpace: 'nowrap' }}>
-                  {/* "prime" disambiguates from RegionManager's/MarketCountryManager's own
-                      aria-labels — same collision-avoidance rule as "pays"/"secteur" above:
-                      these country codes (us/de/fr/...) literally overlap both managers'. */}
-                  <button aria-label={`${t('common.edit')} prime ${c.code}`} style={btnSm({ marginRight: 4, background: '#f5f5f5', border: '1px solid #ccc' })} onClick={() => openEdit(c)}><PencilAltIcon /></button>
-                  <button aria-label={`${t('common.delete')} prime ${c.code}`} style={btnSm({ background: '#FAEAE8', border: '1px solid #C9190B', color: '#C9190B' })} onClick={() => handleDelete(c)}><TrashIcon /></button>
-                </td>
-              </tr>
-            ))}
-            {countries.length === 0 && <tr><td colSpan={7} style={{ ...tdSt, color: '#6A6E73', textAlign: 'center' }}>{t('equityPremium.noCountries')}</td></tr>}
-          </tbody>
-        </table>
-      </div>
-      <Modal variant={ModalVariant.medium}
-        isOpen={modalMode !== null} onClose={closeModal}>
-        <ModalHeader title={modalMode === 'add' ? t('equityPremium.newCountry') : `${t('equityPremium.editCountry')} — ${editingCountry?.code}`} />
-        <ModalBody>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('equityPremium.countryCode')} {modalMode === 'add' && <span style={{ color: '#C9190B' }}>*</span>}</label>
-            {modalMode === 'add' ? (
-              <input aria-label={t('equityPremium.countryCode')} value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toLowerCase() }))} placeholder="Ex: de" style={inputSt} />
-            ) : (
-              <input aria-label={t('equityPremium.countryCode')} value={form.code} disabled style={{ ...inputSt, background: '#f5f5f5', color: '#6A6E73' }} />
-            )}
-          </div>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('equityPremium.countryLabel')} <span style={{ color: '#C9190B' }}>*</span></label>
-            <input aria-label={t('equityPremium.countryLabel')} value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} placeholder="Ex: Allemagne" style={inputSt} />
-          </div>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('equityPremium.equityLabel')} <span style={{ color: '#C9190B' }}>*</span></label>
-            <input aria-label={t('equityPremium.equityLabel')} value={form.equity_label} onChange={e => setForm(f => ({ ...f, equity_label: e.target.value }))} placeholder="Ex: Actions allemandes (EWG)" style={inputSt} />
-          </div>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('equityPremium.equityTicker')} <span style={{ color: '#C9190B' }}>*</span></label>
-            <input aria-label={t('equityPremium.equityTicker')} value={form.equity_ticker} onChange={e => setForm(f => ({ ...f, equity_ticker: e.target.value }))} placeholder="Ex: EWG" style={inputSt} />
-          </div>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('equityPremium.bondLabel')} <span style={{ color: '#C9190B' }}>*</span></label>
-            <input aria-label={t('equityPremium.bondLabel')} value={form.bond_label} onChange={e => setForm(f => ({ ...f, bond_label: e.target.value }))} placeholder="Ex: Obligations d'État allemandes 10.5+ ans" style={inputSt} />
-          </div>
-          <div>
-            <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: 4 }}>{t('equityPremium.bondTicker')} <span style={{ color: '#C9190B' }}>*</span></label>
-            <input aria-label={t('equityPremium.bondTicker')} value={form.bond_ticker} onChange={e => setForm(f => ({ ...f, bond_ticker: e.target.value }))} placeholder="Ex: EXX6.DE" style={inputSt} />
-          </div>
-          {formError && <div style={{ color: '#C9190B', fontSize: '0.85rem' }}>{formError}</div>}
-        </div>
-        </ModalBody>
-        <ModalFooter>
-          <Button key="save" variant="primary" onClick={handleSave}>{t('common.save')}</Button>
-          <Button key="cancel" variant="link" onClick={closeModal}>{t('common.cancel')}</Button>
-        </ModalFooter>
-      </Modal>
-
-      <ConfirmModal
-        isOpen={!!countryDeleteTarget}
-        title={t('common.confirmDeleteTitle')}
-        message={countryDeleteTarget
-          ? t('equityPremium.deleteCountryConfirm', { name: `${countryDeleteTarget.code} — ${countryDeleteTarget.label}` })
-          : ''}
-        isLoading={isDeletingCountry}
-        onConfirm={handleConfirmDeleteCountry}
-        onCancel={() => setCountryDeleteTarget(null)}
-      />
-    </div>
+    <CrudManager<EquityPremiumConfig>
+      items={countries}
+      emptyForm={EMPTY_EQUITY_PREMIUM_FORM}
+      codeLabel={t('equityPremium.countryCode')}
+      codePlaceholder="Ex: de"
+      codeValidationMessage={t('equityPremium.validation.codeRequired')}
+      fields={[
+        { key: 'label', label: t('equityPremium.countryLabel'), placeholder: 'Ex: Allemagne', validationMessage: t('equityPremium.validation.labelRequired') },
+        { key: 'equity_label', label: t('equityPremium.equityLabel'), placeholder: 'Ex: Actions allemandes (EWG)', validationMessage: t('equityPremium.validation.equityLabelRequired') },
+        { key: 'equity_ticker', label: t('equityPremium.equityTicker'), placeholder: 'Ex: EWG', monospace: true, validationMessage: t('equityPremium.validation.equityTickerRequired') },
+        { key: 'bond_label', label: t('equityPremium.bondLabel'), placeholder: "Ex: Obligations d'État allemandes 10.5+ ans", validationMessage: t('equityPremium.validation.bondLabelRequired') },
+        { key: 'bond_ticker', label: t('equityPremium.bondTicker'), placeholder: 'Ex: EXX6.DE', monospace: true, validationMessage: t('equityPremium.validation.bondTickerRequired') },
+      ]}
+      validationOrder={['label', 'equity_ticker', 'bond_ticker', 'equity_label', 'bond_label']}
+      // "prime" disambiguates from RegionManager's/MarketCountryManager's own aria-labels —
+      // same collision-avoidance rule as "pays"/"secteur" above: these country codes
+      // (us/de/fr/...) literally overlap both managers'.
+      ariaNoun="prime"
+      countLabel={`${countries.length} pays`}
+      newLabel={t('equityPremium.newCountry')}
+      editLabel={t('equityPremium.editCountry')}
+      emptyLabel={t('equityPremium.noCountries')}
+      deleteConfirmMessage={(item) => t('equityPremium.deleteCountryConfirm', { name: `${item.code} — ${item.label}` })}
+      onCreate={createEquityPremiumConfig}
+      onUpdate={updateEquityPremiumConfig}
+      onDelete={deleteEquityPremiumConfig}
+      onMutated={onMutated}
+    />
   );
 }
 

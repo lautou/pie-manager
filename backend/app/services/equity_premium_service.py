@@ -22,10 +22,10 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Optional
 
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.equity_premium import EquityPremiumConfig
+from app.services.code_keyed_crud import make_code_keyed_crud
 from app.services.macro_series_price_service import get_series
 from app.services.performance_math import ASOF_TOLERANCE_DAYS, asof
 
@@ -38,61 +38,44 @@ _PREMIUM_CODE_RE = re.compile(r"^[a-z]{2,3}$")
 # Country CRUD — user-managed equity-risk-premium universe
 # ---------------------------------------------------------------------------
 
+_premium_crud = make_code_keyed_crud(
+    model_cls=EquityPremiumConfig,
+    code_re=_PREMIUM_CODE_RE,
+    invalid_code_message=lambda code: f"Invalid country code: {code!r} (lowercase letters, 2-3 chars)",
+    duplicate_message=lambda code: f"Country '{code}' already exists",
+    last_row_guard_message="Cannot delete the last remaining equity premium country",
+)
+
+
 async def list_premium_configs(db: AsyncSession) -> list[EquityPremiumConfig]:
-    result = await db.execute(select(EquityPremiumConfig).order_by(EquityPremiumConfig.code))
-    return list(result.scalars().all())
+    return await _premium_crud.list(db)
 
 
 async def create_premium_config(
     db: AsyncSession, code: str, label: str, equity_ticker: str, bond_ticker: str,
     equity_label: str, bond_label: str,
 ) -> EquityPremiumConfig:
-    """Raises ValueError (client-facing message) on an invalid code or a duplicate."""
-    if not _PREMIUM_CODE_RE.match(code):
-        raise ValueError(f"Invalid country code: {code!r} (lowercase letters, 2-3 chars)")
-    if await db.get(EquityPremiumConfig, code) is not None:
-        raise ValueError(f"Country '{code}' already exists")
-    config = EquityPremiumConfig(
-        code=code, label=label, equity_ticker=equity_ticker, bond_ticker=bond_ticker,
+    return await _premium_crud.create(
+        db, code, label=label, equity_ticker=equity_ticker, bond_ticker=bond_ticker,
         equity_label=equity_label, bond_label=bond_label,
     )
-    db.add(config)
-    await db.commit()
-    await db.refresh(config)
-    return config
 
 
 async def update_premium_config(
     db: AsyncSession, code: str, label: str, equity_ticker: str, bond_ticker: str,
     equity_label: str, bond_label: str,
 ) -> Optional[EquityPremiumConfig]:
-    """`code` is immutable — it's the macro_series_prices series-key suffix. Returns None if
-    the country doesn't exist."""
-    config = await db.get(EquityPremiumConfig, code)
-    if config is None:
-        return None
-    config.label = label
-    config.equity_ticker = equity_ticker
-    config.bond_ticker = bond_ticker
-    config.equity_label = equity_label
-    config.bond_label = bond_label
-    await db.commit()
-    await db.refresh(config)
-    return config
+    """`code` is immutable — it's the macro_series_prices series-key suffix."""
+    return await _premium_crud.update(
+        db, code, label=label, equity_ticker=equity_ticker, bond_ticker=bond_ticker,
+        equity_label=equity_label, bond_label=bond_label,
+    )
 
 
 async def delete_premium_config(db: AsyncSession, code: str) -> Optional[bool]:
-    """Returns None if the country doesn't exist, True on success. Raises ValueError if it's
-    the last remaining country — the tab must always have at least one to show."""
-    config = await db.get(EquityPremiumConfig, code)
-    if config is None:
-        return None
-    total = await db.scalar(select(func.count()).select_from(EquityPremiumConfig))
-    if total is not None and total <= 1:
-        raise ValueError("Cannot delete the last remaining equity premium country")
-    await db.delete(config)
-    await db.commit()
-    return True
+    """Raises ValueError if it's the last remaining country — the tab must always have at
+    least one to show."""
+    return await _premium_crud.delete(db, code)
 
 
 # ---------------------------------------------------------------------------

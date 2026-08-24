@@ -14,11 +14,12 @@ import re
 from datetime import date, timedelta
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.macro_indicator import MacroRegion
 from app.models.system_setting import SystemSetting
+from app.services.code_keyed_crud import make_code_keyed_crud
 from app.services.macro_series_price_service import get_series
 
 # Regions (US/France/Monde/...) are user-managed rows in `macro_regions` — see the CRUD
@@ -62,61 +63,44 @@ async def get_macro_settings(db: AsyncSession) -> dict[str, str | float]:
 # Region CRUD — user-managed growth/inflation regions
 # ---------------------------------------------------------------------------
 
+_region_crud = make_code_keyed_crud(
+    model_cls=MacroRegion,
+    code_re=_REGION_CODE_RE,
+    invalid_code_message=lambda code: f"Invalid region code: {code!r} (lowercase letters/digits/underscore, 2-20 chars)",
+    duplicate_message=lambda code: f"Region '{code}' already exists",
+    last_row_guard_message="Cannot delete the last remaining region",
+)
+
+
 async def list_regions(db: AsyncSession) -> list[MacroRegion]:
-    result = await db.execute(select(MacroRegion).order_by(MacroRegion.code))
-    return list(result.scalars().all())
+    return await _region_crud.list(db)
 
 
 async def create_region(
     db: AsyncSession, code: str, label: str, equity_ticker: str, bond_ticker: str,
     equity_label: str, bond_label: str,
 ) -> MacroRegion:
-    """Raises ValueError (client-facing message) on an invalid code or a duplicate."""
-    if not _REGION_CODE_RE.match(code):
-        raise ValueError(f"Invalid region code: {code!r} (lowercase letters/digits/underscore, 2-20 chars)")
-    if await db.get(MacroRegion, code) is not None:
-        raise ValueError(f"Region '{code}' already exists")
-    region = MacroRegion(
-        code=code, label=label, equity_ticker=equity_ticker, bond_ticker=bond_ticker,
+    return await _region_crud.create(
+        db, code, label=label, equity_ticker=equity_ticker, bond_ticker=bond_ticker,
         equity_label=equity_label, bond_label=bond_label,
     )
-    db.add(region)
-    await db.commit()
-    await db.refresh(region)
-    return region
 
 
 async def update_region(
     db: AsyncSession, code: str, label: str, equity_ticker: str, bond_ticker: str,
     equity_label: str, bond_label: str,
 ) -> Optional[MacroRegion]:
-    """`code` is immutable — it's the macro_series_prices series-key prefix. Returns None if
-    the region doesn't exist."""
-    region = await db.get(MacroRegion, code)
-    if region is None:
-        return None
-    region.label = label
-    region.equity_ticker = equity_ticker
-    region.bond_ticker = bond_ticker
-    region.equity_label = equity_label
-    region.bond_label = bond_label
-    await db.commit()
-    await db.refresh(region)
-    return region
+    """`code` is immutable — it's the macro_series_prices series-key prefix."""
+    return await _region_crud.update(
+        db, code, label=label, equity_ticker=equity_ticker, bond_ticker=bond_ticker,
+        equity_label=equity_label, bond_label=bond_label,
+    )
 
 
 async def delete_region(db: AsyncSession, code: str) -> Optional[bool]:
-    """Returns None if the region doesn't exist, True on success. Raises ValueError if it's
-    the last remaining region — the page must always have at least one to show."""
-    region = await db.get(MacroRegion, code)
-    if region is None:
-        return None
-    total = await db.scalar(select(func.count()).select_from(MacroRegion))
-    if total is not None and total <= 1:
-        raise ValueError("Cannot delete the last remaining region")
-    await db.delete(region)
-    await db.commit()
-    return True
+    """Raises ValueError if it's the last remaining region — the page must always have at
+    least one to show."""
+    return await _region_crud.delete(db, code)
 
 
 def _rolling_average(dates: list[date], values: list[float], window_years: float) -> list[float]:

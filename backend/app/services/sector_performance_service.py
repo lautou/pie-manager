@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.sector_performance import SectorPerfConfig
+from app.services.code_keyed_crud import make_code_keyed_crud
 from app.services.macro_series_price_service import get_series
 from app.services.performance_math import ASOF_TOLERANCE_DAYS, TRAILING_WINDOW_DAYS, compute_trailing_performance
 
@@ -30,61 +31,44 @@ _CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
 
 
 # ---------------------------------------------------------------------------
-# Sector CRUD — user-managed universe
+# Sector CRUD — user-managed universe. No "last remaining row" guard, same as
+# CountryPerfConfig — an emptied-out universe simply yields an empty chart.
 # ---------------------------------------------------------------------------
 
+_sector_crud = make_code_keyed_crud(
+    model_cls=SectorPerfConfig,
+    code_re=_SECTOR_CODE_RE,
+    invalid_code_message=lambda code: f"Invalid sector code: {code!r} (lowercase letters, 2-20 chars)",
+    duplicate_message=lambda code: f"Sector '{code}' already exists",
+    field_validators={
+        "currency": (_CURRENCY_RE, lambda v: f"Invalid currency: {v!r} (uppercase ISO 4217, 3 letters)"),
+    },
+)
+
+
 async def list_sector_configs(db: AsyncSession) -> list[SectorPerfConfig]:
-    result = await db.execute(select(SectorPerfConfig).order_by(SectorPerfConfig.code))
-    return list(result.scalars().all())
+    return await _sector_crud.list(db)
 
 
 async def create_sector_config(
     db: AsyncSession, code: str, label: str, index_ticker: str, currency: str, index_label: str,
 ) -> SectorPerfConfig:
-    """Raises ValueError (client-facing message) on an invalid code/currency or a duplicate."""
-    if not _SECTOR_CODE_RE.match(code):
-        raise ValueError(f"Invalid sector code: {code!r} (lowercase letters, 2-20 chars)")
-    if not _CURRENCY_RE.match(currency):
-        raise ValueError(f"Invalid currency: {currency!r} (uppercase ISO 4217, 3 letters)")
-    if await db.get(SectorPerfConfig, code) is not None:
-        raise ValueError(f"Sector '{code}' already exists")
-    sector = SectorPerfConfig(
-        code=code, label=label, index_ticker=index_ticker, currency=currency, index_label=index_label,
+    return await _sector_crud.create(
+        db, code, label=label, index_ticker=index_ticker, currency=currency, index_label=index_label,
     )
-    db.add(sector)
-    await db.commit()
-    await db.refresh(sector)
-    return sector
 
 
 async def update_sector_config(
     db: AsyncSession, code: str, label: str, index_ticker: str, currency: str, index_label: str,
 ) -> Optional[SectorPerfConfig]:
-    """`code` is immutable — it's the macro_series_prices series-key suffix. Returns None if
-    the sector doesn't exist. Raises ValueError on an invalid currency."""
-    sector = await db.get(SectorPerfConfig, code)
-    if sector is None:
-        return None
-    if not _CURRENCY_RE.match(currency):
-        raise ValueError(f"Invalid currency: {currency!r} (uppercase ISO 4217, 3 letters)")
-    sector.label = label
-    sector.index_ticker = index_ticker
-    sector.currency = currency
-    sector.index_label = index_label
-    await db.commit()
-    await db.refresh(sector)
-    return sector
+    """`code` is immutable — it's the macro_series_prices series-key suffix."""
+    return await _sector_crud.update(
+        db, code, label=label, index_ticker=index_ticker, currency=currency, index_label=index_label,
+    )
 
 
 async def delete_sector_config(db: AsyncSession, code: str) -> Optional[bool]:
-    """Returns None if the sector doesn't exist, True on success. No 'last remaining row'
-    guard, same as CountryPerfConfig — an emptied-out universe simply yields an empty chart."""
-    sector = await db.get(SectorPerfConfig, code)
-    if sector is None:
-        return None
-    await db.delete(sector)
-    await db.commit()
-    return True
+    return await _sector_crud.delete(db, code)
 
 
 # ---------------------------------------------------------------------------

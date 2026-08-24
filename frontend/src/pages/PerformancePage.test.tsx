@@ -48,7 +48,7 @@ vi.mock('@patternfly/react-core', () => ({
 vi.mock('@patternfly/react-table', () => pfTableStubs);
 
 // Mock PatternFly charts
-vi.mock('@patternfly/react-charts', () => ({
+vi.mock('@patternfly/react-charts/victory', () => ({
   Chart: ({ children, containerComponent }: any) => (
     <div data-testid="chart">
       {/* Render containerComponent so VictoryZoomContainer mock is called and callbacks captured */}

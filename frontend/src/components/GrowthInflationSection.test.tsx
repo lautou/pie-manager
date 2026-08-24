@@ -14,7 +14,7 @@ import { pfCoreStubs } from '../../tests/utils/patternfly-mocks';
 
 vi.mock('@patternfly/react-core', () => ({ ...pfCoreStubs }));
 
-vi.mock('@patternfly/react-charts', () => ({
+vi.mock('@patternfly/react-charts/victory', () => ({
   Chart: ({ children }: any) => <div data-testid="chart">{children}</div>,
   ChartLine: () => <div data-testid="chart-line" />,
   ChartAxis: () => null,

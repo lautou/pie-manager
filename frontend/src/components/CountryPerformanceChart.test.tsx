@@ -17,7 +17,7 @@ let capturedBarData: any[] | null = null;
 let capturedContainerComponent: any = null;
 let capturedDependentAxisStyle: any = null;
 
-vi.mock('@patternfly/react-charts', () => ({
+vi.mock('@patternfly/react-charts/victory', () => ({
   Chart: ({ children, containerComponent }: any) => {
     capturedContainerComponent = containerComponent;
     return <div data-testid="chart">{children}</div>;

@@ -16,7 +16,7 @@ vi.mock('@patternfly/react-core', () => ({ ...pfCoreStubs }));
 
 let capturedDomain: any;
 let capturedWidth: any;
-vi.mock('@patternfly/react-charts', () => ({
+vi.mock('@patternfly/react-charts/victory', () => ({
   Chart: ({ children, containerComponent, legendComponent, domain, legendData, width }: any) => {
     capturedDomain = domain;
     capturedWidth = width;

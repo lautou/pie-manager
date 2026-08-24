@@ -36,7 +36,7 @@ vi.mock('@patternfly/react-core', () => ({
 vi.mock('@patternfly/react-table', () => pfTableStubs);
 
 // Mock PatternFly charts — expose event handlers for testing
-vi.mock('@patternfly/react-charts', () => ({
+vi.mock('@patternfly/react-charts/victory', () => ({
   ChartDonut: ({ events, data, labels }: any) => {
     // Call the labels callback for each datum to cover line 219
     const labelStrings: string[] = [];

@@ -5,7 +5,7 @@ import { Tabs, Tab, TabTitleText } from '@patternfly/react-core';
 import {
 	ChartDonut,
 	ChartThemeColor
-} from '@patternfly/react-charts';
+} from '@patternfly/react-charts/victory';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import { usePoolAllocation } from '../api/queries';
 import { formatEUR, formatPct1 } from '../utils/format';

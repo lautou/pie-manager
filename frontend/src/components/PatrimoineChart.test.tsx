@@ -19,7 +19,7 @@ vi.mock('@patternfly/react-core', () => ({
   ...pfCoreStubs,
 }));
 
-vi.mock('@patternfly/react-charts', () => ({
+vi.mock('@patternfly/react-charts/victory', () => ({
   Chart: ({ children, containerComponent }: any) => (
     <div data-testid="chart">
       {containerComponent ?? null}

@@ -357,7 +357,10 @@ export interface PerformanceEntry {
   index_label: string;
 }
 
-export interface CountryPerfConfig {
+// Shared shape for both the country and sector performance CRUD universes — field-for-field
+// identical, kept as two distinct type names (rather than one shared name used directly)
+// since call sites reference "country" vs "sector" for readability.
+export interface IndexPerfConfig {
   code: string;
   label: string;
   index_ticker: string;
@@ -365,16 +368,10 @@ export interface CountryPerfConfig {
   index_label: string;
 }
 
+export type CountryPerfConfig = IndexPerfConfig;
 export type CountryPerformanceEntry = PerformanceEntry;
 
-export interface SectorPerfConfig {
-  code: string;
-  label: string;
-  index_ticker: string;
-  currency: string;
-  index_label: string;
-}
-
+export type SectorPerfConfig = IndexPerfConfig;
 export type SectorPerformanceEntry = PerformanceEntry;
 
 export interface EquityPremiumConfig {

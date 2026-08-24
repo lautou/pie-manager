@@ -13,7 +13,7 @@ import {
 	ChartThemeColor,
 	ChartTooltip,
 	ChartVoronoiContainer
-} from '@patternfly/react-charts';
+} from '@patternfly/react-charts/victory';
 import type { CountryPerformanceEntry } from '../types';
 
 const BAR_COLOR = '#0066CC';

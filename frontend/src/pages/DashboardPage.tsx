@@ -28,7 +28,7 @@ import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import {
 	ChartDonut,
 	ChartThemeColor
-} from '@patternfly/react-charts';
+} from '@patternfly/react-charts/victory';
 import { Treemap, ResponsiveContainer } from 'recharts';
 import { formatEUR, formatPct1, formatUnitPrice, localDateStr } from '../utils/format';
 import { useCapitalGains, useDashboard, useHoldings, useProducts, usePrices } from '../api/queries';

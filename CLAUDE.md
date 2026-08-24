@@ -207,7 +207,7 @@ create-transaction code path as manual UI entry.
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React 18 + TypeScript + PatternFly 6 + TanStack Query v5 + Vite |
+| Frontend | React 19 + TypeScript + PatternFly 6 + TanStack Query v5 + Vite |
 | Backend | Python FastAPI + SQLAlchemy 2.0 async + PgQueuer |
 | Database | PostgreSQL 18 |
 | Deployment | **Podman** Compose (never Docker) |
@@ -227,6 +227,24 @@ data node types to pass extra fields (`pool`, `poolColor`, `pct`) through to the
 render prop — add it to any new `TreemapNode`-like interface, or those fields silently come
 back `undefined`. Trade-off accepted: v3's internal rewrite onto `@reduxjs/toolkit` adds ~8%
 to the production bundle size.
+
+**`@patternfly/react-charts` is on v8** (bumped from v7 for the React 19 migration, issue #110/
+#111) — v8 dropped the bare `'@patternfly/react-charts'` entry point entirely (it resolves to
+an empty module) in favor of two explicit subpaths, `/victory` (the same Victory-based API as
+v7, prop-for-prop identical for every component this app uses) and `/echarts` (a new,
+unrelated rewrite this app does not use). Always import from `'@patternfly/react-charts/victory'`
+— including in `vi.mock(...)` calls in tests, which must mock that exact subpath, not the bare
+package name. Every `victory-*` package (`victory-chart`, `victory-zoom-container`, etc.) is
+now an *optional peer* of react-charts instead of a hard dependency, so each one actually used
+(directly or via a react-charts component) must be listed explicitly in `package.json` — v7
+brought all of them in for free.
+
+**`@patternfly/react-charts` v8, `@types/react`, and `@types/react-dom` also required
+one real code fix** during that same React 19 bump: `useRef<T>(null)`'s type changed from
+`RefObject<T>` to `RefObject<T | null>` (the old type was always inaccurate — a ref is genuinely
+`null` before mount). Any prop typed `React.RefObject<HTMLDivElement>` that receives such a ref
+(e.g. `IndexChart`'s `chartContainerRef`) must be typed `React.RefObject<HTMLDivElement | null>`
+instead.
 
 **`App.tsx`'s `PortfolioLayout` drives the sidebar's narrow-viewport visibility itself
 (`useNarrowViewport` + a direct inline `style` override on `<PageSidebar>`) — never go back to

@@ -10,7 +10,7 @@ import {
 	ChartGroup,
 	ChartLine,
 	ChartThemeColor
-} from '@patternfly/react-charts';
+} from '@patternfly/react-charts/victory';
 import { VictoryZoomContainer } from 'victory-zoom-container';
 import ChartCrosshair, { type ChartCrosshairSeries, type ChartCrosshairState } from './ChartCrosshair';
 
@@ -51,7 +51,7 @@ interface IndexChartProps {
   brush: BrushState;
   setBrush: React.Dispatch<React.SetStateAction<BrushState>>;
   chartWidth: number;
-  chartContainerRef: React.RefObject<HTMLDivElement>;
+  chartContainerRef: React.RefObject<HTMLDivElement | null>;
   timeScale: string;
   scaleToDateRange: (scale: string) => { x: [Date, Date] } | undefined;
   totalIndexData: { x: Date; y: number }[];

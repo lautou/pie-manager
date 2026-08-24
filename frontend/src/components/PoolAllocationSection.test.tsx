@@ -8,7 +8,7 @@ const mockUsePoolAllocation = vi.fn();
 
 vi.mock('@patternfly/react-core', () => pfCoreStubs);
 vi.mock('@patternfly/react-table', () => pfTableStubs);
-vi.mock('@patternfly/react-charts', () => ({
+vi.mock('@patternfly/react-charts/victory', () => ({
   ChartDonut: ({ data, labels }: any) => (
     <div data-testid="chart-donut">
       {data?.map((d: any, i: number) => <div key={i}>{labels ? labels({ datum: d }) : d.x}</div>)}

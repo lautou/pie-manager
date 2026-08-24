@@ -10,7 +10,7 @@ import {
 	ChartAxis,
 	ChartGroup,
 	ChartThemeColor
-} from '@patternfly/react-charts';
+} from '@patternfly/react-charts/victory';
 import { VictoryZoomContainer } from 'victory-zoom-container';
 import type { BrushState } from './IndexChart';
 import { formatEUR } from '../utils/format';

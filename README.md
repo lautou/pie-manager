@@ -146,7 +146,7 @@ rm -f ~/Library/LaunchAgents/com.pie-manager.podman-start.plist
 
 | Couche | Technologie |
 |--------|-------------|
-| Frontend | React 18 + TypeScript + PatternFly 5 |
+| Frontend | React 19 + TypeScript + PatternFly 6 |
 | Backend | Python FastAPI + SQLAlchemy 2.0 async + PgQueuer |
 | Base de données | PostgreSQL 18 |
 | Déploiement | Podman Compose + HAProxy |

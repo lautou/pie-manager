@@ -34,7 +34,7 @@ vi.mock('@patternfly/react-core', () => ({
 vi.mock('@patternfly/react-table', () => pfTableStubs);
 
 // Mock PatternFly charts
-vi.mock('@patternfly/react-charts', () => ({
+vi.mock('@patternfly/react-charts/victory', () => ({
   ChartDonut: ({ events, data }: any) => (
     <div data-testid="chart-donut">
       {data?.map((d: any, i: number) => (

@@ -14,7 +14,7 @@ import {
 	ChartLegend,
 	ChartLine,
 	ChartThemeColor
-} from '@patternfly/react-charts';
+} from '@patternfly/react-charts/victory';
 import type { RatioIndicator } from '../types';
 import { clampZoomRange, timeAxisStyle } from '../utils/chartZoom';
 import ChartCrosshair, { type ChartCrosshairState } from './ChartCrosshair';

@@ -16,5 +16,12 @@ RUN apk upgrade --no-cache
 # is invoked via its own binary below, never via `npm run`.
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 COPY --from=builder /app /app
+# typescript is a devDependency, only used by `npm run build`'s `tsc &&` type-check step —
+# never at runtime, since this image's CMD invokes the vite dev server directly (esbuild
+# transpiles .ts on the fly, no `typescript` package needed). TypeScript 7's native compiler
+# package (`@typescript/typescript-*`) bundles its own Go runtime/stdlib, which periodically
+# carries HIGH CVEs a `package.json` bump has no lever to fix — same class of problem as the
+# npm removal above, just one release later (v1.5.6).
+RUN rm -rf node_modules/typescript node_modules/@typescript
 EXPOSE 5173
 CMD ["node_modules/.bin/vite", "--host", "0.0.0.0"]

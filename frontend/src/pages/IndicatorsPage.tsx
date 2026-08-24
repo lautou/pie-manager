@@ -6,14 +6,23 @@ import {
 } from '@patternfly/react-core';
 import GrowthInflationSection from '../components/GrowthInflationSection';
 import MarketPerformanceSection from '../components/MarketPerformanceSection';
+import SectorPerformanceSection from '../components/SectorPerformanceSection';
+import EquityPremiumSection from '../components/EquityPremiumSection';
 
-type IndicatorsTab = 'growth-inflation' | 'market-performance';
+type IndicatorsTab = 'growth-inflation' | 'market-performance' | 'sector-performance' | 'equity-premium';
 
 /**
- * Global, portfolio-independent macro indicators page. Two deliberately separate tabs —
- * region-scoped growth/inflation ratio charts vs. the country performance leaderboard —
- * so the two unrelated chart types (time-series ratio vs. static ranked bar chart) are
- * never visually mixed on the same view.
+ * Global, portfolio-independent macro indicators page. Four deliberately separate tabs —
+ * region-scoped growth/inflation ratio charts, the "Performance des actions" country
+ * leaderboard, the "Performance des classes d'actifs" chart (commodities, currencies, bonds,
+ * private equity, crypto...), and "Premium action" (implied equity risk premium, one bar per
+ * country) — so the unrelated chart types (time-series ratio vs. static ranked bar chart) are
+ * never visually mixed on the same view. The three leaderboard/premium tabs share the same
+ * PerformanceBarChart component, differing only in their data universe and (for Premium
+ * action) sign-based bar coloring — internal identifiers (component/table/route names) still
+ * say "country"/"sector" for the first two, even though the visible tab labels moved to
+ * "actions"/"classes d'actifs" (a display-only rename, not worth the churn of renaming
+ * already-populated live tables/routes).
  */
 export default function IndicatorsPage() {
   const { t } = useTranslation();
@@ -31,6 +40,12 @@ export default function IndicatorsPage() {
         </Tab>
         <Tab eventKey="market-performance" title={<TabTitleText>{t('indicators.tabMarketPerformance')}</TabTitleText>}>
           <MarketPerformanceSection />
+        </Tab>
+        <Tab eventKey="sector-performance" title={<TabTitleText>{t('indicators.tabSectorPerformance')}</TabTitleText>}>
+          <SectorPerformanceSection />
+        </Tab>
+        <Tab eventKey="equity-premium" title={<TabTitleText>{t('indicators.tabEquityPremium')}</TabTitleText>}>
+          <EquityPremiumSection />
         </Tab>
       </Tabs>
     </PageSection>

@@ -117,6 +117,16 @@ vi.mock('./api/queries', () => ({
   createCountryPerfConfig: vi.fn(),
   updateCountryPerfConfig: vi.fn(),
   deleteCountryPerfConfig: vi.fn(),
+  useSectorPerformance: () => ({ data: [], isLoading: false }),
+  useSectorPerfConfigs: () => ({ data: [] }),
+  createSectorPerfConfig: vi.fn(),
+  updateSectorPerfConfig: vi.fn(),
+  deleteSectorPerfConfig: vi.fn(),
+  useEquityPremium: () => ({ data: [], isLoading: false }),
+  useEquityPremiumConfigs: () => ({ data: [] }),
+  createEquityPremiumConfig: vi.fn(),
+  updateEquityPremiumConfig: vi.fn(),
+  deleteEquityPremiumConfig: vi.fn(),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

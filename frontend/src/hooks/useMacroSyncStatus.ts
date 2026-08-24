@@ -28,3 +28,11 @@ export const useMacroSyncStatus = makeSyncStatusHook('/api/indicators/sync-statu
 export const useCountryPerfSyncStatus = makeSyncStatusHook(
   '/api/indicators/country-performance/sync-status', 'country-perf-sync-status',
 );
+
+export const useSectorPerfSyncStatus = makeSyncStatusHook(
+  '/api/indicators/sector-performance/sync-status', 'sector-perf-sync-status',
+);
+
+export const useEquityPremiumSyncStatus = makeSyncStatusHook(
+  '/api/indicators/equity-premium/sync-status', 'equity-premium-sync-status',
+);

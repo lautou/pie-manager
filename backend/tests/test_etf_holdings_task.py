@@ -10,6 +10,10 @@ pattern in test_price_sync.py. Key invariants:
   4. assetProfile.sectorKey parsing for direct stocks; missing sectorKey is a failure.
   5. _run_etf_holdings_refresh orchestrates ETF + direct-stock fetches and writes both.
 
+The crumb-acquisition mechanism itself (get_yahoo_session_crumb) is now shared with
+equity_premium.py and tested once, generically, in test_yahoo_fetch.py — this file only
+tests that a crumb failure here aborts _run_etf_holdings_refresh cleanly.
+
 This module's PgQueuer entrypoint/schedule wrappers (issue #66 step 3) are tested in
 test_pgq_app.py — refresh_etf_holdings no longer exists as a separate Celery task function
 here.
@@ -20,7 +24,6 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.tasks.etf_holdings import (
-    _get_yahoo_session_crumb,
     _parse_top_holdings,
     _parse_asset_profile_sector,
     _fetch_top_holdings,
@@ -100,48 +103,6 @@ def _make_httpx_mock():
     mock_httpx.AsyncClient.return_value.__aenter__ = AsyncMock(return_value=mock_client_obj)
     mock_httpx.AsyncClient.return_value.__aexit__ = AsyncMock(return_value=False)
     return mock_httpx, mock_client_obj
-
-
-# ---------------------------------------------------------------------------
-# _get_yahoo_session_crumb
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_get_yahoo_session_crumb_success():
-    client = AsyncMock()
-    client.get = AsyncMock(side_effect=[
-        _FakeResponse(404),  # fc.yahoo.com quirk, still sets cookies in real life
-        _FakeResponse(301),  # finance.yahoo.com/quote/AAPL redirect
-        _FakeResponse(200, text=" abc123crumb \n"),
-    ])
-    crumb = await _get_yahoo_session_crumb(client)
-    assert crumb == "abc123crumb"
-
-
-@pytest.mark.asyncio
-async def test_get_yahoo_session_crumb_non_200_returns_none():
-    client = AsyncMock()
-    client.get = AsyncMock(side_effect=[
-        _FakeResponse(200), _FakeResponse(200), _FakeResponse(401, text=""),
-    ])
-    crumb = await _get_yahoo_session_crumb(client)
-    assert crumb is None
-
-
-@pytest.mark.asyncio
-async def test_get_yahoo_session_crumb_empty_body_returns_none():
-    client = AsyncMock()
-    client.get = AsyncMock(side_effect=[_FakeResponse(200), _FakeResponse(200), _FakeResponse(200, text="   ")])
-    crumb = await _get_yahoo_session_crumb(client)
-    assert crumb is None
-
-
-@pytest.mark.asyncio
-async def test_get_yahoo_session_crumb_exception_returns_none():
-    client = AsyncMock()
-    client.get = AsyncMock(side_effect=ConnectionError("network down"))
-    crumb = await _get_yahoo_session_crumb(client)
-    assert crumb is None
 
 
 # ---------------------------------------------------------------------------
@@ -309,7 +270,7 @@ async def test_run_refresh_crumb_failure_aborts_cleanly():
     with patch("app.tasks.etf_holdings.get_etf_tickers", new_callable=AsyncMock, return_value=["FLXC.DE"]), \
          patch("app.tasks.etf_holdings.get_direct_stock_tickers_in_etf_pools",
                new_callable=AsyncMock, return_value=[]), \
-         patch("app.tasks.etf_holdings._get_yahoo_session_crumb",
+         patch("app.tasks.etf_holdings.get_yahoo_session_crumb",
                new_callable=AsyncMock, return_value=None), \
          patch("app.tasks.etf_holdings.httpx", mock_httpx), \
          patch("sqlalchemy.ext.asyncio.create_async_engine", return_value=mock_eng), \
@@ -329,7 +290,7 @@ async def test_run_refresh_etf_and_direct_stock_success():
                new_callable=AsyncMock, return_value=["FLXC.DE"]), \
          patch("app.tasks.etf_holdings.get_direct_stock_tickers_in_etf_pools",
                new_callable=AsyncMock, return_value=[("TTE.PA", "TotalEnergies SE")]), \
-         patch("app.tasks.etf_holdings._get_yahoo_session_crumb",
+         patch("app.tasks.etf_holdings.get_yahoo_session_crumb",
                new_callable=AsyncMock, return_value="crumb123"), \
          patch("app.tasks.etf_holdings._fetch_top_holdings",
                new_callable=AsyncMock,
@@ -363,7 +324,7 @@ async def test_run_refresh_partial_failure():
                new_callable=AsyncMock, return_value=["OK.DE", "BAD.DE"]), \
          patch("app.tasks.etf_holdings.get_direct_stock_tickers_in_etf_pools",
                new_callable=AsyncMock, return_value=[]), \
-         patch("app.tasks.etf_holdings._get_yahoo_session_crumb",
+         patch("app.tasks.etf_holdings.get_yahoo_session_crumb",
                new_callable=AsyncMock, return_value="crumb123"), \
          patch("app.tasks.etf_holdings._fetch_top_holdings", side_effect=[
              ("OK.DE", {"holdings": [], "sector_weightings": {}, "bond_duration": None, "bond_maturity": None}, None),
@@ -389,7 +350,7 @@ async def test_run_refresh_all_fail_is_failed_status():
                new_callable=AsyncMock, return_value=[]), \
          patch("app.tasks.etf_holdings.get_direct_stock_tickers_in_etf_pools",
                new_callable=AsyncMock, return_value=[("BADSTOCK.PA", "Bad Stock")]), \
-         patch("app.tasks.etf_holdings._get_yahoo_session_crumb",
+         patch("app.tasks.etf_holdings.get_yahoo_session_crumb",
                new_callable=AsyncMock, return_value="crumb123"), \
          patch("app.tasks.etf_holdings._fetch_asset_profile_sector",
                new_callable=AsyncMock, return_value=("BADSTOCK.PA", None, "sectorKey missing")), \

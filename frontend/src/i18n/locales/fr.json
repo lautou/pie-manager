@@ -564,7 +564,8 @@
   "indicators": {
     "title": "Indicateurs macro",
     "tabGrowthInflation": "Croissance / Inflation",
-    "tabMarketPerformance": "Performance des marchés",
+    "tabMarketPerformance": "Performance des actions",
+    "tabSectorPerformance": "Performance des classes d'actifs",
     "regionSelectLabel": "Zone",
     "growthTitle": "Croissance — {{region}}",
     "inflationTitle": "Inflation — {{region}}",
@@ -607,11 +608,12 @@
       "bondTickerRequired": "Le ticker obligations est requis",
       "equityLabelRequired": "Le nom des actions est requis",
       "bondLabelRequired": "Le nom des obligations est requis"
-    }
+    },
+    "tabEquityPremium": "Premium action"
   },
   "marketPerformance": {
     "chartTitle": "Top 15 — Performance boursière sur 1 an (EUR)",
-    "sectionTitle": "🌍 Performance des marchés — pays",
+    "sectionTitle": "🌍 Performance des actions — pays",
     "sectionDescription": "Univers de pays suivis pour le classement de performance boursière sur un an glissant, ajustée en EUR. Le graphique affiche uniquement les {{topN}} meilleurs de cet univers.",
     "topNLabel": "Nombre de pays affichés (Top N)",
     "newCountry": "Nouveau pays",
@@ -629,6 +631,51 @@
       "indexLabelRequired": "Le nom de l'indice est requis",
       "indexTickerRequired": "Le ticker indice est requis",
       "currencyRequired": "La devise est requise"
+    }
+  },
+  "sectorPerformance": {
+    "chartTitle": "Performance des classes d'actifs sur 1 an (EUR)",
+    "sectionTitle": "📊 Performance des classes d'actifs",
+    "sectionDescription": "Univers de classes d'actifs (matières premières, devises, obligations, private equity, crypto...) suivies pour le graphique de performance sur un an glissant, ajustée en EUR.",
+    "newSector": "Nouveau secteur",
+    "editSector": "Modifier le secteur",
+    "sectorCode": "Code",
+    "sectorLabel": "Nom",
+    "indexLabel": "Nom de l'indice",
+    "indexTicker": "Ticker indice",
+    "currency": "Devise",
+    "noSectors": "Aucun secteur",
+    "deleteSectorConfirm": "Supprimer le secteur \"{{name}}\" ?",
+    "validation": {
+      "codeRequired": "Le code est requis",
+      "labelRequired": "Le nom est requis",
+      "indexLabelRequired": "Le nom de l'indice est requis",
+      "indexTickerRequired": "Le ticker indice est requis",
+      "currencyRequired": "La devise est requise"
+    }
+  },
+  "equityPremium": {
+    "chartTitle": "Prime de risque des actions (Equity Risk Premium)",
+    "sectionTitle": "📈 Premium action — prime de risque des actions",
+    "sectionDescription": "Univers de pays (les mêmes que pour le classement boursier par pays, dans la limite de ce que Yahoo Finance expose réellement) suivis pour comparer le rendement des bénéfices des actions (1/PER) au taux sans risque (obligation d'État 10 ans). Une prime positive (vert) signale des actions bon marché par rapport aux obligations ; une prime négative (rouge) signale l'inverse.",
+    "legend": "🟢 Prime positive : les actions sont bon marché par rapport aux obligations — signal favorable pour investir en actions. 🔴 Prime négative : les obligations sont plus attractives que les actions.",
+    "newCountry": "Nouvelle prime",
+    "editCountry": "Modifier la prime",
+    "countryCode": "Code",
+    "countryLabel": "Nom",
+    "equityLabel": "Nom actions",
+    "equityTicker": "Ticker actions (ETF pays)",
+    "bondLabel": "Nom obligations",
+    "bondTicker": "Ticker obligations (ETF gouvernemental)",
+    "noCountries": "Aucun pays",
+    "deleteCountryConfirm": "Supprimer le pays \"{{name}}\" ?",
+    "validation": {
+      "codeRequired": "Le code est requis",
+      "labelRequired": "Le nom est requis",
+      "equityLabelRequired": "Le nom des actions est requis",
+      "equityTickerRequired": "Le ticker actions est requis",
+      "bondLabelRequired": "Le nom des obligations est requis",
+      "bondTickerRequired": "Le ticker obligations est requis"
     }
   }
 }

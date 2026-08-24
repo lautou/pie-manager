@@ -2,12 +2,13 @@
 """
 Tests for app/main.py — covers the lifespan startup/shutdown event.
 
-The lifespan function has 5 independent try/except blocks, all PgQueuer-based (issue #66 step
-4: fill_missing_snapshots moved off Celery's .delay() to the same enqueue pattern as the other
-4 — refresh_prices_live/refresh_etf_holdings/refresh_macro_indicators/
-refresh_country_performance), each `await get_pgq_queries().enqueue(name, payload=b"startup")`.
-Each is swallowed on exception to never block startup, independently of the others (one
-failing must not prevent the others from running).
+The lifespan function has several independent try/except blocks, all PgQueuer-based (issue #66
+step 4: fill_missing_snapshots moved off Celery's .delay() to the same enqueue pattern as
+refresh_prices_live/refresh_etf_holdings/refresh_macro_indicators/
+refresh_country_performance/refresh_sector_performance/refresh_equity_premium), each
+`await get_pgq_queries().enqueue(name, payload=b"startup")`. Each is swallowed on exception to
+never block startup, independently of the others (one failing must not prevent the others from
+running).
 
 `init_pgq_pool`/`close_pgq_pool`/`get_pgq_queries` are mocked by the autouse fixture below —
 without this, lifespan would try to open a real asyncpg pool against the (absent, in tests)
@@ -185,6 +186,70 @@ async def test_lifespan_startup_country_performance_runs_even_if_macro_indicator
     counter = {"n": 0}
     fake_queries.configure("refresh_macro_indicators", raise_exc=ConnectionError)
     fake_queries.configure("refresh_country_performance", counter=counter)
+    async with lifespan(app):
+        pass
+
+    assert counter["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_lifespan_startup_sector_performance_raises(fake_queries):
+    """Exception enqueuing refresh_sector_performance → swallowed, startup completes."""
+    fake_queries.configure("refresh_sector_performance", raise_exc=ConnectionError)
+    async with lifespan(app):
+        pass
+
+
+@pytest.mark.asyncio
+async def test_lifespan_startup_sector_performance_succeeds(fake_queries):
+    """Happy path: refresh_sector_performance enqueued once."""
+    counter = {"n": 0}
+    fake_queries.configure("refresh_sector_performance", counter=counter)
+    async with lifespan(app):
+        pass
+
+    assert counter["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_lifespan_startup_sector_performance_runs_even_if_country_performance_fails(fake_queries):
+    """A failure enqueuing refresh_country_performance must not prevent
+    refresh_sector_performance from also being triggered."""
+    counter = {"n": 0}
+    fake_queries.configure("refresh_country_performance", raise_exc=ConnectionError)
+    fake_queries.configure("refresh_sector_performance", counter=counter)
+    async with lifespan(app):
+        pass
+
+    assert counter["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_lifespan_startup_equity_premium_raises(fake_queries):
+    """Exception enqueuing refresh_equity_premium → swallowed, startup completes."""
+    fake_queries.configure("refresh_equity_premium", raise_exc=ConnectionError)
+    async with lifespan(app):
+        pass
+
+
+@pytest.mark.asyncio
+async def test_lifespan_startup_equity_premium_succeeds(fake_queries):
+    """Happy path: refresh_equity_premium enqueued once."""
+    counter = {"n": 0}
+    fake_queries.configure("refresh_equity_premium", counter=counter)
+    async with lifespan(app):
+        pass
+
+    assert counter["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_lifespan_startup_equity_premium_runs_even_if_sector_performance_fails(fake_queries):
+    """A failure enqueuing refresh_sector_performance must not prevent
+    refresh_equity_premium from also being triggered."""
+    counter = {"n": 0}
+    fake_queries.configure("refresh_sector_performance", raise_exc=ConnectionError)
+    fake_queries.configure("refresh_equity_premium", counter=counter)
     async with lifespan(app):
         pass
 

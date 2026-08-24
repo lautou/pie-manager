@@ -3,11 +3,12 @@
 ETF look-through holdings refresh — runs weekly via PgQueuer (see app/tasks/pgq_app.py).
 
 Strategy:
-  - Unlike the price-sync task's chart endpoint, ETF composition requires an unofficial
-    session: a warm-up cookie (fc.yahoo.com), then a CSRF "crumb" token
-    (query2.finance.yahoo.com/v1/test/getcrumb), passed as a query param on every
-    quoteSummary call. If crumb acquisition fails, the whole task aborts cleanly —
-    previously fetched data stays in place, only holdings_updated_at fails to advance.
+  - Unlike the price-sync task's chart endpoint, ETF composition requires the unofficial
+    crumb-authenticated quoteSummary session — see app/tasks/yahoo_fetch.py's
+    get_yahoo_session_crumb/fetch_quote_summary_module (shared with equity_premium.py, the
+    other quoteSummary-based task). If crumb acquisition fails, the whole task aborts
+    cleanly — previously fetched data stays in place, only holdings_updated_at fails to
+    advance.
   - ETF/SICAV-FCP products: module=topHoldings gives top-10 holdings, sector weightings,
     and (for bond funds) duration/maturity — the latter never surfaced in Yahoo's own UI.
   - Direct-stock products (instrument_type='Action') in a pool that also holds an ETF:
@@ -17,7 +18,7 @@ Strategy:
 
 import asyncio
 from datetime import datetime, timezone
-from typing import Callable, Optional, TypeVar
+from typing import Optional
 
 import httpx
 
@@ -26,44 +27,7 @@ from app.services.etf_holdings_service import (
     get_direct_stock_tickers_in_etf_pools,
     save_etf_fetch_result,
 )
-
-T = TypeVar("T")
-
-YAHOO_QUOTE_SUMMARY_URL = "https://query2.finance.yahoo.com/v10/finance/quoteSummary/{ticker}"
-YAHOO_CRUMB_URL = "https://query2.finance.yahoo.com/v1/test/getcrumb"
-YAHOO_WARMUP_URL = "https://fc.yahoo.com"
-# Any real, always-listed ticker works here — this call only exists to collect the session
-# cookies finance.yahoo.com sets before the crumb endpoint will issue a token.
-YAHOO_WARMUP_QUOTE_URL = "https://finance.yahoo.com/quote/AAPL"
-YAHOO_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; portfolio-tracker/1.0)",
-    # The crumb endpoint (query2.finance.yahoo.com/v1/test/getcrumb) returns 406 Not Acceptable
-    # for "Accept: application/json" — confirmed empirically the User-Agent is not the issue,
-    # only this header is. quoteSummary itself returns JSON regardless of Accept, so "*/*"
-    # works for every request this module makes.
-    "Accept": "*/*",
-}
-
-
-# ---------------------------------------------------------------------------
-# Yahoo session (cookie + crumb)
-# ---------------------------------------------------------------------------
-
-async def _get_yahoo_session_crumb(client: httpx.AsyncClient) -> Optional[str]:
-    """
-    Acquires the session cookie + CSRF crumb required by the quoteSummary endpoint.
-    Returns None (never raises) if any step fails — callers must abort the whole task.
-    """
-    try:
-        await client.get(YAHOO_WARMUP_URL, headers=YAHOO_HEADERS, timeout=10.0)
-        await client.get(YAHOO_WARMUP_QUOTE_URL, headers=YAHOO_HEADERS, timeout=10.0)
-        resp = await client.get(YAHOO_CRUMB_URL, headers=YAHOO_HEADERS, timeout=10.0)
-        if resp.status_code != 200:
-            return None
-        crumb = resp.text.strip()
-        return crumb or None
-    except Exception:
-        return None
+from app.tasks.yahoo_fetch import fetch_quote_summary_module, get_yahoo_session_crumb
 
 
 # ---------------------------------------------------------------------------
@@ -117,44 +81,20 @@ def _parse_asset_profile_sector(payload: dict) -> Optional[str]:
 # Per-ticker fetch
 # ---------------------------------------------------------------------------
 
-async def _fetch_module(
-    client: httpx.AsyncClient, crumb: str, ticker: str,
-    module: str, parse: Callable[[dict], Optional[T]], empty_error: str,
-) -> tuple[str, Optional[T], Optional[str]]:
-    """
-    Shared fetch/parse/error-handling shape for both quoteSummary modules used by this task
-    (topHoldings for funds, assetProfile for a direct stock's sector) — same request pattern,
-    only the module name, parser, and "nothing came back" message differ.
-
-    Returns (ticker, parsed_or_None, error_or_None).
-    """
-    try:
-        resp = await client.get(
-            YAHOO_QUOTE_SUMMARY_URL.format(ticker=ticker),
-            params={"modules": module, "crumb": crumb},
-            headers=YAHOO_HEADERS,
-            timeout=10.0,
-        )
-        if resp.status_code != 200:
-            return ticker, None, f"HTTP {resp.status_code}"
-        parsed = parse(resp.json())
-        if parsed is None:
-            return ticker, None, empty_error
-        return ticker, parsed, None
-    except Exception as exc:
-        return ticker, None, str(exc)[:120]
-
-
 async def _fetch_top_holdings(
     client: httpx.AsyncClient, crumb: str, ticker: str
 ) -> tuple[str, Optional[dict], Optional[str]]:
-    return await _fetch_module(client, crumb, ticker, "topHoldings", _parse_top_holdings, "no fundamentals data")
+    return await fetch_quote_summary_module(
+        client, crumb, ticker, "topHoldings", _parse_top_holdings, "no fundamentals data",
+    )
 
 
 async def _fetch_asset_profile_sector(
     client: httpx.AsyncClient, crumb: str, ticker: str
 ) -> tuple[str, Optional[str], Optional[str]]:
-    return await _fetch_module(client, crumb, ticker, "assetProfile", _parse_asset_profile_sector, "sectorKey missing")
+    return await fetch_quote_summary_module(
+        client, crumb, ticker, "assetProfile", _parse_asset_profile_sector, "sectorKey missing",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +129,7 @@ async def _run_etf_holdings_refresh() -> dict:
         }
 
     async with httpx.AsyncClient(follow_redirects=True) as client:
-        crumb = await _get_yahoo_session_crumb(client)
+        crumb = await get_yahoo_session_crumb(client)
         if crumb is None:
             return {
                 "started_at": started_at,

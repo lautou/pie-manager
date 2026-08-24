@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.country_performance import CountryPerfConfig
 from app.models.system_setting import SystemSetting
 from app.services.macro_series_price_service import get_series
+from app.services.performance_math import ASOF_TOLERANCE_DAYS, TRAILING_WINDOW_DAYS, compute_trailing_performance
 
 _COUNTRY_CODE_RE = re.compile(r"^[a-z]{2,3}$")
 _CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
@@ -33,10 +34,10 @@ _CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
 DEFAULT_TOP_N = 15
 TOP_N_SETTING_KEY = "country_perf.top_n"
 
-TRAILING_WINDOW_DAYS = 365
-# How stale a series' nearest snapshot may be and still count — covers weekends/holidays
-# around the target date, and excludes a country whose fetch has been failing for a while.
-ASOF_TOLERANCE_DAYS = 10
+# TRAILING_WINDOW_DAYS / ASOF_TOLERANCE_DAYS now live in performance_math.py (shared with
+# sector_performance_service.py) — re-imported above so this module's own public constants
+# are unchanged for anything already importing them qualified as
+# country_performance_service.TRAILING_WINDOW_DAYS / .ASOF_TOLERANCE_DAYS.
 
 
 # ---------------------------------------------------------------------------
@@ -119,12 +120,6 @@ async def get_top_n(db: AsyncSession) -> int:
 # Ranking
 # ---------------------------------------------------------------------------
 
-def _asof(series: dict[date, float], target: date, tolerance_days: int) -> Optional[tuple[date, float]]:
-    """Latest (date, value) at or before `target`, only if within `tolerance_days` of it."""
-    candidates = [(d, v) for d, v in series.items() if d <= target and (target - d).days <= tolerance_days]
-    return max(candidates, key=lambda dv: dv[0]) if candidates else None
-
-
 @dataclass
 class CountryPerformanceResult:
     code: str
@@ -168,28 +163,20 @@ async def compute_country_performance(
 
     for cfg in configs:
         index_series = await get_series(db, f"country_{cfg.code}_equity")
-        latest = _asof(index_series, today, ASOF_TOLERANCE_DAYS)
-        anchor = _asof(index_series, anchor_target, ASOF_TOLERANCE_DAYS)
-        if latest is None or anchor is None or anchor[1] == 0:
-            continue
-        factor_index = latest[1] / anchor[1]
 
-        if cfg.currency == "EUR":
-            factor_fx = 1.0
-        else:
+        fx_series = None
+        if cfg.currency != "EUR":
             if cfg.currency not in fx_cache:
                 fx_cache[cfg.currency] = await get_series(db, f"fx_{cfg.currency.lower()}")
             fx_series = fx_cache[cfg.currency]
-            fx_latest = _asof(fx_series, today, ASOF_TOLERANCE_DAYS)
-            fx_anchor = _asof(fx_series, anchor_target, ASOF_TOLERANCE_DAYS)
-            if fx_latest is None or fx_anchor is None or fx_anchor[1] == 0:
-                continue
-            factor_fx = fx_latest[1] / fx_anchor[1]
 
-        perf_pct = (factor_index * factor_fx - 1) * 100
+        perf = compute_trailing_performance(index_series, fx_series, today, anchor_target, ASOF_TOLERANCE_DAYS)
+        if perf is None:
+            continue
+
         results.append(CountryPerformanceResult(
             code=cfg.code, label=cfg.label, currency=cfg.currency,
-            perf_pct=perf_pct, latest_date=latest[0], anchor_date=anchor[0],
+            perf_pct=perf.perf_pct, latest_date=perf.latest_date, anchor_date=perf.anchor_date,
             index_label=cfg.index_label,
         ))
 

@@ -1,25 +1,35 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """
-Non-regression tests for the shared Yahoo Finance chart-endpoint fetch (app/tasks/yahoo_fetch.py).
+Non-regression tests for the shared Yahoo Finance fetch helpers (app/tasks/yahoo_fetch.py).
 
 Extracted from what used to be near-identical private copies of these tests in
 test_price_sync.py (_fetch_ticker's retry/backoff) and test_macro_indicators_task.py
 (_fetch_series_history) — the retry/backoff scaffold is now tested once here via
 fetch_yahoo_chart; fetch_yahoo_history only gets its own small set of tests for the
 history-specific parsing it adds on top.
+
+The crumb-authenticated quoteSummary helpers (get_yahoo_session_crumb,
+fetch_quote_summary_module) were extracted here from test_etf_holdings_task.py once
+equity_premium.py needed the identical mechanism for a second, unrelated task.
 """
 
 import pytest
 from datetime import date
 from unittest.mock import AsyncMock, patch
 
-from app.tasks.yahoo_fetch import fetch_yahoo_chart, fetch_yahoo_history
+from app.tasks.yahoo_fetch import (
+    fetch_quote_summary_module,
+    fetch_yahoo_chart,
+    fetch_yahoo_history,
+    get_yahoo_session_crumb,
+)
 
 
 class _FakeResponse:
-    def __init__(self, status_code: int, body: dict | None = None):
+    def __init__(self, status_code: int, body: dict | None = None, text: str = ""):
         self.status_code = status_code
         self._body = body or {}
+        self.text = text
 
     def json(self):
         return self._body
@@ -160,3 +170,100 @@ async def test_fetch_yahoo_history_propagates_chart_fetch_error():
     _, points, error = await fetch_yahoo_history(client, "CL=F", 0, 1)
     assert points is None
     assert "500" in error
+
+
+# ---------------------------------------------------------------------------
+# get_yahoo_session_crumb — crumb-authenticated quoteSummary session (etf_holdings.py,
+# equity_premium.py)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_yahoo_session_crumb_success():
+    client = AsyncMock()
+    client.get = AsyncMock(side_effect=[
+        _FakeResponse(404),  # fc.yahoo.com quirk, still sets cookies in real life
+        _FakeResponse(301),  # finance.yahoo.com/quote/AAPL redirect
+        _FakeResponse(200, text=" abc123crumb \n"),
+    ])
+    crumb = await get_yahoo_session_crumb(client)
+    assert crumb == "abc123crumb"
+
+
+@pytest.mark.asyncio
+async def test_get_yahoo_session_crumb_non_200_returns_none():
+    client = AsyncMock()
+    client.get = AsyncMock(side_effect=[
+        _FakeResponse(200), _FakeResponse(200), _FakeResponse(401, text=""),
+    ])
+    crumb = await get_yahoo_session_crumb(client)
+    assert crumb is None
+
+
+@pytest.mark.asyncio
+async def test_get_yahoo_session_crumb_empty_body_returns_none():
+    client = AsyncMock()
+    client.get = AsyncMock(side_effect=[_FakeResponse(200), _FakeResponse(200), _FakeResponse(200, text="   ")])
+    crumb = await get_yahoo_session_crumb(client)
+    assert crumb is None
+
+
+@pytest.mark.asyncio
+async def test_get_yahoo_session_crumb_exception_returns_none():
+    client = AsyncMock()
+    client.get = AsyncMock(side_effect=ConnectionError("network down"))
+    crumb = await get_yahoo_session_crumb(client)
+    assert crumb is None
+
+
+# ---------------------------------------------------------------------------
+# fetch_quote_summary_module — generic quoteSummary fetch/parse (etf_holdings.py,
+# equity_premium.py each build their own module-specific wrapper on top of this)
+# ---------------------------------------------------------------------------
+
+def _parse_ok(payload: dict):
+    return payload.get("value")
+
+
+@pytest.mark.asyncio
+async def test_fetch_quote_summary_module_success():
+    client = AsyncMock()
+    client.get = AsyncMock(return_value=_FakeResponse(200, {"value": 42}))
+    ticker, parsed, error = await fetch_quote_summary_module(
+        client, "crumb123", "TEST", "someModule", _parse_ok, "empty",
+    )
+    assert ticker == "TEST"
+    assert parsed == 42
+    assert error is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_quote_summary_module_http_error():
+    client = AsyncMock()
+    client.get = AsyncMock(return_value=_FakeResponse(500))
+    _, parsed, error = await fetch_quote_summary_module(
+        client, "crumb", "BAD", "someModule", _parse_ok, "empty",
+    )
+    assert parsed is None
+    assert "500" in error
+
+
+@pytest.mark.asyncio
+async def test_fetch_quote_summary_module_empty_parse_result():
+    client = AsyncMock()
+    client.get = AsyncMock(return_value=_FakeResponse(200, {}))
+    _, parsed, error = await fetch_quote_summary_module(
+        client, "crumb", "EMPTY", "someModule", _parse_ok, "no data",
+    )
+    assert parsed is None
+    assert error == "no data"
+
+
+@pytest.mark.asyncio
+async def test_fetch_quote_summary_module_exception():
+    client = AsyncMock()
+    client.get = AsyncMock(side_effect=ConnectionError("timeout"))
+    _, parsed, error = await fetch_quote_summary_module(
+        client, "crumb", "CRASH", "someModule", _parse_ok, "empty",
+    )
+    assert parsed is None
+    assert error is not None

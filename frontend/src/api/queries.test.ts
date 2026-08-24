@@ -36,6 +36,10 @@ import {
   useMacroRegions, createMacroRegion, updateMacroRegion, deleteMacroRegion,
   useCountryPerformance, useCountryPerfConfigs,
   createCountryPerfConfig, updateCountryPerfConfig, deleteCountryPerfConfig,
+  useSectorPerformance, useSectorPerfConfigs,
+  createSectorPerfConfig, updateSectorPerfConfig, deleteSectorPerfConfig,
+  useEquityPremium, useEquityPremiumConfigs,
+  createEquityPremiumConfig, updateEquityPremiumConfig, deleteEquityPremiumConfig,
 } from './queries';
 
 vi.mock('./client', () => ({
@@ -792,6 +796,125 @@ describe('api/queries React Query hooks', () => {
       mockDelete.mockResolvedValueOnce({} as any);
       await deleteCountryPerfConfig('de');
       expect(mockDelete).toHaveBeenCalledWith('/api/indicators/country-performance/countries/de');
+    });
+  });
+
+  describe('useSectorPerformance', () => {
+    it('fetches the sector performance ranking', async () => {
+      const entries = [
+        { code: 'or', label: 'Or', currency: 'USD', perf_pct: 20.19, latest_date: '2026-07-19', anchor_date: '2025-07-19' },
+      ];
+      mockGet.mockResolvedValueOnce({ data: entries } as any);
+
+      const wrapper = makeWrapper();
+      const { result } = renderHook(() => useSectorPerformance(), { wrapper });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockGet).toHaveBeenCalledWith('/api/indicators/sector-performance');
+      expect(result.current.data).toEqual(entries);
+    });
+  });
+
+  describe('useSectorPerfConfigs', () => {
+    it('fetches the sector configuration list', async () => {
+      const sectors = [{ code: 'or', label: 'Or', index_ticker: 'GC=F', currency: 'USD' }];
+      mockGet.mockResolvedValueOnce({ data: sectors } as any);
+
+      const wrapper = makeWrapper();
+      const { result } = renderHook(() => useSectorPerfConfigs(), { wrapper });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockGet).toHaveBeenCalledWith('/api/indicators/sector-performance/sectors');
+      expect(result.current.data).toEqual(sectors);
+    });
+  });
+
+  describe('createSectorPerfConfig', () => {
+    it('posts a new sector', async () => {
+      const sector = { code: 'metaux', label: 'Métaux industriels', index_ticker: 'DBB', currency: 'USD', index_label: 'Invesco DB Base Metals Fund' };
+      mockPost.mockResolvedValueOnce({ data: sector } as any);
+      const result = await createSectorPerfConfig(sector);
+      expect(mockPost).toHaveBeenCalledWith('/api/indicators/sector-performance/sectors', sector);
+      expect(result).toEqual(sector);
+    });
+  });
+
+  describe('updateSectorPerfConfig', () => {
+    it('puts sector changes', async () => {
+      const body = { label: 'Or physique', index_ticker: 'GC=F', currency: 'USD', index_label: 'Gold Futures' };
+      const updated = { code: 'or', ...body };
+      mockPut.mockResolvedValueOnce({ data: updated } as any);
+      const result = await updateSectorPerfConfig('or', body);
+      expect(mockPut).toHaveBeenCalledWith('/api/indicators/sector-performance/sectors/or', body);
+      expect(result).toEqual(updated);
+    });
+  });
+
+  describe('deleteSectorPerfConfig', () => {
+    it('deletes a sector by code', async () => {
+      mockDelete.mockResolvedValueOnce({} as any);
+      await deleteSectorPerfConfig('or');
+      expect(mockDelete).toHaveBeenCalledWith('/api/indicators/sector-performance/sectors/or');
+    });
+  });
+
+  describe('useEquityPremium', () => {
+    it('fetches the equity risk premium ranking', async () => {
+      const entries = [
+        { code: 'us', label: 'États-Unis', premium_pct: 2.5, equity_yield_pct: 4.0, bond_yield_pct: 1.5,
+          equity_label: 'S&P 500 (SPY)', bond_label: 'Trésor US (IEF)', asof_date: '2026-07-19' },
+      ];
+      mockGet.mockResolvedValueOnce({ data: entries } as any);
+
+      const wrapper = makeWrapper();
+      const { result } = renderHook(() => useEquityPremium(), { wrapper });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockGet).toHaveBeenCalledWith('/api/indicators/equity-premium');
+      expect(result.current.data).toEqual(entries);
+    });
+  });
+
+  describe('useEquityPremiumConfigs', () => {
+    it('fetches the equity premium country list', async () => {
+      const countries = [{ code: 'us', label: 'États-Unis', equity_ticker: 'SPY', bond_ticker: 'IEF', equity_label: 'S&P 500', bond_label: 'Trésor US' }];
+      mockGet.mockResolvedValueOnce({ data: countries } as any);
+
+      const wrapper = makeWrapper();
+      const { result } = renderHook(() => useEquityPremiumConfigs(), { wrapper });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockGet).toHaveBeenCalledWith('/api/indicators/equity-premium/countries');
+      expect(result.current.data).toEqual(countries);
+    });
+  });
+
+  describe('createEquityPremiumConfig', () => {
+    it('posts a new country', async () => {
+      const country = { code: 'de', label: 'Allemagne', equity_ticker: 'EWG', bond_ticker: 'EXX6.DE', equity_label: 'Actions allemandes (EWG)', bond_label: 'Bund (EXX6.DE)' };
+      mockPost.mockResolvedValueOnce({ data: country } as any);
+      const result = await createEquityPremiumConfig(country);
+      expect(mockPost).toHaveBeenCalledWith('/api/indicators/equity-premium/countries', country);
+      expect(result).toEqual(country);
+    });
+  });
+
+  describe('updateEquityPremiumConfig', () => {
+    it('puts country changes', async () => {
+      const body = { label: 'USA', equity_ticker: 'SPY', bond_ticker: 'IEF', equity_label: 'S&P 500 Index', bond_label: 'US Treasury 7-10y' };
+      const updated = { code: 'us', ...body };
+      mockPut.mockResolvedValueOnce({ data: updated } as any);
+      const result = await updateEquityPremiumConfig('us', body);
+      expect(mockPut).toHaveBeenCalledWith('/api/indicators/equity-premium/countries/us', body);
+      expect(result).toEqual(updated);
+    });
+  });
+
+  describe('deleteEquityPremiumConfig', () => {
+    it('deletes a country by code', async () => {
+      mockDelete.mockResolvedValueOnce({} as any);
+      await deleteEquityPremiumConfig('us');
+      expect(mockDelete).toHaveBeenCalledWith('/api/indicators/equity-premium/countries/us');
     });
   });
 

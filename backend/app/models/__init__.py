@@ -11,6 +11,8 @@ from app.models.portfolio_account import PortfolioAccount
 from app.models.etf_holding import EtfHolding, EtfSectorWeighting
 from app.models.macro_indicator import MacroSeriesPrice, MacroRegion
 from app.models.country_performance import CountryPerfConfig
+from app.models.sector_performance import SectorPerfConfig
+from app.models.equity_premium import EquityPremiumConfig
 from app.models.job_run import JobRun
 
 __all__ = [
@@ -33,5 +35,7 @@ __all__ = [
     "MacroSeriesPrice",
     "MacroRegion",
     "CountryPerfConfig",
+    "SectorPerfConfig",
+    "EquityPremiumConfig",
     "JobRun",
 ]

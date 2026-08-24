@@ -14,6 +14,7 @@ import { pfCoreStubs } from '../../tests/utils/patternfly-mocks';
 vi.mock('@patternfly/react-core', () => ({ ...pfCoreStubs }));
 
 let capturedBarData: any[] | null = null;
+let capturedBarFill: any = null;
 let capturedContainerComponent: any = null;
 let capturedDependentAxisStyle: any = null;
 
@@ -29,8 +30,9 @@ vi.mock('@patternfly/react-charts/victory', () => ({
     }
     return null;
   },
-  ChartBar: ({ data }: any) => {
+  ChartBar: ({ data, style }: any) => {
     capturedBarData = data;
+    capturedBarFill = style?.data?.fill;
     return <div data-testid="chart-bar" data-points={data?.length ?? 0} />;
   },
   ChartTooltip: () => null,
@@ -38,15 +40,15 @@ vi.mock('@patternfly/react-charts/victory', () => ({
   ChartThemeColor: { multi: 'multi' },
 }));
 
-import CountryPerformanceChart from './CountryPerformanceChart';
+import PerformanceBarChart from './PerformanceBarChart';
 
 const ENTRIES = [
-  { code: 'in', label: 'Inde', currency: 'INR', perf_pct: -3.2, latest_date: '2026-07-19', anchor_date: '2025-07-19', index_label: 'BSE Sensex' },
-  { code: 'us', label: 'États-Unis', currency: 'USD', perf_pct: 20.19, latest_date: '2026-07-19', anchor_date: '2025-07-19', index_label: 'S&P 500' },
-  { code: 'kr', label: 'Corée du Sud', currency: 'KRW', perf_pct: 102.88, latest_date: '2026-07-19', anchor_date: '2025-07-19', index_label: 'KOSPI Composite' },
+  { label: 'Inde', value: -3.2, tooltipLabel: 'BSE Sensex' },
+  { label: 'États-Unis', value: 20.19, tooltipLabel: 'S&P 500' },
+  { label: 'Corée du Sud', value: 102.88, tooltipLabel: 'KOSPI Composite' },
 ];
 
-describe('CountryPerformanceChart', () => {
+describe('PerformanceBarChart', () => {
   beforeEach(() => {
     capturedBarData = null;
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
@@ -56,37 +58,37 @@ describe('CountryPerformanceChart', () => {
   });
 
   it('shows a spinner while loading', () => {
-    render(<CountryPerformanceChart title="Top 15" data={undefined} isLoading />);
+    render(<PerformanceBarChart title="Top 15" data={undefined} isLoading />);
     expect(screen.getByTestId('spinner')).toBeInTheDocument();
   });
 
   it('shows an empty state when there is no data', () => {
-    render(<CountryPerformanceChart title="Top 15" data={[]} isLoading={false} />);
+    render(<PerformanceBarChart title="Top 15" data={[]} isLoading={false} />);
     expect(screen.getByText(/Aucune donnée/)).toBeInTheDocument();
   });
 
   it('shows an empty state when data is undefined and not loading', () => {
-    render(<CountryPerformanceChart title="Top 15" data={undefined} isLoading={false} />);
+    render(<PerformanceBarChart title="Top 15" data={undefined} isLoading={false} />);
     expect(screen.getByText(/Aucune donnée/)).toBeInTheDocument();
   });
 
-  it('renders one bar per country, in the order received (ascending, not re-sorted)', () => {
-    render(<CountryPerformanceChart title="Top 15" data={ENTRIES} isLoading={false} />);
+  it('renders one bar per row, in the order received (ascending, not re-sorted)', () => {
+    render(<PerformanceBarChart title="Top 15" data={ENTRIES} isLoading={false} />);
     expect(screen.getByTestId('chart-bar')).toHaveAttribute('data-points', '3');
     expect(capturedBarData).toEqual([
-      { x: 'Inde', y: -3.2, indexLabel: 'BSE Sensex' },
-      { x: 'États-Unis', y: 20.19, indexLabel: 'S&P 500' },
-      { x: 'Corée du Sud', y: 102.88, indexLabel: 'KOSPI Composite' },
+      { x: 'Inde', y: -3.2, tooltipLabel: 'BSE Sensex' },
+      { x: 'États-Unis', y: 20.19, tooltipLabel: 'S&P 500' },
+      { x: 'Corée du Sud', y: 102.88, tooltipLabel: 'KOSPI Composite' },
     ]);
   });
 
   it('passes negative values through untouched (no zero-floor clipping)', () => {
-    render(<CountryPerformanceChart title="Top 15" data={ENTRIES} isLoading={false} />);
+    render(<PerformanceBarChart title="Top 15" data={ENTRIES} isLoading={false} />);
     expect(capturedBarData?.some((d) => d.y < 0)).toBe(true);
   });
 
   it('renders the given title', () => {
-    render(<CountryPerformanceChart title="Top 15 — Performance" data={ENTRIES} isLoading={false} />);
+    render(<PerformanceBarChart title="Top 15 — Performance" data={ENTRIES} isLoading={false} />);
     expect(screen.getByText('Top 15 — Performance')).toBeInTheDocument();
   });
 
@@ -95,22 +97,35 @@ describe('CountryPerformanceChart', () => {
       width: 0, height: 360, top: 0, left: 0, bottom: 360, right: 0, x: 0, y: 0,
       toJSON: () => ({}),
     } as DOMRect);
-    render(<CountryPerformanceChart title="Top 15" data={ENTRIES} isLoading={false} />);
+    render(<PerformanceBarChart title="Top 15" data={ENTRIES} isLoading={false} />);
     expect(screen.getByTestId('chart-bar')).toBeInTheDocument();
   });
 
   it('applies horizontal gridlines to the dependent (Y) axis', () => {
-    render(<CountryPerformanceChart title="Top 15" data={ENTRIES} isLoading={false} />);
+    render(<PerformanceBarChart title="Top 15" data={ENTRIES} isLoading={false} />);
     expect(capturedDependentAxisStyle?.grid).toEqual({ stroke: '#d2d2d2', strokeWidth: 1 });
   });
 
-  it('configures a hover tooltip via ChartVoronoiContainer with a formatted "country — index: pct%" label', () => {
-    render(<CountryPerformanceChart title="Top 15" data={ENTRIES} isLoading={false} />);
+  it('configures a hover tooltip via ChartVoronoiContainer with a formatted "label — tooltip: value%" label', () => {
+    render(<PerformanceBarChart title="Top 15" data={ENTRIES} isLoading={false} />);
     expect(capturedContainerComponent).not.toBeNull();
     const label = capturedContainerComponent.props.labels({
-      datum: { x: 'Corée du Sud', y: 102.876, indexLabel: 'KOSPI Composite' },
+      datum: { x: 'Corée du Sud', y: 102.876, tooltipLabel: 'KOSPI Composite' },
     });
     expect(label).toBe('Corée du Sud — KOSPI Composite: 102.9%');
+  });
+
+  it('uses a uniform bar color by default (colorBySign off)', () => {
+    render(<PerformanceBarChart title="Top 15" data={ENTRIES} isLoading={false} />);
+    expect(capturedBarFill).toBe('#0066CC');
+  });
+
+  it('colors bars green/red by sign when colorBySign is set', () => {
+    render(<PerformanceBarChart title="Top 15" data={ENTRIES} isLoading={false} colorBySign />);
+    expect(typeof capturedBarFill).toBe('function');
+    expect(capturedBarFill({ datum: { y: 2.5 } })).toBe('#3E8635');
+    expect(capturedBarFill({ datum: { y: -1.0 } })).toBe('#C9190B');
+    expect(capturedBarFill({ datum: { y: 0 } })).toBe('#3E8635');
   });
 
   it('updates chart width when the ResizeObserver callback fires', () => {
@@ -122,7 +137,7 @@ describe('CountryPerformanceChart', () => {
       unobserve() {}
       disconnect() {}
     };
-    render(<CountryPerformanceChart title="Top 15" data={ENTRIES} isLoading={false} />);
+    render(<PerformanceBarChart title="Top 15" data={ENTRIES} isLoading={false} />);
     expect(capturedCallback).not.toBeNull();
     act(() => { capturedCallback!([{ contentRect: { width: 950 } }]); });
     (globalThis as any).ResizeObserver = originalRO;

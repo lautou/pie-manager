@@ -21,8 +21,11 @@ directly as `TTE.PA` and inside `STN.PA` at 18.63% — confirmed on real portfol
 **Data source**: Yahoo Finance's unofficial `quoteSummary` endpoint (`query2.finance.yahoo.com`,
 module `topHoldings` for funds, `assetProfile` for a direct stock's `sectorKey`) — a
 **different, more fragile mechanism** than the price-sync `chart` endpoint above. It requires
-a session cookie + CSRF "crumb" token (`app/tasks/etf_holdings.py`, `_get_yahoo_session_crumb`)
-fetched fresh each run; if that fails, the whole task aborts cleanly (old data stays in place,
+a session cookie + CSRF "crumb" token (`app/tasks/yahoo_fetch.py`'s `get_yahoo_session_crumb`/
+`fetch_quote_summary_module` — extracted here from this module's original, sole-owner copy once
+`app/tasks/equity_premium.py` needed the identical mechanism for module `summaryDetail`, see
+`.claude/rules/macro-indicators.md`'s "Equity risk premium leaderboard" section) fetched fresh
+each run; if that fails, the whole task aborts cleanly (old data stays in place,
 `products.holdings_updated_at` just doesn't advance).
 
 **Crumb endpoint gotcha, confirmed empirically**: `query2.finance.yahoo.com/v1/test/getcrumb`

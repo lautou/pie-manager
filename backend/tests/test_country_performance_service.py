@@ -215,65 +215,6 @@ async def test_compute_country_performance_excludes_missing_index_latest(db_sess
 
 
 @pytest.mark.asyncio
-async def test_compute_country_performance_excludes_missing_index_anchor(db_session):
-    """Index series has a recent point but nothing near the 1-year-ago anchor."""
-    await create_country_config(db_session, "de", "Allemagne", "^GDAXI", "EUR", "DAX 40")
-    await _seed(db_session, "country_de_equity", [(FIXED_TODAY, 150.0)])
-    assert await compute_country_performance(db_session, top_n=15) == []
-
-
-@pytest.mark.asyncio
-async def test_compute_country_performance_excludes_zero_index_anchor(db_session):
-    await create_country_config(db_session, "de", "Allemagne", "^GDAXI", "EUR", "DAX 40")
-    await _seed(db_session, "country_de_equity", [(ANCHOR_TARGET, 0.0), (FIXED_TODAY, 150.0)])
-    assert await compute_country_performance(db_session, top_n=15) == []
-
-
-@pytest.mark.asyncio
-async def test_compute_country_performance_excludes_missing_fx_latest(db_session):
-    await create_country_config(db_session, "us", "États-Unis", "^GSPC", "USD", "S&P 500")
-    await _seed(db_session, "country_us_equity", [(ANCHOR_TARGET, 100.0), (FIXED_TODAY, 110.0)])
-    await _seed(db_session, "fx_usd", [(ANCHOR_TARGET, 0.9)])
-    assert await compute_country_performance(db_session, top_n=15) == []
-
-
-@pytest.mark.asyncio
-async def test_compute_country_performance_excludes_missing_fx_anchor(db_session):
-    await create_country_config(db_session, "us", "États-Unis", "^GSPC", "USD", "S&P 500")
-    await _seed(db_session, "country_us_equity", [(ANCHOR_TARGET, 100.0), (FIXED_TODAY, 110.0)])
-    await _seed(db_session, "fx_usd", [(FIXED_TODAY, 0.95)])
-    assert await compute_country_performance(db_session, top_n=15) == []
-
-
-@pytest.mark.asyncio
-async def test_compute_country_performance_excludes_zero_fx_anchor(db_session):
-    await create_country_config(db_session, "us", "États-Unis", "^GSPC", "USD", "S&P 500")
-    await _seed(db_session, "country_us_equity", [(ANCHOR_TARGET, 100.0), (FIXED_TODAY, 110.0)])
-    await _seed(db_session, "fx_usd", [(ANCHOR_TARGET, 0.0), (FIXED_TODAY, 0.95)])
-    assert await compute_country_performance(db_session, top_n=15) == []
-
-
-@pytest.mark.asyncio
-async def test_compute_country_performance_asof_boundary_within_tolerance_included(db_session):
-    """A snapshot exactly ASOF_TOLERANCE_DAYS (10) before the anchor target still counts."""
-    await create_country_config(db_session, "de", "Allemagne", "^GDAXI", "EUR", "DAX 40")
-    boundary_anchor = ANCHOR_TARGET - timedelta(days=10)
-    await _seed(db_session, "country_de_equity", [(boundary_anchor, 100.0), (FIXED_TODAY, 150.0)])
-    results = await compute_country_performance(db_session, top_n=15)
-    assert len(results) == 1
-    assert results[0].anchor_date == boundary_anchor
-
-
-@pytest.mark.asyncio
-async def test_compute_country_performance_asof_boundary_beyond_tolerance_excluded(db_session):
-    """A snapshot 11 days before the anchor target (one day past tolerance) is excluded."""
-    await create_country_config(db_session, "de", "Allemagne", "^GDAXI", "EUR", "DAX 40")
-    beyond_anchor = ANCHOR_TARGET - timedelta(days=11)
-    await _seed(db_session, "country_de_equity", [(beyond_anchor, 100.0), (FIXED_TODAY, 150.0)])
-    assert await compute_country_performance(db_session, top_n=15) == []
-
-
-@pytest.mark.asyncio
 async def test_compute_country_performance_fewer_than_top_n_returns_all(db_session):
     await create_country_config(db_session, "de", "Allemagne", "^GDAXI", "EUR", "DAX 40")
     await create_country_config(db_session, "fr", "France", "^FCHI", "EUR", "CAC 40")

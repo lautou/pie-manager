@@ -553,7 +553,8 @@
   "indicators": {
     "title": "Macro Indicators",
     "tabGrowthInflation": "Growth / Inflation",
-    "tabMarketPerformance": "Market Performance",
+    "tabMarketPerformance": "Equity Performance",
+    "tabSectorPerformance": "Asset Class Performance",
     "regionSelectLabel": "Region",
     "growthTitle": "Growth — {{region}}",
     "inflationTitle": "Inflation — {{region}}",
@@ -596,11 +597,12 @@
       "bondTickerRequired": "Bond ticker is required",
       "equityLabelRequired": "Equity name is required",
       "bondLabelRequired": "Bond name is required"
-    }
+    },
+    "tabEquityPremium": "Equity Risk Premium"
   },
   "marketPerformance": {
     "chartTitle": "Top 15 — 1-Year Stock Market Performance (EUR)",
-    "sectionTitle": "🌍 Market performance — countries",
+    "sectionTitle": "🌍 Equity performance — countries",
     "sectionDescription": "Universe of countries tracked for the trailing-1-year, EUR-adjusted market performance ranking. The chart only shows the top {{topN}} of this universe.",
     "topNLabel": "Number of countries shown (Top N)",
     "newCountry": "New country",
@@ -618,6 +620,51 @@
       "indexLabelRequired": "Index name is required",
       "indexTickerRequired": "Index ticker is required",
       "currencyRequired": "Currency is required"
+    }
+  },
+  "sectorPerformance": {
+    "chartTitle": "1-Year Asset Class Performance (EUR)",
+    "sectionTitle": "📊 Asset class performance",
+    "sectionDescription": "Universe of asset classes (commodities, currencies, bonds, private equity, crypto...) tracked for the trailing-1-year, EUR-adjusted performance chart.",
+    "newSector": "New sector",
+    "editSector": "Edit sector",
+    "sectorCode": "Code",
+    "sectorLabel": "Name",
+    "indexLabel": "Index name",
+    "indexTicker": "Index ticker",
+    "currency": "Currency",
+    "noSectors": "No sectors",
+    "deleteSectorConfirm": "Delete sector \"{{name}}\"?",
+    "validation": {
+      "codeRequired": "Code is required",
+      "labelRequired": "Name is required",
+      "indexLabelRequired": "Index name is required",
+      "indexTickerRequired": "Index ticker is required",
+      "currencyRequired": "Currency is required"
+    }
+  },
+  "equityPremium": {
+    "chartTitle": "Equity Risk Premium (1-year)",
+    "sectionTitle": "📈 Equity Risk Premium",
+    "sectionDescription": "Country universe (the same countries as the country stock-market leaderboard, limited to what Yahoo Finance actually exposes) tracked to compare the equity earnings yield (1/P-E) to the risk-free rate (10-year government bond). A positive premium (green) signals equities are cheap relative to bonds; a negative premium (red) signals the opposite.",
+    "legend": "🟢 Positive premium: equities are cheap relative to bonds — a favorable signal for investing in equities. 🔴 Negative premium: bonds are more attractive than equities.",
+    "newCountry": "New premium",
+    "editCountry": "Edit premium",
+    "countryCode": "Code",
+    "countryLabel": "Name",
+    "equityLabel": "Equity name",
+    "equityTicker": "Equity ticker (country ETF)",
+    "bondLabel": "Bond name",
+    "bondTicker": "Bond ticker (government ETF)",
+    "noCountries": "No countries",
+    "deleteCountryConfirm": "Delete country \"{{name}}\"?",
+    "validation": {
+      "codeRequired": "Code is required",
+      "labelRequired": "Name is required",
+      "equityLabelRequired": "Equity name is required",
+      "equityTickerRequired": "Equity ticker is required",
+      "bondLabelRequired": "Bond name is required",
+      "bondTickerRequired": "Bond ticker is required"
     }
   }
 }

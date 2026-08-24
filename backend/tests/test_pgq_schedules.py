@@ -4,7 +4,7 @@ Schedule-fidelity + timezone-behavior checks for app/tasks/pgq_app.py (issue #66
 
 Confirmed live (2026-08-13): a real `pgq run app.tasks.pgq_app:main` process, against a real
 throwaway Postgres (and separately, a real windows-latest GitHub Actions runner), registered
-all 6 schedules correctly (`pgqueuer_schedules` table populated with sane `next_run` values)
+every schedule correctly (`pgqueuer_schedules` table populated with sane `next_run` values)
 and shut down cleanly on SIGTERM.
 
 Also confirmed live: PgQueuer's SchedulerManager computes each schedule's next-run time by
@@ -13,11 +13,15 @@ seeding croniter with `datetime.now(timezone.utc)` (pgqueuer/core/executors.py's
 equivalent of Celery's `timezone="Europe/Paris"` config. Setting `TZ=Europe/Paris` on the
 worker container has zero effect on this computation (it isn't wall-clock-dependent at all).
 
-Because of this, the 5 hour-specific cron constants in pgq_app.py are hand-shifted by -2h
-from Celery's raw Paris-local hour numbers (Europe/Paris's current CEST/UTC+2 offset) — the
-tests below assert the *shifted* (UTC) values, not the original Celery-local ones. During CET
-(UTC+1, roughly late Oct-late Mar) these fire 1 hour earlier than the intended Paris wall-clock
-time — an accepted, documented drift (see pgq_app.py's module docstring), not a bug.
+Because of this, the hour-specific cron constants in pgq_app.py that were migrated from a real
+Celery `beat_schedule` entry are hand-shifted by -2h from Celery's raw Paris-local hour numbers
+(Europe/Paris's current CEST/UTC+2 offset) — the tests below assert the *shifted* (UTC) values,
+not the original Celery-local ones. During CET (UTC+1, roughly late Oct-late Mar) these fire 1
+hour earlier than the intended Paris wall-clock time — an accepted, documented drift (see
+pgq_app.py's module docstring), not a bug. `REFRESH_SECTOR_PERFORMANCE_CRON` and
+`REFRESH_EQUITY_PREMIUM_CRON` have no Celery predecessor to shift from — each was chosen
+purely to continue the 15-minute stagger after the previous Yahoo-hitting cron
+(`REFRESH_COUNTRY_PERFORMANCE_CRON`, then `REFRESH_SECTOR_PERFORMANCE_CRON`).
 """
 
 from datetime import datetime, timezone
@@ -29,9 +33,11 @@ from app.tasks.pgq_app import (
     COMPUTE_DAILY_SNAPSHOTS_CRON,
     COMPUTE_MONTHLY_SNAPSHOTS_CRON,
     REFRESH_COUNTRY_PERFORMANCE_CRON,
+    REFRESH_EQUITY_PREMIUM_CRON,
     REFRESH_ETF_HOLDINGS_CRON,
     REFRESH_MACRO_INDICATORS_CRON,
     REFRESH_PRICES_LIVE_CRON,
+    REFRESH_SECTOR_PERFORMANCE_CRON,
 )
 
 ALL_CRONS = [
@@ -41,14 +47,16 @@ ALL_CRONS = [
     REFRESH_ETF_HOLDINGS_CRON,
     REFRESH_MACRO_INDICATORS_CRON,
     REFRESH_COUNTRY_PERFORMANCE_CRON,
+    REFRESH_SECTOR_PERFORMANCE_CRON,
+    REFRESH_EQUITY_PREMIUM_CRON,
     CHECK_GITHUB_UPDATE_CRON,
 ]
 
 
 def test_check_github_update_fires_every_6_hours_utc_no_paris_shift():
-    """Unlike the 5 hour-specific crons above, this one is intentionally NOT Paris-shifted —
-    checking for a new release doesn't depend on wall-clock time of day (see pgq_app.py's
-    module docstring)."""
+    """Unlike the hour-specific, Celery-migrated crons above, this one is intentionally NOT
+    Paris-shifted — checking for a new release doesn't depend on wall-clock time of day (see
+    pgq_app.py's module docstring)."""
     assert CHECK_GITHUB_UPDATE_CRON == "0 */6 * * *"
 
 
@@ -89,6 +97,18 @@ def test_macro_indicators_and_country_performance_stay_offset_by_15_minutes():
     celery_app.py's original comment) so both don't hit Yahoo at once."""
     assert REFRESH_MACRO_INDICATORS_CRON == "0 5 * * *"
     assert REFRESH_COUNTRY_PERFORMANCE_CRON == "15 5 * * *"
+
+
+def test_sector_performance_fires_15_minutes_after_country_performance():
+    """05:00/05:15/05:30 UTC stagger keeps 3 daily Yahoo-hitting jobs from all firing at
+    once — see macro_indicators/country_performance/sector_performance."""
+    assert REFRESH_SECTOR_PERFORMANCE_CRON == "30 5 * * *"
+
+
+def test_equity_premium_fires_15_minutes_after_sector_performance():
+    """05:00/05:15/05:30/05:45 UTC stagger keeps 4 daily Yahoo-hitting jobs from all firing at
+    once — see macro_indicators/country_performance/sector_performance/equity_premium."""
+    assert REFRESH_EQUITY_PREMIUM_CRON == "45 5 * * *"
 
 
 def test_pgqueuer_scheduler_computes_next_run_in_utc_not_local_time():

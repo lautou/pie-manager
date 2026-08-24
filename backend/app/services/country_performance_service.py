@@ -20,7 +20,6 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Optional
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.country_performance import CountryPerfConfig

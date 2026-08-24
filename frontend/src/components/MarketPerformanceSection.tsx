@@ -4,7 +4,7 @@ import { useCountryPerformance } from '../api/queries';
 import { useCountryPerfSyncStatus } from '../hooks/useMacroSyncStatus';
 import { useSyncStatusInvalidation } from '../hooks/useSyncStatusInvalidation';
 import { formatSyncDateTime } from '../hooks/useSyncStatus';
-import CountryPerformanceChart from './CountryPerformanceChart';
+import PerformanceBarChart from './PerformanceBarChart';
 
 /**
  * Country stock-market performance leaderboard tab (Top N, trailing 1 year, EUR-adjusted)
@@ -18,6 +18,10 @@ export default function MarketPerformanceSection() {
 
   useSyncStatusInvalidation(syncStatus?.finished_at, [['country-performance']]);
 
+  const chartData = countryPerf?.map((c) => ({
+    label: c.label, value: c.perf_pct, tooltipLabel: c.index_label,
+  }));
+
   return (
     <div>
       {syncStatus && syncStatus.status !== 'never' && (
@@ -25,9 +29,9 @@ export default function MarketPerformanceSection() {
           {t('indicators.lastSync', { time: formatSyncDateTime(syncStatus) })}
         </div>
       )}
-      <CountryPerformanceChart
+      <PerformanceBarChart
         title={t('marketPerformance.chartTitle')}
-        data={countryPerf}
+        data={chartData}
         isLoading={isLoading}
       />
     </div>

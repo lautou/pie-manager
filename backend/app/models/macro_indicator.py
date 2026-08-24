@@ -15,7 +15,10 @@ class MacroSeriesPrice(Base):
     __table_args__ = (UniqueConstraint("series", "date", name="uq_macro_series_price"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    series: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    # Widened from String(20) in migration xx77yy88zz99 — sector_{code}_equity (code up to
+    # SectorPerfConfig.code's own String(20)) can reach 34 chars (e.g.
+    # "sector_agriculture_equity" is 25), which the original 20-char limit couldn't hold.
+    series: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     value: Mapped[float] = mapped_column(Float, nullable=False)
 

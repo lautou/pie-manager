@@ -345,6 +345,18 @@ export interface SyncStatus {
   failed_tickers: string[];
 }
 
+// Shared shape for both the country and sector performance bar charts — see
+// PerformanceBarChart.tsx, which is generic over this single interface.
+export interface PerformanceEntry {
+  code: string;
+  label: string;
+  currency: string;
+  perf_pct: number;
+  latest_date: string;
+  anchor_date: string;
+  index_label: string;
+}
+
 export interface CountryPerfConfig {
   code: string;
   label: string;
@@ -353,12 +365,38 @@ export interface CountryPerfConfig {
   index_label: string;
 }
 
-export interface CountryPerformanceEntry {
+export type CountryPerformanceEntry = PerformanceEntry;
+
+export interface SectorPerfConfig {
   code: string;
   label: string;
+  index_ticker: string;
   currency: string;
-  perf_pct: number;
-  latest_date: string;
-  anchor_date: string;
   index_label: string;
+}
+
+export type SectorPerformanceEntry = PerformanceEntry;
+
+export interface EquityPremiumConfig {
+  code: string;
+  label: string;
+  equity_ticker: string;
+  bond_ticker: string;
+  equity_label: string;
+  bond_label: string;
+}
+
+// Deliberately NOT an alias of PerformanceEntry — a point-in-time snapshot (no anchor_date, no
+// currency: both legs are same-country, same-currency dimensionless yields), not a
+// trailing-window return. See PerformanceBarChart.tsx's PerformanceChartDatum for the shared
+// shape this (and PerformanceEntry) map into before reaching the chart.
+export interface EquityPremiumEntry {
+  code: string;
+  label: string;
+  premium_pct: number;
+  equity_yield_pct: number;
+  bond_yield_pct: number;
+  equity_label: string;
+  bond_label: string;
+  asof_date: string;
 }

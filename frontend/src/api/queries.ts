@@ -3,9 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import apiClient from './client';
 import type {
   Broker, AccountSummary, AssetPrice, CountryPerfConfig, CountryPerformanceEntry, Dashboard,
-  DailySnapshot, DailyWithPools, DailyHoldingValues, EtfComposition, FiscalCarryForward,
+  DailySnapshot, DailyWithPools, DailyHoldingValues, EquityPremiumConfig, EquityPremiumEntry,
+  EtfComposition, FiscalCarryForward,
   MacroRegionConfig, MonthlySnapshot, Pool, PoolAllocation, PortfolioCapitalGains, Holding,
-  Product, RatioIndicator, Transaction, User,
+  Product, RatioIndicator, SectorPerfConfig, SectorPerformanceEntry, Transaction, User,
 } from '../types';
 
 // ── Portfolios ─────────────────────────────────────────────────────────────
@@ -493,6 +494,76 @@ export async function updateCountryPerfConfig(
 
 export async function deleteCountryPerfConfig(code: string): Promise<void> {
   await apiClient.delete(`/api/indicators/country-performance/countries/${code}`);
+}
+
+// ── Sector performance (global, portfolio-independent) ──────────────────────
+
+export function useSectorPerformance() {
+  return useQuery<SectorPerformanceEntry[]>({
+    queryKey: ['sector-performance'],
+    queryFn: async () =>
+      (await apiClient.get<SectorPerformanceEntry[]>('/api/indicators/sector-performance')).data,
+    staleTime: 60 * 60 * 1000, // refreshed once a day server-side
+  });
+}
+
+export function useSectorPerfConfigs() {
+  return useQuery<SectorPerfConfig[]>({
+    queryKey: ['sector-perf-configs'],
+    queryFn: async () =>
+      (await apiClient.get<SectorPerfConfig[]>('/api/indicators/sector-performance/sectors')).data,
+  });
+}
+
+export async function createSectorPerfConfig(body: SectorPerfConfig): Promise<SectorPerfConfig> {
+  return (await apiClient.post<SectorPerfConfig>('/api/indicators/sector-performance/sectors', body)).data;
+}
+
+export async function updateSectorPerfConfig(
+  code: string, body: Omit<SectorPerfConfig, 'code'>,
+): Promise<SectorPerfConfig> {
+  return (await apiClient.put<SectorPerfConfig>(
+    `/api/indicators/sector-performance/sectors/${code}`, body,
+  )).data;
+}
+
+export async function deleteSectorPerfConfig(code: string): Promise<void> {
+  await apiClient.delete(`/api/indicators/sector-performance/sectors/${code}`);
+}
+
+// ── Equity risk premium (global, portfolio-independent) ─────────────────────
+
+export function useEquityPremium() {
+  return useQuery<EquityPremiumEntry[]>({
+    queryKey: ['equity-premium'],
+    queryFn: async () =>
+      (await apiClient.get<EquityPremiumEntry[]>('/api/indicators/equity-premium')).data,
+    staleTime: 60 * 60 * 1000, // refreshed once a day server-side
+  });
+}
+
+export function useEquityPremiumConfigs() {
+  return useQuery<EquityPremiumConfig[]>({
+    queryKey: ['equity-premium-configs'],
+    queryFn: async () =>
+      (await apiClient.get<EquityPremiumConfig[]>('/api/indicators/equity-premium/countries')).data,
+  });
+}
+
+export async function createEquityPremiumConfig(body: EquityPremiumConfig): Promise<EquityPremiumConfig> {
+  return (await apiClient.post<EquityPremiumConfig>('/api/indicators/equity-premium/countries', body)).data;
+}
+
+export async function updateEquityPremiumConfig(
+  code: string, body: Omit<EquityPremiumConfig, 'code'>,
+): Promise<EquityPremiumConfig> {
+  return (await apiClient.put<EquityPremiumConfig>(
+    `/api/indicators/equity-premium/countries/${code}`, body,
+  )).data;
+}
+
+export async function deleteEquityPremiumConfig(code: string): Promise<void> {
+  await apiClient.delete(`/api/indicators/equity-premium/countries/${code}`);
 }
 
 // ── Dashboard ──────────────────────────────────────────────────────────────

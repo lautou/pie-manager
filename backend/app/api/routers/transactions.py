@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pgqueuer import Queries
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func as sa_func, cast, Numeric
+from sqlalchemy import select, func as sa_func, cast, Numeric, update as sa_update
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from typing import Optional
 from datetime import date as Date
@@ -147,6 +147,82 @@ def _contributes_to_ledger(operation: Optional[str]) -> bool:
     return operation != "Attribution"
 
 
+async def _prev_balance_eur(
+    db: AsyncSession, account_id: int, portfolio_id: int, before_date: Date, before_id: int,
+) -> Optional[float]:
+    """Latest balance_eur strictly before (before_date, before_id) on this account — i.e.
+    date < before_date, or same date with a lower id. Shared by every "find the running
+    balance to build on top of" lookup in this file (create, fractional siblings, auto-
+    created fees, and update's date-move/backfill paths) — same query shape, only the pivot
+    (date, id) and what the caller does with the result differ."""
+    result = await db.execute(
+        select(Transaction.balance_eur)
+        .where(
+            Transaction.account_id == account_id,
+            Transaction.portfolio_id == portfolio_id,
+            Transaction.balance_eur.isnot(None),
+            Transaction.id != before_id,
+            (Transaction.date < before_date) |
+            ((Transaction.date == before_date) & (Transaction.id < before_id)),
+        )
+        .order_by(Transaction.date.desc(), Transaction.id.desc())
+        .limit(1)
+    )
+    value = result.scalar_one_or_none()
+    return float(value) if value is not None else None
+
+
+async def _prev_balance_currency(
+    db: AsyncSession, account_id: int, portfolio_id: int, currency: str, before_date: Date, before_id: int,
+) -> Optional[float]:
+    """Same as _prev_balance_eur, but for the per-currency balance_currency chain (only
+    relevant for non-EUR transactions, since EUR balance_currency always equals balance_eur)."""
+    result = await db.execute(
+        select(Transaction.balance_currency)
+        .where(
+            Transaction.account_id == account_id,
+            Transaction.portfolio_id == portfolio_id,
+            Transaction.currency == currency,
+            Transaction.balance_currency.isnot(None),
+            Transaction.id != before_id,
+            (Transaction.date < before_date) |
+            ((Transaction.date == before_date) & (Transaction.id < before_id)),
+        )
+        .order_by(Transaction.date.desc(), Transaction.id.desc())
+        .limit(1)
+    )
+    value = result.scalar_one_or_none()
+    return float(value) if value is not None else None
+
+
+async def _propagate_balance_eur_delta(
+    db: AsyncSession, account_id: int, portfolio_id: int, after_date: Date, after_id: int, delta: float,
+    *, synchronize_session: bool | str | None = None,
+) -> None:
+    """Adds `delta` to balance_eur of every transaction on this account strictly after
+    (after_date, after_id) — i.e. date > after_date, or same date with a higher id. Callers
+    already guard on `delta != 0`/`_contributes_to_ledger` before calling, so this issues the
+    UPDATE unconditionally. `synchronize_session` is threaded through explicitly rather than
+    defaulted — update_transaction's date-move path relies on `False` there (it flushes and
+    manages session state itself around these calls), while create_transaction_core's single
+    call leaves it unset; preserved exactly as each call site had it before this was
+    extracted, not normalized to one choice."""
+    stmt = (
+        sa_update(Transaction)
+        .where(
+            Transaction.account_id == account_id,
+            Transaction.portfolio_id == portfolio_id,
+            Transaction.balance_eur.isnot(None),
+            (Transaction.date > after_date) |
+            ((Transaction.date == after_date) & (Transaction.id > after_id)),
+        )
+        .values(balance_eur=sa_func.round(cast(Transaction.balance_eur + delta, Numeric), 2))
+    )
+    if synchronize_session is not None:
+        stmt = stmt.execution_options(synchronize_session=synchronize_session)
+    await db.execute(stmt)
+
+
 async def _update_account_cash_balance(
     db: AsyncSession, account_id: int, portfolio_id: int, delta: float, tx_type: str, ticker: str,
     operation: Optional[str] = None,
@@ -239,65 +315,27 @@ async def create_transaction_core(body: TransactionCreate, db: AsyncSession) -> 
     # though total_amount_eur may carry a recorded fair-value cost basis for WACOP
     # (see _contributes_to_ledger). It stays None and displays "—" in the UI.
     if tx.balance_eur is None and _contributes_to_ledger(tx.operation):
-        prev_result = await db.execute(
-            select(Transaction.balance_eur)
-            .where(
-                Transaction.account_id == tx.account_id,
-                Transaction.portfolio_id == tx.portfolio_id,
-                Transaction.balance_eur.isnot(None),
-                Transaction.id != tx.id,
-                # Only look at transactions BEFORE this date/id (not future ones)
-                (Transaction.date < tx.date) |
-                ((Transaction.date == tx.date) & (Transaction.id < tx.id)),
-            )
-            .order_by(Transaction.date.desc(), Transaction.id.desc())
-            .limit(1)
-        )
-        prev_balance = prev_result.scalar_one_or_none()
+        prev_balance = await _prev_balance_eur(db, tx.account_id, tx.portfolio_id, tx.date, tx.id)
         if prev_balance is not None:
-            tx.balance_eur = _no_neg_zero(round(float(prev_balance) + tx.total_amount_eur, 2))
+            tx.balance_eur = _no_neg_zero(round(prev_balance + tx.total_amount_eur, 2))
             # For EUR transactions, balance_currency equals balance_eur
             if tx.currency == "EUR" and tx.balance_currency is None:
                 tx.balance_currency = tx.balance_eur
             # For non-EUR transactions, compute balance_currency as a running sum in
             # the native currency. total_amount = quantity × unit_price in that currency.
             elif tx.balance_currency is None:
-                prev_curr_result = await db.execute(
-                    select(Transaction.balance_currency)
-                    .where(
-                        Transaction.account_id == tx.account_id,
-                        Transaction.portfolio_id == tx.portfolio_id,
-                        Transaction.currency == tx.currency,
-                        Transaction.balance_currency.isnot(None),
-                        Transaction.id != tx.id,
-                        (Transaction.date < tx.date) |
-                        ((Transaction.date == tx.date) & (Transaction.id < tx.id)),
-                    )
-                    .order_by(Transaction.date.desc(), Transaction.id.desc())
-                    .limit(1)
+                prev_curr_balance = await _prev_balance_currency(
+                    db, tx.account_id, tx.portfolio_id, tx.currency, tx.date, tx.id,
                 )
-                prev_curr_balance = prev_curr_result.scalar_one_or_none()
                 if prev_curr_balance is not None:
-                    tx.balance_currency = _no_neg_zero(round(float(prev_curr_balance) + tx.total_amount, 2))
+                    tx.balance_currency = _no_neg_zero(round(prev_curr_balance + tx.total_amount, 2))
 
     # Retroactive update: propagate this transaction's amount to all SUBSEQUENT
     # transactions for the same account that have a known balance_eur.
     # Use case: adding a missing transaction from the past (e.g. a fee entered
     # after the fact). The subsequent balance_eur values must shift by the same delta.
-    from sqlalchemy import update as sa_update
     if tx.total_amount_eur != 0 and _contributes_to_ledger(tx.operation):
-        await db.execute(
-            sa_update(Transaction)
-            .where(
-                Transaction.account_id == tx.account_id,
-                Transaction.portfolio_id == tx.portfolio_id,
-                Transaction.balance_eur.isnot(None),
-                Transaction.id != tx.id,
-                (Transaction.date > tx.date) |
-                ((Transaction.date == tx.date) & (Transaction.id > tx.id)),
-            )
-            .values(balance_eur=sa_func.round(cast(Transaction.balance_eur + tx.total_amount_eur, Numeric), 2))
-        )
+        await _propagate_balance_eur_delta(db, tx.account_id, tx.portfolio_id, tx.date, tx.id, tx.total_amount_eur)
     # Retroactive update for non-EUR balance_currency: propagate to subsequent
     # transactions in the same currency on the same account.
     if tx.currency != "EUR" and tx.balance_currency is not None and tx.total_amount != 0 and _contributes_to_ledger(tx.operation):
@@ -343,42 +381,17 @@ async def create_transaction_core(body: TransactionCreate, db: AsyncSession) -> 
         # A sibling of an Attribution parent never gets a balance_eur either (see
         # _contributes_to_ledger).
         if _contributes_to_ledger(sibling.operation):
-            prev_sib = await db.execute(
-                select(Transaction.balance_eur)
-                .where(
-                    Transaction.account_id == sibling.account_id,
-                    Transaction.portfolio_id == sibling.portfolio_id,
-                    Transaction.balance_eur.isnot(None),
-                    Transaction.id != sibling.id,
-                    (Transaction.date < sibling.date) |
-                    ((Transaction.date == sibling.date) & (Transaction.id < sibling.id)),
-                )
-                .order_by(Transaction.date.desc(), Transaction.id.desc())
-                .limit(1)
-            )
-            prev_sib_balance = prev_sib.scalar_one_or_none()
+            prev_sib_balance = await _prev_balance_eur(db, sibling.account_id, sibling.portfolio_id, sibling.date, sibling.id)
             if prev_sib_balance is not None:
-                sibling.balance_eur = _no_neg_zero(round(float(prev_sib_balance) + sibling.total_amount_eur, 2))
+                sibling.balance_eur = _no_neg_zero(round(prev_sib_balance + sibling.total_amount_eur, 2))
                 if sibling.currency == "EUR":
                     sibling.balance_currency = sibling.balance_eur
                 else:
-                    prev_sib_curr = await db.execute(
-                        select(Transaction.balance_currency)
-                        .where(
-                            Transaction.account_id == sibling.account_id,
-                            Transaction.portfolio_id == sibling.portfolio_id,
-                            Transaction.currency == sibling.currency,
-                            Transaction.balance_currency.isnot(None),
-                            Transaction.id != sibling.id,
-                            (Transaction.date < sibling.date) |
-                            ((Transaction.date == sibling.date) & (Transaction.id < sibling.id)),
-                        )
-                        .order_by(Transaction.date.desc(), Transaction.id.desc())
-                        .limit(1)
+                    prev_sib_curr_balance = await _prev_balance_currency(
+                        db, sibling.account_id, sibling.portfolio_id, sibling.currency, sibling.date, sibling.id,
                     )
-                    prev_sib_curr_balance = prev_sib_curr.scalar_one_or_none()
                     if prev_sib_curr_balance is not None:
-                        sibling.balance_currency = _no_neg_zero(round(float(prev_sib_curr_balance) + sibling.total_amount, 2))
+                        sibling.balance_currency = _no_neg_zero(round(prev_sib_curr_balance + sibling.total_amount, 2))
         await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, sibling.total_amount_eur, sibling.type, sibling.ticker, sibling.operation)
 
     # Auto-create linked fee transactions (brokerage + TTF) for Actif buys/sells.
@@ -408,22 +421,9 @@ async def create_transaction_core(body: TransactionCreate, db: AsyncSession) -> 
                 db.add(fee_tx)
                 await db.flush()
                 # Calculate balance_eur for the auto-created fee transaction
-                prev_fee_result = await db.execute(
-                    select(Transaction.balance_eur)
-                    .where(
-                        Transaction.account_id == fee_tx.account_id,
-                        Transaction.portfolio_id == fee_tx.portfolio_id,
-                        Transaction.balance_eur.isnot(None),
-                        Transaction.id != fee_tx.id,
-                        (Transaction.date < fee_tx.date) |
-                        ((Transaction.date == fee_tx.date) & (Transaction.id < fee_tx.id)),
-                    )
-                    .order_by(Transaction.date.desc(), Transaction.id.desc())
-                    .limit(1)
-                )
-                prev_fee_balance = prev_fee_result.scalar_one_or_none()
+                prev_fee_balance = await _prev_balance_eur(db, fee_tx.account_id, fee_tx.portfolio_id, fee_tx.date, fee_tx.id)
                 if prev_fee_balance is not None:
-                    fee_tx.balance_eur = _no_neg_zero(round(float(prev_fee_balance) - fee_amount, 2))
+                    fee_tx.balance_eur = _no_neg_zero(round(prev_fee_balance - fee_amount, 2))
                     fee_tx.balance_currency = fee_tx.balance_eur
                 await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, -fee_amount, fee_tx.type, fee_tx.ticker, fee_tx.operation)
 
@@ -470,8 +470,6 @@ async def update_transaction(
         tx.total_amount = tx.quantity * tx.unit_price
         tx.total_amount_eur = tx.total_amount * tx.exchange_rate
 
-    from sqlalchemy import update as sa_update
-
     if date_changed:
         # Flush the date change explicitly before bulk updates so the session
         # state is coherent and synchronize_session='evaluate' doesn't interfere.
@@ -482,18 +480,9 @@ async def update_transaction(
         # CURRENT operation (not an old/new split) — same rigor this file already
         # applies to tx_type/ticker changes; see _contributes_to_ledger.
         if old_total_eur != 0 and _contributes_to_ledger(tx.operation):
-            await db.execute(
-                sa_update(Transaction)
-                .where(
-                    Transaction.account_id == tx.account_id,
-                    Transaction.portfolio_id == tx.portfolio_id,
-                    Transaction.balance_eur.isnot(None),
-                    Transaction.id != tx.id,
-                    (Transaction.date > old_date) |
-                    ((Transaction.date == old_date) & (Transaction.id > tx.id)),
-                )
-                .values(balance_eur=sa_func.round(cast(Transaction.balance_eur - old_total_eur, Numeric), 2))
-                .execution_options(synchronize_session=False)
+            await _propagate_balance_eur_delta(
+                db, tx.account_id, tx.portfolio_id, old_date, tx.id, -old_total_eur,
+                synchronize_session=False,
             )
 
         # Recalculate this tx's balance_eur at its new date position. A free share
@@ -501,22 +490,9 @@ async def update_transaction(
         tx.balance_eur = None
         tx.balance_currency = None
         if _contributes_to_ledger(tx.operation):
-            prev_result = await db.execute(
-                select(Transaction.balance_eur)
-                .where(
-                    Transaction.account_id == tx.account_id,
-                    Transaction.portfolio_id == tx.portfolio_id,
-                    Transaction.balance_eur.isnot(None),
-                    Transaction.id != tx.id,
-                    (Transaction.date < tx.date) |
-                    ((Transaction.date == tx.date) & (Transaction.id < tx.id)),
-                )
-                .order_by(Transaction.date.desc(), Transaction.id.desc())
-                .limit(1)
-            )
-            prev_balance = prev_result.scalar_one_or_none()
+            prev_balance = await _prev_balance_eur(db, tx.account_id, tx.portfolio_id, tx.date, tx.id)
             if prev_balance is not None:
-                tx.balance_eur = _no_neg_zero(round(float(prev_balance) + tx.total_amount_eur, 2))
+                tx.balance_eur = _no_neg_zero(round(prev_balance + tx.total_amount_eur, 2))
                 if tx.currency == "EUR":
                     tx.balance_currency = tx.balance_eur
 
@@ -524,18 +500,9 @@ async def update_transaction(
         # Propagate regardless of tx.balance_eur — downstream running balances must shift
         # even when the moved tx itself has no prior to derive its own balance from.
         if tx.total_amount_eur != 0 and _contributes_to_ledger(tx.operation):
-            await db.execute(
-                sa_update(Transaction)
-                .where(
-                    Transaction.account_id == tx.account_id,
-                    Transaction.portfolio_id == tx.portfolio_id,
-                    Transaction.balance_eur.isnot(None),
-                    Transaction.id != tx.id,
-                    (Transaction.date > tx.date) |
-                    ((Transaction.date == tx.date) & (Transaction.id > tx.id)),
-                )
-                .values(balance_eur=sa_func.round(cast(Transaction.balance_eur + tx.total_amount_eur, Numeric), 2))
-                .execution_options(synchronize_session=False)
+            await _propagate_balance_eur_delta(
+                db, tx.account_id, tx.portfolio_id, tx.date, tx.id, tx.total_amount_eur,
+                synchronize_session=False,
             )
 
         # A date move can be combined with an amount change in the same edit (date
@@ -548,22 +515,9 @@ async def update_transaction(
     else:
         # Auto-calculate balance_eur when still null (e.g. transaction created before this fix)
         if tx.balance_eur is None and _contributes_to_ledger(tx.operation):
-            prev_result = await db.execute(
-                select(Transaction.balance_eur)
-                .where(
-                    Transaction.account_id == tx.account_id,
-                    Transaction.portfolio_id == tx.portfolio_id,
-                    Transaction.balance_eur.isnot(None),
-                    Transaction.id != tx.id,
-                    (Transaction.date < tx.date) |
-                    ((Transaction.date == tx.date) & (Transaction.id < tx.id)),
-                )
-                .order_by(Transaction.date.desc(), Transaction.id.desc())
-                .limit(1)
-            )
-            prev_balance = prev_result.scalar_one_or_none()
+            prev_balance = await _prev_balance_eur(db, tx.account_id, tx.portfolio_id, tx.date, tx.id)
             if prev_balance is not None:
-                tx.balance_eur = _no_neg_zero(round(float(prev_balance) + tx.total_amount_eur, 2))
+                tx.balance_eur = _no_neg_zero(round(prev_balance + tx.total_amount_eur, 2))
                 if tx.currency == "EUR" and tx.balance_currency is None:
                     tx.balance_currency = tx.balance_eur
 
@@ -571,23 +525,11 @@ async def update_transaction(
         # Handles existing transactions created before this feature was added.
         # Runs whether or not balance_eur was just auto-calculated above.
         if tx.currency != "EUR" and tx.balance_currency is None and tx.balance_eur is not None:
-            prev_curr_result = await db.execute(
-                select(Transaction.balance_currency)
-                .where(
-                    Transaction.account_id == tx.account_id,
-                    Transaction.portfolio_id == tx.portfolio_id,
-                    Transaction.currency == tx.currency,
-                    Transaction.balance_currency.isnot(None),
-                    Transaction.id != tx.id,
-                    (Transaction.date < tx.date) |
-                    ((Transaction.date == tx.date) & (Transaction.id < tx.id)),
-                )
-                .order_by(Transaction.date.desc(), Transaction.id.desc())
-                .limit(1)
+            prev_curr_balance = await _prev_balance_currency(
+                db, tx.account_id, tx.portfolio_id, tx.currency, tx.date, tx.id,
             )
-            prev_curr_balance = prev_curr_result.scalar_one_or_none()
             if prev_curr_balance is not None:
-                tx.balance_currency = _no_neg_zero(round(float(prev_curr_balance) + tx.total_amount, 2))
+                tx.balance_currency = _no_neg_zero(round(prev_curr_balance + tx.total_amount, 2))
 
         delta = tx.total_amount_eur - old_total_eur
 
@@ -602,17 +544,9 @@ async def update_transaction(
                     tx.balance_currency = tx.balance_eur
 
             # Retroactive update: propagate the delta to all SUBSEQUENT transactions
-            await db.execute(
-                sa_update(Transaction)
-                .where(
-                    Transaction.account_id == tx.account_id,
-                    Transaction.portfolio_id == tx.portfolio_id,
-                    Transaction.balance_eur.isnot(None),
-                    (Transaction.date > tx.date) |
-                    ((Transaction.date == tx.date) & (Transaction.id > tx.id)),
-                )
-                .values(balance_eur=sa_func.round(cast(Transaction.balance_eur + delta, Numeric), 2))
-                .execution_options(synchronize_session=False)
+            await _propagate_balance_eur_delta(
+                db, tx.account_id, tx.portfolio_id, tx.date, tx.id, delta,
+                synchronize_session=False,
             )
 
             await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, delta, tx.type, tx.ticker, tx.operation)
@@ -660,22 +594,9 @@ async def update_transaction(
                 # Calculate balance_eur for the recreated fee transaction (same logic as
                 # auto-created fees on create_transaction) — otherwise it stays null and
                 # masks the parent's balance in the UI (highest id per day/currency wins).
-                prev_fee_result = await db.execute(
-                    select(Transaction.balance_eur)
-                    .where(
-                        Transaction.account_id == fee_tx.account_id,
-                        Transaction.portfolio_id == fee_tx.portfolio_id,
-                        Transaction.balance_eur.isnot(None),
-                        Transaction.id != fee_tx.id,
-                        (Transaction.date < fee_tx.date) |
-                        ((Transaction.date == fee_tx.date) & (Transaction.id < fee_tx.id)),
-                    )
-                    .order_by(Transaction.date.desc(), Transaction.id.desc())
-                    .limit(1)
-                )
-                prev_fee_balance = prev_fee_result.scalar_one_or_none()
+                prev_fee_balance = await _prev_balance_eur(db, fee_tx.account_id, fee_tx.portfolio_id, fee_tx.date, fee_tx.id)
                 if prev_fee_balance is not None:
-                    fee_tx.balance_eur = _no_neg_zero(round(float(prev_fee_balance) - fee_amount, 2))
+                    fee_tx.balance_eur = _no_neg_zero(round(prev_fee_balance - fee_amount, 2))
                     fee_tx.balance_currency = fee_tx.balance_eur
                 await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, -fee_amount, fee_tx.type, fee_tx.ticker, fee_tx.operation)
 

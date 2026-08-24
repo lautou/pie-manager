@@ -13,7 +13,6 @@ from app.services.price_service import _to_eur, r2
 from app.services.dashboard_service import (
     _get_latest_prices,
     _get_spot_rates,
-    _get_spot_rates_at_date,
     _get_latest_holdings,
 )
 from app.services.etf_holdings_service import get_composition
@@ -192,7 +191,7 @@ async def get_holdings_at_date(
     price_meta: dict[str, AssetPrice] = {r.ticker: r for r in price_rows.scalars().all()}
 
     # FX rates at or before snap_date for currency conversion
-    snap_spot_rates = await _get_spot_rates_at_date(db, snap_date)
+    snap_spot_rates = await _get_spot_rates(db, as_of=snap_date)
 
     # Pools & products
     pools_result = await db.execute(

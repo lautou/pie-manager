@@ -9,6 +9,28 @@ import type {
   Product, RatioIndicator, SectorPerfConfig, SectorPerformanceEntry, Transaction, User,
 } from '../types';
 
+/**
+ * Shared list/create/update/delete hooks for every "code-keyed universe" CRUD table
+ * (macro regions, country/sector-performance/equity-premium universes) — these were
+ * hand-copied from each other before being collapsed here, mirroring
+ * app/services/code_keyed_crud.py's factory on the backend. Each call site still exports
+ * the exact same function names as before, so no caller needed to change.
+ */
+function makeCrudHooks<T extends { code: string }>(basePath: string, listQueryKey: string) {
+  return {
+    useList: () => useQuery<T[]>({
+      queryKey: [listQueryKey],
+      queryFn: async () => (await apiClient.get<T[]>(basePath)).data,
+    }),
+    create: async (body: T): Promise<T> => (await apiClient.post<T>(basePath, body)).data,
+    update: async (code: string, body: Omit<T, 'code'>): Promise<T> =>
+      (await apiClient.put<T>(`${basePath}/${code}`, body)).data,
+    delete: async (code: string): Promise<void> => {
+      await apiClient.delete(`${basePath}/${code}`);
+    },
+  };
+}
+
 // ── Portfolios ─────────────────────────────────────────────────────────────
 
 export function usePortfolios() {
@@ -440,26 +462,11 @@ export function useInflationIndicator(region: string) {
   });
 }
 
-export function useMacroRegions() {
-  return useQuery<MacroRegionConfig[]>({
-    queryKey: ['macro-regions'],
-    queryFn: async () => (await apiClient.get<MacroRegionConfig[]>('/api/indicators/regions')).data,
-  });
-}
-
-export async function createMacroRegion(body: MacroRegionConfig): Promise<MacroRegionConfig> {
-  return (await apiClient.post<MacroRegionConfig>('/api/indicators/regions', body)).data;
-}
-
-export async function updateMacroRegion(
-  code: string, body: Omit<MacroRegionConfig, 'code'>,
-): Promise<MacroRegionConfig> {
-  return (await apiClient.put<MacroRegionConfig>(`/api/indicators/regions/${code}`, body)).data;
-}
-
-export async function deleteMacroRegion(code: string): Promise<void> {
-  await apiClient.delete(`/api/indicators/regions/${code}`);
-}
+const macroRegionCrud = makeCrudHooks<MacroRegionConfig>('/api/indicators/regions', 'macro-regions');
+export const useMacroRegions = macroRegionCrud.useList;
+export const createMacroRegion = macroRegionCrud.create;
+export const updateMacroRegion = macroRegionCrud.update;
+export const deleteMacroRegion = macroRegionCrud.delete;
 
 // ── Country performance leaderboard (global, portfolio-independent) ────────
 
@@ -472,29 +479,13 @@ export function useCountryPerformance() {
   });
 }
 
-export function useCountryPerfConfigs() {
-  return useQuery<CountryPerfConfig[]>({
-    queryKey: ['country-perf-configs'],
-    queryFn: async () =>
-      (await apiClient.get<CountryPerfConfig[]>('/api/indicators/country-performance/countries')).data,
-  });
-}
-
-export async function createCountryPerfConfig(body: CountryPerfConfig): Promise<CountryPerfConfig> {
-  return (await apiClient.post<CountryPerfConfig>('/api/indicators/country-performance/countries', body)).data;
-}
-
-export async function updateCountryPerfConfig(
-  code: string, body: Omit<CountryPerfConfig, 'code'>,
-): Promise<CountryPerfConfig> {
-  return (await apiClient.put<CountryPerfConfig>(
-    `/api/indicators/country-performance/countries/${code}`, body,
-  )).data;
-}
-
-export async function deleteCountryPerfConfig(code: string): Promise<void> {
-  await apiClient.delete(`/api/indicators/country-performance/countries/${code}`);
-}
+const countryPerfCrud = makeCrudHooks<CountryPerfConfig>(
+  '/api/indicators/country-performance/countries', 'country-perf-configs',
+);
+export const useCountryPerfConfigs = countryPerfCrud.useList;
+export const createCountryPerfConfig = countryPerfCrud.create;
+export const updateCountryPerfConfig = countryPerfCrud.update;
+export const deleteCountryPerfConfig = countryPerfCrud.delete;
 
 // ── Sector performance (global, portfolio-independent) ──────────────────────
 
@@ -507,29 +498,13 @@ export function useSectorPerformance() {
   });
 }
 
-export function useSectorPerfConfigs() {
-  return useQuery<SectorPerfConfig[]>({
-    queryKey: ['sector-perf-configs'],
-    queryFn: async () =>
-      (await apiClient.get<SectorPerfConfig[]>('/api/indicators/sector-performance/sectors')).data,
-  });
-}
-
-export async function createSectorPerfConfig(body: SectorPerfConfig): Promise<SectorPerfConfig> {
-  return (await apiClient.post<SectorPerfConfig>('/api/indicators/sector-performance/sectors', body)).data;
-}
-
-export async function updateSectorPerfConfig(
-  code: string, body: Omit<SectorPerfConfig, 'code'>,
-): Promise<SectorPerfConfig> {
-  return (await apiClient.put<SectorPerfConfig>(
-    `/api/indicators/sector-performance/sectors/${code}`, body,
-  )).data;
-}
-
-export async function deleteSectorPerfConfig(code: string): Promise<void> {
-  await apiClient.delete(`/api/indicators/sector-performance/sectors/${code}`);
-}
+const sectorPerfCrud = makeCrudHooks<SectorPerfConfig>(
+  '/api/indicators/sector-performance/sectors', 'sector-perf-configs',
+);
+export const useSectorPerfConfigs = sectorPerfCrud.useList;
+export const createSectorPerfConfig = sectorPerfCrud.create;
+export const updateSectorPerfConfig = sectorPerfCrud.update;
+export const deleteSectorPerfConfig = sectorPerfCrud.delete;
 
 // ── Equity risk premium (global, portfolio-independent) ─────────────────────
 
@@ -542,29 +517,13 @@ export function useEquityPremium() {
   });
 }
 
-export function useEquityPremiumConfigs() {
-  return useQuery<EquityPremiumConfig[]>({
-    queryKey: ['equity-premium-configs'],
-    queryFn: async () =>
-      (await apiClient.get<EquityPremiumConfig[]>('/api/indicators/equity-premium/countries')).data,
-  });
-}
-
-export async function createEquityPremiumConfig(body: EquityPremiumConfig): Promise<EquityPremiumConfig> {
-  return (await apiClient.post<EquityPremiumConfig>('/api/indicators/equity-premium/countries', body)).data;
-}
-
-export async function updateEquityPremiumConfig(
-  code: string, body: Omit<EquityPremiumConfig, 'code'>,
-): Promise<EquityPremiumConfig> {
-  return (await apiClient.put<EquityPremiumConfig>(
-    `/api/indicators/equity-premium/countries/${code}`, body,
-  )).data;
-}
-
-export async function deleteEquityPremiumConfig(code: string): Promise<void> {
-  await apiClient.delete(`/api/indicators/equity-premium/countries/${code}`);
-}
+const equityPremiumCrud = makeCrudHooks<EquityPremiumConfig>(
+  '/api/indicators/equity-premium/countries', 'equity-premium-configs',
+);
+export const useEquityPremiumConfigs = equityPremiumCrud.useList;
+export const createEquityPremiumConfig = equityPremiumCrud.create;
+export const updateEquityPremiumConfig = equityPremiumCrud.update;
+export const deleteEquityPremiumConfig = equityPremiumCrud.delete;
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
 

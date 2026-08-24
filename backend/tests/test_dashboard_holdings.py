@@ -567,7 +567,7 @@ async def test_holdings_history_manuel_category(client, db_session):
 @pytest.mark.asyncio
 async def test_holdings_history_fx_spot_rate(client, db_session):
     """
-    Lines 375-377: _get_spot_rates_at_date called for FX conversion in history.
+    _get_spot_rates(as_of=snap_date) called for FX conversion in history.
     USD position at historical date uses spot rate at or before snap_date.
     """
     suffix = f"histfx-{id(db_session)}"
@@ -599,7 +599,7 @@ async def test_holdings_history_fx_spot_rate(client, db_session):
     ))
     db_session.add(AssetPrice(ticker=ticker, date=snap_date,
                                price=400.0, currency="USD", source="test"))
-    # Historical FX rate - use ticker ending in EUR=X for _get_spot_rates_at_date to pick it up
+    # Historical FX rate - use ticker ending in EUR=X for _get_spot_rates(as_of=...) to pick it up
     # The function looks for tickers LIKE '%EUR=X'. Use "USDEUR=X" but with its own product.
     usd_eur_fx = "USDEUR=X"
     from sqlalchemy import select as sa_select

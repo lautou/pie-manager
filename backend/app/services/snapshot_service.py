@@ -8,11 +8,10 @@ from sqlalchemy.orm import selectinload
 
 from app.models.pool import Pool
 from app.models.product import Product
-from app.models.price import AssetPrice
 from app.models.snapshot import DailySnapshot, DailyPoolSnapshot, MonthlySnapshot, MonthlyPoolSnapshot
 from app.models.transaction import Transaction
 from app.services.valuation_service import compute_pool_values, load_prices_at_date
-from app.services.dashboard_service import get_holdings
+from app.services.dashboard_service import get_holdings, _get_spot_rates
 
 
 async def compute_daily_snapshot(db: AsyncSession, portfolio_id: int, snap_date: date) -> DailySnapshot:
@@ -33,13 +32,7 @@ async def compute_daily_snapshot(db: AsyncSession, portfolio_id: int, snap_date:
     instrument_types = {row.ticker: row.instrument_type for row in itype_result.all()}
 
     # Fetch latest FX rates (tickers like GBPEUR=X, USDEUR=X) at or before snap_date
-    fx_result = await db.execute(
-        sa_select(AssetPrice.ticker, AssetPrice.price, AssetPrice.date)
-        .where(AssetPrice.ticker.like("%EUR=X"), AssetPrice.date <= snap_date)
-        .order_by(AssetPrice.ticker, AssetPrice.date.desc())
-        .distinct(AssetPrice.ticker)
-    )
-    spot_rates: dict[str, float] = {r.ticker: r.price for r in fx_result.all()}
+    spot_rates = await _get_spot_rates(db, as_of=snap_date)
 
     # Build tickers_by_pool mapping (required by compute_pool_values)
     tickers_by_pool: dict[int, list[str]] = {

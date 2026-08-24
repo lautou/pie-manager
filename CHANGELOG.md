@@ -10,6 +10,7 @@ All notable changes to PIE Manager are documented in this file.
 - **installer:** Always re-stage backend app source and Alembic migrations on launch
 - **installer:** Version-aware re-staging for pgsql/Python interpreter, orphan recovery for backend/worker
 - **installer:** Stop orphaned postgres via pg_ctl, not a raw kill on the postmaster pid
+- **frontend:** Drop typescript's native compiler binary from the runtime image
 
 ## [1.5.5] - 2026-08-22
 

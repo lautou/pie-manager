@@ -33,6 +33,17 @@ actual GitHub artifact consumers, both already `retention-days: 1`:
   the per-platform install-test jobs and for real-hardware testing
 - If quota exceeded: `gh api repos/lautou/pie-manager/actions/artifacts --paginate | python3 -c "..."` to list/delete
 
+### `msstore publish` — `--uploadTimeout` is mandatory, not optional tuning
+
+`build-installer.yml`'s `package-native-launcher-msix` job publishes to the Microsoft Store via
+`msstore publish ... --uploadTimeout 600`. Omitting `--uploadTimeout` silently defaults it to `0`
+internally (`System.CommandLine` never runs the option's parser for an absent flag), which
+`Azure.Storage.Blobs` turns into an instant `TaskCanceledException` on every upload attempt — the
+job fails at "Uploading Bundle to Azure blob: 0%". Confirmed via
+[microsoft/msstore-cli#162](https://github.com/microsoft/msstore-cli/issues/162), open/unfixed
+upstream as of 2026-08-22. If a future edit to this step ever drops the flag, this is the first
+thing to check before re-investigating from scratch.
+
 ### Mandatory cleanup when deleting a tag/release
 When deleting tags/releases (cleanup), always do all 3 actions:
 1. `gh release delete vX.Y.Z --yes` — delete the GitHub release

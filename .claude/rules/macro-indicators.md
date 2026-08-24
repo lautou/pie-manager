@@ -25,7 +25,42 @@ paths:
   - "backend/app/tasks/equity_premium.py"
   - "backend/app/api/routers/equity_premium.py"
   - "frontend/src/components/EquityPremiumSection.tsx"
+  - "backend/app/services/code_keyed_crud.py"
+  - "frontend/src/components/CrudManager.tsx"
 ---
+
+## Shared CRUD abstractions — use these for the next code-keyed universe, don't hand-copy again
+
+`MacroRegion`, `CountryPerfConfig`, `SectorPerfConfig`, and `EquityPremiumConfig` all started as
+hand-copied "code-keyed universe" CRUD (list/create/update/delete, code regex + duplicate
+check, optional per-field validators, optional "last remaining row" delete guard) before being
+collapsed into two shared, generic implementations once the 4th copy made the duplication
+impossible to ignore:
+
+- **Backend**: `app/services/code_keyed_crud.py`'s `make_code_keyed_crud(model_cls, code_re,
+  invalid_code_message, duplicate_message, field_validators=None, last_row_guard_message=None)`
+  returns a `CodeKeyedCrud` with `.list`/`.create`/`.update`/`.delete`. Each service module
+  keeps its own thin, positionally-typed wrapper functions on top (e.g.
+  `create_country_config(db, code, label, index_ticker, currency, index_label)` just forwards
+  to `_country_crud.create(db, code, label=..., ...)`) — this is deliberate: it means the
+  factory extraction required **zero** router changes, since every router still calls the
+  exact same function names/signatures as before.
+- **Frontend**: `frontend/src/components/CrudManager.tsx`'s generic `<CrudManager<T>>`
+  component renders the table + add/edit modal + delete-confirm shell shared by
+  `RegionManager`/`MarketCountryManager`/`SectorManager`/`EquityPremiumManager` in
+  `GlobalConfigPage.tsx` — each is now a ~30-line config object (field list, validation order,
+  aria-label noun, CRUD functions) instead of a ~150-190-line hand-copied component.
+  `modalOrder`/`validationOrder` exist as optional overrides because the original 4 components
+  didn't all display and validate fields in the same order as their table columns (a
+  pre-existing inconsistency across those components, preserved rather than silently
+  "fixed" by this extraction).
+
+**When adding a 5th code-keyed universe** (another `{code, label, ...}` CRUD table + admin
+manager), use both of these instead of copying an existing service/manager file — that's
+exactly the pattern that produced 4 generations of near-identical code before this section
+existed. `ProductManager`/`CommissionManager` in `GlobalConfigPage.tsx` are deliberately NOT
+on `CrudManager` — they have genuinely different shapes (column sorting, nested tier grids,
+conditional fields) that would cost more to force into this abstraction than they'd save.
 
 ## Macro indicators — growth/inflation ratio page (portfolio-independent)
 

@@ -2018,6 +2018,26 @@ describe('GlobalConfigPage — Rééquilibrage (tolerance thresholds)', () => {
   }, 10000);
 });
 
+// Shared by MarketCountryManager and SectorManager below — both validate the same 5-field
+// shape (code/label/index_ticker/currency/index_label) in the same order, differing only in
+// button text and typed values. EquityPremiumManager validates a genuinely different 6-field
+// shape (no currency, has separate equity/bond tickers+labels) so it is NOT parameterized
+// with these — its validation tests stay written out individually below.
+type ValidationStep = readonly [missing: string, labels: string[], values: string[], errorPattern: RegExp];
+
+function countryLikeValidationSteps(label: string, code: string, ticker: string, currency: string): ValidationStep[] {
+  return [
+    ['a code', ['Nom'], [label], /Le code est requis/i],
+    ['a label', ['Code'], [code], /Le nom est requis/i],
+    ['an index ticker', ['Code', 'Nom'], [code, label], /Le ticker indice est requis/i],
+    ['a currency', ['Code', 'Nom', 'Ticker indice'], [code, label, ticker], /La devise est requise/i],
+    ['an index label', ['Code', 'Nom', 'Ticker indice', 'Devise'], [code, label, ticker, currency], /Le nom de l'indice est requis/i],
+  ];
+}
+
+const COUNTRY_LIKE_VALIDATION_STEPS = countryLikeValidationSteps('Allemagne', 'de', '^GDAXI', 'EUR');
+const SECTOR_VALIDATION_STEPS = countryLikeValidationSteps('Métaux industriels', 'metaux', 'DBB', 'USD');
+
 describe('GlobalConfigPage — MarketCountryManager (Performance des actions)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -2044,60 +2064,16 @@ describe('GlobalConfigPage — MarketCountryManager (Performance des actions)', 
     expect(screen.getByText('Aucun pays')).toBeTruthy();
   });
 
-  it('saving without a code shows validation error', async () => {
+  it.each(COUNTRY_LIKE_VALIDATION_STEPS)('saving without %s shows validation error', async (_missing, labels, values, errorPattern) => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByText('Nouveau pays'));
-    await user.type(screen.getByLabelText('Nom'), 'Allemagne');
+    for (let i = 0; i < labels.length; i++) {
+      await user.type(screen.getByLabelText(labels[i]), values[i]);
+    }
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(/Le code est requis/i)).toBeTruthy();
-  }, 10000);
-
-  it('saving without a label shows validation error', async () => {
-    const user = userEvent.setup({ delay: null });
-    render(<GlobalConfigPage />);
-    await user.click(screen.getByText('Nouveau pays'));
-    await user.type(screen.getByLabelText('Code'), 'de');
-    const modal = screen.getByTestId('modal');
-    await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(/Le nom est requis/i)).toBeTruthy();
-  }, 10000);
-
-  it('saving without an index ticker shows validation error', async () => {
-    const user = userEvent.setup({ delay: null });
-    render(<GlobalConfigPage />);
-    await user.click(screen.getByText('Nouveau pays'));
-    await user.type(screen.getByLabelText('Code'), 'de');
-    await user.type(screen.getByLabelText('Nom'), 'Allemagne');
-    const modal = screen.getByTestId('modal');
-    await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(/Le ticker indice est requis/i)).toBeTruthy();
-  }, 10000);
-
-  it('saving without a currency shows validation error', async () => {
-    const user = userEvent.setup({ delay: null });
-    render(<GlobalConfigPage />);
-    await user.click(screen.getByText('Nouveau pays'));
-    await user.type(screen.getByLabelText('Code'), 'de');
-    await user.type(screen.getByLabelText('Nom'), 'Allemagne');
-    await user.type(screen.getByLabelText('Ticker indice'), '^GDAXI');
-    const modal = screen.getByTestId('modal');
-    await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(/La devise est requise/i)).toBeTruthy();
-  }, 10000);
-
-  it('saving without an index label shows validation error', async () => {
-    const user = userEvent.setup({ delay: null });
-    render(<GlobalConfigPage />);
-    await user.click(screen.getByText('Nouveau pays'));
-    await user.type(screen.getByLabelText('Code'), 'de');
-    await user.type(screen.getByLabelText('Nom'), 'Allemagne');
-    await user.type(screen.getByLabelText('Ticker indice'), '^GDAXI');
-    await user.type(screen.getByLabelText('Devise'), 'EUR');
-    const modal = screen.getByTestId('modal');
-    await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(/Le nom de l'indice est requis/i)).toBeTruthy();
+    expect(screen.getByText(errorPattern)).toBeTruthy();
   }, 10000);
 
   it('can create a country with valid data', async () => {
@@ -2251,60 +2227,16 @@ describe("GlobalConfigPage — SectorManager (Performance des classes d'actifs)"
     expect(screen.getByText('Aucun secteur')).toBeTruthy();
   });
 
-  it('saving without a code shows validation error', async () => {
+  it.each(SECTOR_VALIDATION_STEPS)('saving without %s shows validation error', async (_missing, labels, values, errorPattern) => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByText('Nouveau secteur'));
-    await user.type(screen.getByLabelText('Nom'), 'Métaux industriels');
+    for (let i = 0; i < labels.length; i++) {
+      await user.type(screen.getByLabelText(labels[i]), values[i]);
+    }
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(/Le code est requis/i)).toBeTruthy();
-  }, 10000);
-
-  it('saving without a label shows validation error', async () => {
-    const user = userEvent.setup({ delay: null });
-    render(<GlobalConfigPage />);
-    await user.click(screen.getByText('Nouveau secteur'));
-    await user.type(screen.getByLabelText('Code'), 'metaux');
-    const modal = screen.getByTestId('modal');
-    await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(/Le nom est requis/i)).toBeTruthy();
-  }, 10000);
-
-  it('saving without an index ticker shows validation error', async () => {
-    const user = userEvent.setup({ delay: null });
-    render(<GlobalConfigPage />);
-    await user.click(screen.getByText('Nouveau secteur'));
-    await user.type(screen.getByLabelText('Code'), 'metaux');
-    await user.type(screen.getByLabelText('Nom'), 'Métaux industriels');
-    const modal = screen.getByTestId('modal');
-    await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(/Le ticker indice est requis/i)).toBeTruthy();
-  }, 10000);
-
-  it('saving without a currency shows validation error', async () => {
-    const user = userEvent.setup({ delay: null });
-    render(<GlobalConfigPage />);
-    await user.click(screen.getByText('Nouveau secteur'));
-    await user.type(screen.getByLabelText('Code'), 'metaux');
-    await user.type(screen.getByLabelText('Nom'), 'Métaux industriels');
-    await user.type(screen.getByLabelText('Ticker indice'), 'DBB');
-    const modal = screen.getByTestId('modal');
-    await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(/La devise est requise/i)).toBeTruthy();
-  }, 10000);
-
-  it('saving without an index label shows validation error', async () => {
-    const user = userEvent.setup({ delay: null });
-    render(<GlobalConfigPage />);
-    await user.click(screen.getByText('Nouveau secteur'));
-    await user.type(screen.getByLabelText('Code'), 'metaux');
-    await user.type(screen.getByLabelText('Nom'), 'Métaux industriels');
-    await user.type(screen.getByLabelText('Ticker indice'), 'DBB');
-    await user.type(screen.getByLabelText('Devise'), 'USD');
-    const modal = screen.getByTestId('modal');
-    await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(/Le nom de l'indice est requis/i)).toBeTruthy();
+    expect(screen.getByText(errorPattern)).toBeTruthy();
   }, 10000);
 
   it('can create a sector with valid data', async () => {

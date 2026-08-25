@@ -7,7 +7,7 @@
  *  - EXPIRING: tax_year == 2016   (yellow, warning badge)
  *  - ACTIVE:   tax_year >= 2016   (normal, counted in totals)
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { pfCoreStubs, pfTableStubs, pfIconStubs } from '../../tests/utils/patternfly-mocks';
@@ -91,6 +91,18 @@ const expiredEntry = {
 };
 
 import TaxPage from './TaxPage';
+
+// CURRENT_YEAR in TaxPage.tsx is computed from `new Date()` — pin the system date so the
+// EXPIRED/EXPIRING/ACTIVE fixtures below (anchored on a 2026 "current year") stay deterministic
+// regardless of the real date the suite runs on. Only `Date` is mocked (no vi.useFakeTimers()),
+// so fireEvent/waitFor below keep using real timers.
+beforeEach(() => {
+  vi.setSystemTime(new Date(2026, 5, 15));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('TaxPage', () => {
   beforeEach(() => {

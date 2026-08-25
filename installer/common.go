@@ -19,6 +19,19 @@ import (
 
 const defaultPort = 14943
 
+// backendImageRepo/frontendImageRepo are this app's own two published Quay.io images —
+// named once here so a future registry-name change (or a typo) can't drift between the
+// several places that need one or both, tag included or not.
+const (
+	backendImageRepo  = "quay.io/ltourreau/pie-manager-backend"
+	frontendImageRepo = "quay.io/ltourreau/pie-manager-frontend"
+)
+
+// versionedImages returns the backend/frontend image refs pinned to v.
+func versionedImages(v string) []string {
+	return []string{backendImageRepo + ":" + v, frontendImageRepo + ":" + v}
+}
+
 // maxStartupWaitSeconds bounds how long performStart polls the app's health endpoint after
 // starting services before giving up and printing the URL anyway (the app usually keeps
 // starting in the background regardless).
@@ -355,12 +368,10 @@ func performInstall(
 	// Pull images — skip if already present.
 	// On upgrade: if a pull fails, warn and keep the previous APP_VERSION.
 	containerVersion := Version
-	images := []string{
-		"quay.io/ltourreau/pie-manager-backend:" + Version,
-		"quay.io/ltourreau/pie-manager-frontend:" + Version,
+	images := append(versionedImages(Version),
 		"docker.io/library/postgres:18-alpine",
 		"docker.io/library/haproxy:alpine",
-	}
+	)
 	for _, img := range images {
 		if podmanImageExists(img) {
 			fmt.Printf("Image %s... already present, skipping pull.\n", img)
@@ -450,10 +461,7 @@ func performInstall(
 	// Remove old PIE Manager image versions — only our own images, never
 	// images from other Podman projects on the same machine.
 	fmt.Print("Removing old PIE Manager image versions... ")
-	for _, repo := range []string{
-		"quay.io/ltourreau/pie-manager-backend",
-		"quay.io/ltourreau/pie-manager-frontend",
-	} {
+	for _, repo := range []string{backendImageRepo, frontendImageRepo} {
 		out, err := exec.Command("podman", "images", repo, "--format", "{{.Tag}}").Output()
 		if err != nil {
 			continue
@@ -510,12 +518,9 @@ func performStart(
 		os.Exit(1)
 	}
 
-	if !podmanImageExists("quay.io/ltourreau/pie-manager-backend:" + Version) {
+	if !podmanImageExists(backendImageRepo + ":" + Version) {
 		notify("PIE Manager", "Downloading images…", "low")
-		for _, img := range []string{
-			"quay.io/ltourreau/pie-manager-backend:" + Version,
-			"quay.io/ltourreau/pie-manager-frontend:" + Version,
-		} {
+		for _, img := range versionedImages(Version) {
 			fmt.Printf("  Pulling %s…\n", img)
 			pull := exec.Command("podman", "pull", img)
 			pull.Stdout = os.Stdout

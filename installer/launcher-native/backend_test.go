@@ -15,19 +15,22 @@ import (
 	"time"
 )
 
-func TestPythonExePath(t *testing.T) {
-	got := pythonExePath(`C:\Users\pie`)
-	want := filepath.Join(`C:\Users\pie`, "PieManager", "python", "python.exe")
-	if got != want {
-		t.Errorf("pythonExePath() = %q, want %q", got, want)
+func TestBackendPathBuilders(t *testing.T) {
+	home := `C:\Users\pie`
+	cases := []struct {
+		name string
+		fn   func(string) string
+		want string
+	}{
+		{"pythonExePath", pythonExePath, filepath.Join(home, "PieManager", "python", "python.exe")},
+		{"backendAppDir", backendAppDir, pythonDir(home)},
 	}
-}
-
-func TestBackendAppDir(t *testing.T) {
-	got := backendAppDir(`C:\Users\pie`)
-	want := pythonDir(`C:\Users\pie`)
-	if got != want {
-		t.Errorf("backendAppDir() = %q, want %q", got, want)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := c.fn(home); got != c.want {
+				t.Errorf("%s(%q) = %q, want %q", c.name, home, got, c.want)
+			}
+		})
 	}
 }
 

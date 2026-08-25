@@ -12,27 +12,25 @@ import (
 	"time"
 )
 
-func TestInitdbExePath(t *testing.T) {
-	got := initdbExePath(`C:\Users\pie`)
-	want := filepath.Join(`C:\Users\pie`, "PieManager", "pgsql", "bin", "initdb.exe")
-	if got != want {
-		t.Errorf("initdbExePath() = %q, want %q", got, want)
+func TestPgExePathBuilders(t *testing.T) {
+	home := `C:\Users\pie`
+	cases := []struct {
+		name string
+		fn   func(string) string
+		want string
+	}{
+		{"initdbExePath", initdbExePath, filepath.Join(home, "PieManager", "pgsql", "bin", "initdb.exe")},
+		{"pgCtlExePath", pgCtlExePath, filepath.Join(home, "PieManager", "pgsql", "bin", "pg_ctl.exe")},
+		{"postgresExePath", postgresExePath, filepath.Join(home, "PieManager", "pgsql", "bin", "postgres.exe")},
+		{"createdbExePath", createdbExePath, filepath.Join(home, "PieManager", "pgsql", "bin", "createdb.exe")},
+		{"pgIsReadyExePath", pgIsReadyExePath, filepath.Join(home, "PieManager", "pgsql", "bin", "pg_isready.exe")},
 	}
-}
-
-func TestPgCtlExePath(t *testing.T) {
-	got := pgCtlExePath(`C:\Users\pie`)
-	want := filepath.Join(`C:\Users\pie`, "PieManager", "pgsql", "bin", "pg_ctl.exe")
-	if got != want {
-		t.Errorf("pgCtlExePath() = %q, want %q", got, want)
-	}
-}
-
-func TestPostgresExePath(t *testing.T) {
-	got := postgresExePath(`C:\Users\pie`)
-	want := filepath.Join(`C:\Users\pie`, "PieManager", "pgsql", "bin", "postgres.exe")
-	if got != want {
-		t.Errorf("postgresExePath() = %q, want %q", got, want)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := c.fn(home); got != c.want {
+				t.Errorf("%s(%q) = %q, want %q", c.name, home, got, c.want)
+			}
+		})
 	}
 }
 
@@ -82,14 +80,6 @@ func TestBuildPgCtlStopImmediateArgs(t *testing.T) {
 	}
 	if !strings.Contains(joined, pgDataDir(`C:\Users\pie`)) {
 		t.Errorf("expected pgdata path in args, got %v", args)
-	}
-}
-
-func TestCreatedbExePath(t *testing.T) {
-	got := createdbExePath(`C:\Users\pie`)
-	want := filepath.Join(`C:\Users\pie`, "PieManager", "pgsql", "bin", "createdb.exe")
-	if got != want {
-		t.Errorf("createdbExePath() = %q, want %q", got, want)
 	}
 }
 
@@ -351,14 +341,6 @@ func TestStartPostgres_ErrorWhenLogPathIsDirectory(t *testing.T) {
 	}
 	if _, err := startPostgres(home, 15432); err == nil {
 		t.Error("expected an error when the postgres log path is itself a directory")
-	}
-}
-
-func TestPgIsReadyExePath(t *testing.T) {
-	got := pgIsReadyExePath(`C:\Users\pie`)
-	want := filepath.Join(`C:\Users\pie`, "PieManager", "pgsql", "bin", "pg_isready.exe")
-	if got != want {
-		t.Errorf("pgIsReadyExePath() = %q, want %q", got, want)
 	}
 }
 

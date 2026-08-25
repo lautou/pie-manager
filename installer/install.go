@@ -48,8 +48,8 @@ func runInstall() {
 		func() error { return nil },
 		func(home, target string) {
 			fmt.Print("Desktop integration... ")
-			hasWebKit := deployWrapper(target)
-			installDesktopAndIcon(home, target, hasWebKit)
+			deployWrapper(target)
+			installDesktopAndIcon(home, target)
 			fmt.Println("OK")
 		},
 		"Launch via the GNOME icon or: pie-manager start",
@@ -72,7 +72,7 @@ func deployWrapper(target string) bool {
 	return true
 }
 
-func installDesktopAndIcon(home, target string, _ bool) {
+func installDesktopAndIcon(home, target string) {
 	execLine := fmt.Sprintf("Exec=%s start", filepath.Join(target, "pie-manager"))
 	desktopContent := strings.ReplaceAll(
 		string(desktopEntry),

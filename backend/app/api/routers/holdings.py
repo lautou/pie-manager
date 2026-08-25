@@ -11,7 +11,7 @@ from app.core.database import get_db
 from app.models import Pool, PoolProduct, AssetPrice, Transaction, Product
 from app.services.price_service import _to_eur, held_quantity, position_value_eur
 from app.services.dashboard_service import (
-    _get_latest_prices,
+    _get_latest_price_rows,
     _get_spot_rates,
     _get_latest_holdings,
     get_holdings as get_portfolio_holdings,
@@ -87,24 +87,8 @@ async def get_holdings(
 
     tickers = list(holdings.keys())
 
-    # Latest prices (returns {ticker: (price, currency)})
-    prices = await _get_latest_prices(db, tickers)
+    price_meta = await _get_latest_price_rows(db, tickers)
     spot_rates = await _get_spot_rates(db)
-
-    # Latest price dates + sources (for metadata only — currency already in prices)
-    subq = (
-        select(AssetPrice.ticker, func.max(AssetPrice.date).label("max_date"))
-        .where(AssetPrice.ticker.in_(tickers))
-        .group_by(AssetPrice.ticker)
-        .subquery()
-    )
-    price_rows_result = await db.execute(
-        select(AssetPrice).join(
-            subq,
-            (AssetPrice.ticker == subq.c.ticker) & (AssetPrice.date == subq.c.max_date),
-        )
-    )
-    price_meta: dict[str, AssetPrice] = {r.ticker: r for r in price_rows_result.scalars().all()}
 
     # Pool membership
     ticker_to_pool = await _get_ticker_to_pool_map(db, portfolio_id)
@@ -117,13 +101,11 @@ async def get_holdings(
 
     result = []
     for ticker, qty in holdings.items():
-        price_tuple = prices.get(ticker)
         pm = price_meta.get(ticker)
         pool = ticker_to_pool.get(ticker)
         prod = product_names.get(ticker)
-        native_currency = pm.currency if pm else "EUR"
-        native_price = price_tuple[0] if price_tuple else 0.0
-        price_currency = price_tuple[1] if price_tuple else "EUR"
+        native_price = pm.price if pm else 0.0
+        price_currency = pm.currency if pm else "EUR"
         price_eur_unit = _to_eur(native_price, price_currency, spot_rates)
         category = prod.category if prod else ""
         instrument_type = prod.instrument_type if prod else ""
@@ -140,7 +122,7 @@ async def get_holdings(
             last_price_date=pm.date if pm else None,
             last_price_source=pm.source if pm else "unknown",
             value_eur=value_eur,
-            currency=native_currency,
+            currency=price_currency,
         ))
 
     result.sort(key=lambda x: x.product_name.lower())
@@ -176,19 +158,7 @@ async def get_holdings_at_date(
     tickers = list(holdings.keys())
 
     # Prices at or before snap_date (latest known for each ticker)
-    price_subq = (
-        select(AssetPrice.ticker, func.max(AssetPrice.date).label("max_date"))
-        .where(AssetPrice.ticker.in_(tickers), AssetPrice.date <= snap_date)
-        .group_by(AssetPrice.ticker)
-        .subquery()
-    )
-    price_rows = await db.execute(
-        select(AssetPrice).join(
-            price_subq,
-            (AssetPrice.ticker == price_subq.c.ticker) & (AssetPrice.date == price_subq.c.max_date),
-        )
-    )
-    price_meta: dict[str, AssetPrice] = {r.ticker: r for r in price_rows.scalars().all()}
+    price_meta = await _get_latest_price_rows(db, tickers, as_of=snap_date)
 
     # FX rates at or before snap_date for currency conversion
     snap_spot_rates = await _get_spot_rates(db, as_of=snap_date)

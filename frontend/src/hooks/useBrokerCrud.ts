@@ -29,6 +29,7 @@ export function useBrokerCrud(portfolios: User[]) {
   const [brokerEditingId, setBrokerEditingId] = useState<number | null>(null);
   const [brokerDeleteTarget, setBrokerDeleteTarget] = useState<Broker | null>(null);
   const [isDeletingBroker, setIsDeletingBroker] = useState(false);
+  const [deleteBrokerError, setDeleteBrokerError] = useState<string | null>(null);
 
   const openNewBroker = () => {
     setBrokerForm({ portfolio_ids: portfolios.map(p => p.id), name: '', currency: 'EUR', color: '#1890FF' });
@@ -70,13 +71,15 @@ export function useBrokerCrud(portfolios: User[]) {
       await deleteBrokerAPI(brokerDeleteTarget.id);
       qc.invalidateQueries({ queryKey: ['brokers'] });
       setBrokerDeleteTarget(null);
-    } catch (e: any) { alert(e?.response?.data?.detail ?? 'Impossible de supprimer'); }
+      setDeleteBrokerError(null);
+    } catch (e: any) { setDeleteBrokerError(e?.response?.data?.detail ?? 'Impossible de supprimer'); }
     finally { setIsDeletingBroker(false); }
   };
 
   return {
     brokerModal, brokerForm, setBrokerForm, brokerSaving, brokerError,
     brokerEditingId, brokerDeleteTarget, setBrokerDeleteTarget, isDeletingBroker,
+    deleteBrokerError,
     openNewBroker, openEditBroker, closeBrokerModal, toggleBrokerPortfolio,
     handleSaveBroker, handleDeleteBroker, handleConfirmDeleteBroker,
   };

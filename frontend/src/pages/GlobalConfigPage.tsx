@@ -68,9 +68,11 @@ function CommissionManager() {
   const {
     brokerModal, brokerForm, setBrokerForm, brokerSaving, brokerError,
     brokerEditingId, brokerDeleteTarget, setBrokerDeleteTarget, isDeletingBroker,
+    deleteBrokerError,
     openNewBroker, openEditBroker, closeBrokerModal, toggleBrokerPortfolio,
     handleSaveBroker, handleDeleteBroker, handleConfirmDeleteBroker,
   } = brokerCrud;
+  const [saleRateError, setSaleRateError] = useState<string | null>(null);
 
   const commissionEditor = useCommissionEditor(allProducts);
   const {
@@ -133,6 +135,9 @@ function CommissionManager() {
         </ModalFooter>
       </Modal>
 
+      {deleteBrokerError && <Alert variant="danger" title={deleteBrokerError} isInline style={{ marginBottom: '0.75rem' }} />}
+      {saleRateError && <Alert variant="danger" title={saleRateError} isInline style={{ marginBottom: '0.75rem' }} />}
+
       {/* Top bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
         {error && <Alert variant="danger" title={error} isInline />}
@@ -173,8 +178,9 @@ function CommissionManager() {
                       try {
                         await putCommissionSaleRate(acc.id, parseFloat(e.target.value) || 0);
                         qc.invalidateQueries({ queryKey: ['brokers'] });
+                        setSaleRateError(null);
                       } catch (err) {
-                        alert(err instanceof Error ? err.message : 'Erreur lors de la mise à jour du taux de vente');
+                        setSaleRateError(err instanceof Error ? err.message : 'Erreur lors de la mise à jour du taux de vente');
                       }
                     }}
                     style={{ width: '70px', padding: '2px 6px', border: '1px solid #ccc', borderRadius: 4, fontSize: '0.85rem' }}

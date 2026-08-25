@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_, text
+from sqlalchemy import select, or_, text
 from datetime import date
 from collections import defaultdict
 
@@ -10,6 +10,7 @@ from app.models.snapshot import DailySnapshot, DailyPoolSnapshot
 from app.models.transaction import Transaction
 from app.models.product import Product
 from app.services.price_service import _to_eur, r2
+from app.services.dashboard_service import _get_spot_rates
 
 
 async def fetch_pool_twrr_data(
@@ -174,20 +175,7 @@ async def fetch_position_twrr_data(
     for row in prices_q.all():
         prices_by_ticker[row.ticker].append((row.date, row.price, row.currency))
 
-    # Latest FX spot rates
-    fx_subq = (
-        select(AssetPrice.ticker, func.max(AssetPrice.date).label("max_date"))
-        .where(AssetPrice.ticker.like("%EUR=X"))
-        .group_by(AssetPrice.ticker)
-        .subquery()
-    )
-    fx_result = await db.execute(
-        select(AssetPrice).join(
-            fx_subq,
-            (AssetPrice.ticker == fx_subq.c.ticker) & (AssetPrice.date == fx_subq.c.max_date),
-        )
-    )
-    spot_rates: dict[str, float] = {row.ticker: row.price for row in fx_result.scalars().all()}
+    spot_rates = await _get_spot_rates(db)
 
     twrr_positions: dict[str, list[dict]] = {}
     for ticker, instrument_type, product_name in pos_tickers:

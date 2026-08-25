@@ -21,7 +21,6 @@ import {
 import { PencilAltIcon, PlusCircleIcon, TrashIcon } from '@patternfly/react-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSystemSetting, useSetSystemSetting, useAllBrokers, usePortfolios,
-  createBrokerAPI, updateBrokerAPI, deleteBrokerAPI, updateBrokerPortfoliosAPI,
   useProducts, createProduct, updateProduct, deleteProduct,
   useMacroRegions, createMacroRegion, updateMacroRegion, deleteMacroRegion,
   useCountryPerfConfigs, createCountryPerfConfig, updateCountryPerfConfig, deleteCountryPerfConfig,
@@ -37,6 +36,8 @@ import SettingField from '../components/SettingField';
 import type { Broker, CommissionTier, CountryPerfConfig, EquityPremiumConfig, MacroRegionConfig, Product, SectorPerfConfig } from '../types';
 import { computeCommission } from '../utils/commission';
 import { INSTRUMENT_TYPE_GOLD } from '../utils/productConstants';
+import { useBrokerCrud } from '../hooks/useBrokerCrud';
+import { useCommissionEditor, putCommissionSaleRate } from '../hooks/useCommissionEditor';
 
 // ── Broker Manager ─────────────────────────────────────────────────────────
 
@@ -48,28 +49,6 @@ function formatScheduleSummary(schedule: CommissionTier[] | null): string {
   const example = computeCommission(700, schedule);
   return `${schedule.length} tranches — ex. 700€ → ${example.toFixed(2)} €`;
 }
-
-async function putFXCommission(accountId: number, params: { monthly_free_eur: number | null; above_monthly_rate: number; weekend_rate: number | null }) {
-  const res = await fetch(`/api/brokers/${accountId}/fx-commission`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(params) });
-  if (!res.ok) throw new Error(await res.text());
-}
-
-async function putCommissionSaleRate(accountId: number, rate: number) {
-  const res = await fetch(`/api/brokers/${accountId}/sale-rate`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commission_sale_rate: rate }) });
-  if (!res.ok) throw new Error(await res.text());
-}
-
-async function putCommissionSchedule(accountId: number, schedule: CommissionTier[]) {
-  const res = await fetch(`/api/brokers/${accountId}/commission`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commission_schedule: schedule }) });
-  if (!res.ok) throw new Error(await res.text());
-}
-
-async function putAllowedTickers(accountId: number, tickers: string[] | null) {
-  const res = await fetch(`/api/brokers/${accountId}/allowed-tickers`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ allowed_tickers: tickers }) });
-  if (!res.ok) throw new Error(await res.text());
-}
-
-type EditMode = 'commission' | 'tickers' | 'fx';
 
 function CommissionManager() {
   const { t } = useTranslation();
@@ -85,126 +64,24 @@ function CommissionManager() {
       getValue: (a, col) => String(a[col] ?? ''),
     });
 
-  // ── Broker CRUD state ───────────────────────────────────────────────────
-  const [brokerModal, setBrokerModal] = useState<'new' | 'edit' | null>(null);
-  const [brokerForm, setBrokerForm] = useState({ portfolio_ids: [] as number[], name: '', currency: 'EUR', color: '#1890FF' });
-  const [brokerSaving, setBrokerSaving] = useState(false);
-  const [brokerError, setBrokerError] = useState('');
-  const [brokerEditingId, setBrokerEditingId] = useState<number | null>(null);
-  const [brokerDeleteTarget, setBrokerDeleteTarget] = useState<Broker | null>(null);
-  const [isDeletingBroker, setIsDeletingBroker] = useState(false);
+  const brokerCrud = useBrokerCrud(portfolios);
+  const {
+    brokerModal, brokerForm, setBrokerForm, brokerSaving, brokerError,
+    brokerEditingId, brokerDeleteTarget, setBrokerDeleteTarget, isDeletingBroker,
+    openNewBroker, openEditBroker, closeBrokerModal, toggleBrokerPortfolio,
+    handleSaveBroker, handleDeleteBroker, handleConfirmDeleteBroker,
+  } = brokerCrud;
 
-  const openNewBroker = () => {
-    setBrokerForm({ portfolio_ids: portfolios.map(p => p.id), name: '', currency: 'EUR', color: '#1890FF' });
-    setBrokerError(''); setBrokerModal('new');
-  };
-  const openEditBroker = (acc: Broker) => {
-    setBrokerForm({ portfolio_ids: acc.portfolio_ids, name: acc.name, currency: acc.currency ?? 'EUR', color: acc.color ?? '#1890FF' });
-    setBrokerError(''); setBrokerEditingId(acc.id); setBrokerModal('edit');
-  };
-  const closeBrokerModal = () => { setBrokerModal(null); setBrokerEditingId(null); setBrokerError(''); };
-  const toggleBrokerPortfolio = (pid: number) => setBrokerForm(f => ({
-    ...f, portfolio_ids: f.portfolio_ids.includes(pid) ? f.portfolio_ids.filter(x => x !== pid) : [...f.portfolio_ids, pid],
-  }));
-  const handleSaveBroker = async () => {
-    if (!brokerForm.name.trim()) { setBrokerError(t('pools.nameRequired')); return; }
-    setBrokerSaving(true); setBrokerError('');
-    try {
-      if (brokerModal === 'new') {
-        await createBrokerAPI({ name: brokerForm.name.trim(), currency: brokerForm.currency.toUpperCase(), color: brokerForm.color, portfolio_ids: brokerForm.portfolio_ids });
-      } else {
-        /* v8 ignore next -- @preserve */
-        if (brokerEditingId !== null) {
-          await updateBrokerAPI(brokerEditingId, { name: brokerForm.name.trim(), color: brokerForm.color });
-          await updateBrokerPortfoliosAPI(brokerEditingId, brokerForm.portfolio_ids);
-        }
-      }
-      qc.invalidateQueries({ queryKey: ['brokers'] }); closeBrokerModal();
-    } catch (e: any) { setBrokerError(e?.response?.data?.detail ?? 'Erreur'); }
-    finally { setBrokerSaving(false); }
-  };
-  const handleDeleteBroker = (acc: Broker) => {
-    setBrokerDeleteTarget(acc);
-  };
-
-  const handleConfirmDeleteBroker = async () => {
-    /* v8 ignore next -- @preserve */
-    if (!brokerDeleteTarget) return;
-    setIsDeletingBroker(true);
-    try {
-      await deleteBrokerAPI(brokerDeleteTarget.id);
-      qc.invalidateQueries({ queryKey: ['brokers'] });
-      setBrokerDeleteTarget(null);
-    } catch (e: any) { alert(e?.response?.data?.detail ?? 'Impossible de supprimer'); }
-    finally { setIsDeletingBroker(false); }
-  };
-
-  // ── Commission state ────────────────────────────────────────────────────
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editMode, setEditMode] = useState<EditMode>('commission');
-  const [selectedTickers, setSelectedTickers] = useState<string[]>([]);
-  const [tickerFilterLeft, setTickerFilterLeft] = useState('');
-  const [tickerFilterRight, setTickerFilterRight] = useState('');
-  const [fxMonthlyFree, setFxMonthlyFree] = useState<string>('');
-  const [fxAboveRate, setFxAboveRate] = useState<string>('');
-  const [fxWeekendRate, setFxWeekendRate] = useState<string>('');
-  interface TierRow { up_to: string; type: 'flat' | 'percent'; value: string; }
-  const [tiers, setTiers] = useState<TierRow[]>([]);
-  const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  // Transfer list derived state (computed once per render, used in tickers panel)
-  const tickersAvailable = allProducts
-    .filter(p => !selectedTickers.includes(p.ticker))
-    .filter(p => !tickerFilterLeft || p.ticker.includes(tickerFilterLeft.toUpperCase()) || p.name.toLowerCase().includes(tickerFilterLeft.toLowerCase()))
-    .sort((a, b) => a.ticker.localeCompare(b.ticker));
-  const tickersAllowed = allProducts
-    .filter(p => selectedTickers.includes(p.ticker))
-    .filter(p => !tickerFilterRight || p.ticker.includes(tickerFilterRight.toUpperCase()) || p.name.toLowerCase().includes(tickerFilterRight.toLowerCase()))
-    .sort((a, b) => a.ticker.localeCompare(b.ticker));
-  const tickersUnknown = selectedTickers.filter(t => !allProducts.find(p => p.ticker === t));
-  const addTicker = (t: string) => setSelectedTickers(s => [...s, t]);
-  const removeTicker = (t: string) => setSelectedTickers(s => s.filter(x => x !== t));
-
-  const tiersFromSchedule = (schedule: CommissionTier[] | null): TierRow[] =>
-    (schedule ?? []).map(t => ({
-      up_to: t.up_to != null ? String(t.up_to) : '',
-      type: t.type,
-      value: t.type === 'percent' ? String((t.value * 100).toFixed(5)).replace(/\.?0+$/, '') : String(t.value),
-    }));
-
-  const tiersToSchedule = (rows: TierRow[]): CommissionTier[] =>
-    rows.map(r => ({
-      up_to: r.up_to.trim() === '' ? null : parseFloat(r.up_to),
-      type: r.type,
-      value: r.type === 'percent' ? parseFloat(r.value) / 100 : parseFloat(r.value),
-    }));
-
-  const openEditCommission = (id: number, schedule: CommissionTier[] | null) => {
-    setEditingId(id); setEditMode('commission'); setTiers(tiersFromSchedule(schedule)); setError('');
-  };
-
-  const handleSave = async () => {
-    /* v8 ignore next -- @preserve */
-    if (editingId === null) return;
-    setError(''); setSaving(true);
-    try {
-      if (editMode === 'commission') {
-        await putCommissionSchedule(editingId, tiersToSchedule(tiers));
-      } else if (editMode === 'tickers') {
-        await putAllowedTickers(editingId, selectedTickers.length ? selectedTickers : null);
-      } else {
-        /* v8 ignore next -- @preserve */
-        const monthly = fxMonthlyFree.trim() === '' ? null : parseFloat(fxMonthlyFree);
-        /* v8 ignore next -- @preserve */
-        await putFXCommission(editingId, { monthly_free_eur: monthly, above_monthly_rate: parseFloat(fxAboveRate) || 0, weekend_rate: fxWeekendRate.trim() === '' ? null : parseFloat(fxWeekendRate) });
-      }
-      qc.invalidateQueries({ queryKey: ['brokers'] });
-      setEditingId(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Valeur invalide');
-    } finally { setSaving(false); }
-  };
+  const commissionEditor = useCommissionEditor(allProducts);
+  const {
+    editingId, setEditingId, editMode, setEditMode,
+    selectedTickers, setSelectedTickers, tickerFilterLeft, setTickerFilterLeft,
+    tickerFilterRight, setTickerFilterRight,
+    fxMonthlyFree, setFxMonthlyFree, fxAboveRate, setFxAboveRate, fxWeekendRate, setFxWeekendRate,
+    tiers, setTiers, error, saving,
+    tickersAvailable, tickersAllowed, tickersUnknown, addTicker, removeTicker,
+    tiersFromSchedule, openEditCommission, handleSave,
+  } = commissionEditor;
 
   const thSt = { padding: '6px 8px', textAlign: 'left' as const, borderBottom: '1px solid #ddd' };
   const tdSt = { padding: '6px 8px', borderBottom: '1px solid #f0f0f0', verticalAlign: 'top' as const };

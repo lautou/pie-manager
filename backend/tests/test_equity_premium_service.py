@@ -7,8 +7,7 @@ covers the point-in-time, no-FX, no-anchor-window math this service owns directl
 exhaustive as-of tolerance matrix itself lives in test_performance_math.py, whose asof() this
 delegates to).
 """
-from datetime import date, timedelta
-from unittest.mock import patch
+from datetime import timedelta
 
 import pytest
 
@@ -19,23 +18,9 @@ from app.services.equity_premium_service import (
     list_premium_configs,
     update_premium_config,
 )
-from app.services.macro_series_price_service import replace_series_prices
+from tests.helpers import FIXED_TODAY, make_fixed_today_fixture, seed_series_points as _seed
 
-FIXED_TODAY = date(2026, 7, 19)
-
-
-@pytest.fixture(autouse=True)
-def _fixed_today():
-    """Freezes date.today() as seen by the service module — nothing else in the module
-    constructs a date(...) directly, so overriding only .today() is safe."""
-    with patch("app.services.equity_premium_service.date") as mock_date:
-        mock_date.today.return_value = FIXED_TODAY
-        yield mock_date
-
-
-async def _seed(db_session, series: str, points: list[tuple[date, float]]) -> None:
-    await replace_series_prices(db_session, series, points)
-    await db_session.flush()
+_fixed_today = make_fixed_today_fixture("app.services.equity_premium_service")
 
 
 # ---------------------------------------------------------------------------

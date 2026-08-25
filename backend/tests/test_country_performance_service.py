@@ -3,7 +3,6 @@
 Non-regression tests for the country performance leaderboard service
 (app/services/country_performance_service.py).
 """
-from datetime import date, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -19,24 +18,9 @@ from app.services.country_performance_service import (
     update_country_config,
 )
 from app.services.macro_series_price_service import get_series as real_get_series
-from app.services.macro_series_price_service import replace_series_prices
+from tests.helpers import FIXED_TODAY, ANCHOR_TARGET, make_fixed_today_fixture, seed_series_points as _seed
 
-FIXED_TODAY = date(2026, 7, 19)
-ANCHOR_TARGET = FIXED_TODAY - timedelta(days=365)
-
-
-@pytest.fixture(autouse=True)
-def _fixed_today():
-    """Freezes date.today() as seen by the service module — nothing else in the module
-    constructs a date(...) directly, so overriding only .today() is safe."""
-    with patch("app.services.country_performance_service.date") as mock_date:
-        mock_date.today.return_value = FIXED_TODAY
-        yield mock_date
-
-
-async def _seed(db_session, series: str, points: list[tuple[date, float]]) -> None:
-    await replace_series_prices(db_session, series, points)
-    await db_session.flush()
+_fixed_today = make_fixed_today_fixture("app.services.country_performance_service")
 
 
 # ---------------------------------------------------------------------------

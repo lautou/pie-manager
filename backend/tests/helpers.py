@@ -7,8 +7,11 @@ exercise the same code paths as production requests.
 
 DB setup helpers insert model objects directly via the SQLAlchemy session.
 """
+from datetime import date, timedelta
 from datetime import date as _date
+from unittest.mock import patch
 
+import pytest
 from sqlalchemy import select as _sa_select
 
 from app.models.portfolio import Portfolio
@@ -19,6 +22,46 @@ from app.models.price import AssetPrice
 from app.models.transaction import Transaction
 from app.models.snapshot import DailySnapshot
 from app.models.portfolio_account import PortfolioAccount
+from app.models.macro_indicator import MacroSeriesPrice
+
+# ---------------------------------------------------------------------------
+# Shared fixture/seed helpers for the country/sector-performance and equity-premium
+# test suites (router + service files) — each hand-copied an identical FIXED_TODAY/
+# _fixed_today fixture (differing only in which service module's `date` gets patched)
+# and an identical seed helper before being collapsed here.
+# ---------------------------------------------------------------------------
+
+FIXED_TODAY = date(2026, 7, 19)
+ANCHOR_TARGET = FIXED_TODAY - timedelta(days=365)
+
+
+def make_fixed_today_fixture(module_path: str, fixed_today: date = FIXED_TODAY):
+    """Factory for an autouse fixture that freezes `date.today()` as seen by one service
+    module, without touching `date(...)` construction elsewhere. Each performance test file
+    needs a different module patched, so this returns a fresh fixture function per call
+    rather than being a single shared fixture."""
+    @pytest.fixture(autouse=True)
+    def _fixed_today():
+        with patch(f"{module_path}.date") as mock_date:
+            mock_date.today.return_value = fixed_today
+            yield mock_date
+    return _fixed_today
+
+
+async def seed_series_points(db_session, series: str, points: list[tuple[date, float]]) -> None:
+    """Seed a MacroSeriesPrice series via the real replace_series_prices — used by the
+    country/sector-performance and equity-premium *service* tests."""
+    from app.services.macro_series_price_service import replace_series_prices
+    await replace_series_prices(db_session, series, points)
+    await db_session.flush()
+
+
+async def seed_series_dict(db_session, series: str, values: dict[date, float]) -> None:
+    """Seed a MacroSeriesPrice series by inserting rows directly — used by the
+    country/sector-performance and equity-premium *router* tests."""
+    for d, value in values.items():
+        db_session.add(MacroSeriesPrice(series=series, date=d, value=value))
+    await db_session.flush()
 
 
 async def create_portfolio(client, name: str) -> int:

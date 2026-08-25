@@ -4,29 +4,14 @@ Integration tests for /api/indicators/sector-performance — bar chart ranking +
 """
 
 import pytest
-from datetime import date, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.core.pgq import get_pgq_queries
 from app.main import app as fastapi_app
 from app.models.sector_performance import SectorPerfConfig
-from app.models.macro_indicator import MacroSeriesPrice
+from tests.helpers import FIXED_TODAY, ANCHOR_TARGET, make_fixed_today_fixture, seed_series_dict as _seed_series
 
-FIXED_TODAY = date(2026, 7, 19)
-ANCHOR_TARGET = FIXED_TODAY - timedelta(days=365)
-
-
-@pytest.fixture(autouse=True)
-def _fixed_today():
-    with patch("app.services.sector_performance_service.date") as mock_date:
-        mock_date.today.return_value = FIXED_TODAY
-        yield mock_date
-
-
-async def _seed_series(db_session, series: str, values: dict[date, float]) -> None:
-    for d, value in values.items():
-        db_session.add(MacroSeriesPrice(series=series, date=d, value=value))
-    await db_session.flush()
+_fixed_today = make_fixed_today_fixture("app.services.sector_performance_service")
 
 
 async def _seed_sector(

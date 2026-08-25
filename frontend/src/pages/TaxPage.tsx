@@ -2,12 +2,12 @@
 /**
  * FiscalitePage — Moins-values reportables (tax carry-forward tracker).
  *
- * Business rules (current year = 2026):
- *  - EXPIRED:  tax_year <= 2015  (older than 10 years)
- *  - EXPIRING: tax_year == 2016  (last usable year — warn)
- *  - ACTIVE:   tax_year >= 2016
+ * Business rules (relative to the current calendar year — see CURRENT_YEAR below):
+ *  - EXPIRED:  tax_year is more than EXPIRY_LIMIT years old
+ *  - EXPIRING: tax_year is exactly EXPIRY_LIMIT years old (last usable year — warn)
+ *  - ACTIVE:   tax_year is EXPIRY_LIMIT years old or newer
  *
- * Totals only include ACTIVE rows (tax_year >= 2016).
+ * Totals only include ACTIVE rows.
  * amount_eur is stored as negative (loss), e.g. -12450.
  */
 import { useParams } from 'react-router-dom';
@@ -36,15 +36,15 @@ import type { FiscalCarryForward } from '../types';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const CURRENT_YEAR = 2026;
+const CURRENT_YEAR = new Date().getFullYear();
 const EXPIRY_LIMIT = 10; // carry-forward expires after 10 years
 
 function isExpired(taxYear: number): boolean {
-  return CURRENT_YEAR - taxYear > EXPIRY_LIMIT; // <= 2015
+  return CURRENT_YEAR - taxYear > EXPIRY_LIMIT;
 }
 
 function isExpiring(taxYear: number): boolean {
-  return CURRENT_YEAR - taxYear === EXPIRY_LIMIT; // == 2016
+  return CURRENT_YEAR - taxYear === EXPIRY_LIMIT;
 }
 
 function isCurrent(taxYear: number): boolean {

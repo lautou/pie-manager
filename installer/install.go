@@ -43,160 +43,17 @@ func runInstall() {
 
 	home := os.Getenv("HOME")
 	target := filepath.Join(home, installDir)
-	fmt.Printf("Install directory: %s\n", target)
 
-	existingVersion := readInstalledVersion(target)
-	if existingVersion != "" && existingVersion != Version {
-		if volumeName := pgDataVolumeName(); volumeName != "" {
-			existingPGMajor := pgVersionMajor(volumeName)
-			targetPGMajor := composePostgresMajor(composeProd)
-			if postgresMajorMismatch(existingPGMajor, targetPGMajor) {
-				fmt.Printf("\n✗ PostgreSQL major version mismatch: your data is on PostgreSQL %s, "+
-					"but PIE Manager %s requires PostgreSQL %s.\n", existingPGMajor, Version, targetPGMajor)
-				fmt.Println("  A direct upgrade is not possible — PostgreSQL major versions are not")
-				fmt.Println("  binary-compatible, and the new database container would simply refuse")
-				fmt.Println("  to start against your existing data. Nothing has been changed.")
-				fmt.Println("\n  Manual migration required:")
-				fmt.Printf("    1. If PIE Manager %s is still running, open it now and go to\n", existingVersion)
-				fmt.Println("       Administration système → Télécharger une sauvegarde. Keep the file safe.")
-				fmt.Println("    2. Stop PIE Manager, then remove the old database:")
-				fmt.Printf("         podman volume rm %s\n", volumeName)
-				fmt.Printf("    3. Re-run this installer — it will start fresh on PostgreSQL %s.\n", targetPGMajor)
-				fmt.Println("    4. Once running, go to Administration système → Restaurer une sauvegarde")
-				fmt.Println("       and select the file you downloaded in step 1.")
-				os.Exit(1)
-			}
-		}
-		fmt.Printf("Updating: %s → %s\n\n", existingVersion, Version)
-		fmt.Println("⚠  Backup recommended before upgrading.")
-		fmt.Println("   Open PIE Manager → Administration système → Télécharger une sauvegarde")
-		fmt.Print("   Press Enter when done (or Ctrl+C to cancel)...")
-		fmt.Scanln()
-	}
-
-	composeCmd := detectComposeCmd()
-	fmt.Printf("Compose: %s\n", composeCmd)
-
-	// Pull images — skip if already present.
-	// On upgrade: if a pull fails, warn and keep the previous APP_VERSION.
-	containerVersion := Version
-	images := []string{
-		"quay.io/ltourreau/pie-manager-backend:" + Version,
-		"quay.io/ltourreau/pie-manager-frontend:" + Version,
-		"docker.io/library/postgres:18-alpine",
-		"docker.io/library/haproxy:alpine",
-	}
-	for _, img := range images {
-		if podmanImageExists(img) {
-			fmt.Printf("Image %s... already present, skipping pull.\n", img)
-			continue
-		}
-		fmt.Printf("Pulling %s... ", img)
-		cmd := exec.Command("podman", "pull", img)
-		cmd.Stdout = io.Discard
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			if existingVersion != "" {
-				fmt.Printf("\nWARNING: Could not pull %s (%v)\n", img, err)
-				fmt.Printf("  Container images will remain at v%s.\n", existingVersion)
-				fmt.Println("  The installer binary has been updated to " + Version + ".")
-				containerVersion = existingVersion
-				break
-			}
-			fmt.Printf("ERROR: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("OK")
-	}
-
-	fmt.Print("Installing files... ")
-	if err := os.MkdirAll(target, 0755); err != nil {
-		fmt.Printf("ERROR: %v\n", err)
-		os.Exit(1)
-	}
-
-	if err := os.WriteFile(filepath.Join(target, "compose-prod.yaml"), composeProd, 0644); err != nil {
-		fmt.Printf("ERROR: %v\n", err)
-		os.Exit(1)
-	}
-
-	if err := os.WriteFile(filepath.Join(target, "VERSION"), []byte(Version+"\n"), 0644); err != nil {
-		fmt.Printf("ERROR: %v\n", err)
-		os.Exit(1)
-	}
-
-	port := readAppPort(target)
-	if port == defaultPort {
-		port = findAvailablePort(defaultPort)
-		if port != defaultPort {
-			fmt.Printf("  Port %d in use, using %d instead.\n", defaultPort, port)
-		}
-	}
-
-	envContent := fmt.Sprintf("APP_VERSION=%s\nINSTALLER_VERSION=%s\nAPP_PORT=%d\n",
-		containerVersion, Version, port)
-	if err := os.WriteFile(filepath.Join(target, ".env"), []byte(envContent), 0644); err != nil {
-		fmt.Printf("ERROR writing .env: %v\n", err)
-		os.Exit(1)
-	}
-
-	if err := os.WriteFile(filepath.Join(target, "haproxy.cfg"), haproxyCfg, 0644); err != nil {
-		fmt.Printf("ERROR writing haproxy.cfg: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Copy the binary itself (rename+write to avoid "text file busy").
-	selfPath, _ := os.Executable()
-	destBinary := filepath.Join(target, "pie-manager")
-	selfResolved, _ := filepath.EvalSymlinks(selfPath)
-	destResolved, _ := filepath.EvalSymlinks(destBinary)
-	if selfResolved != destResolved {
-		os.Rename(destBinary, destBinary+".old")
-		if err := copyFile(selfPath, destBinary, 0755); err != nil {
-			os.Rename(destBinary+".old", destBinary)
-			fmt.Printf("ERROR copying binary: %v\n", err)
-			os.Exit(1)
-		}
-		os.Remove(destBinary + ".old")
-	}
-
-	fmt.Println("OK")
-
-	localBin := filepath.Join(home, ".local/bin")
-	os.MkdirAll(localBin, 0755)
-	symlink := filepath.Join(localBin, "pie-manager")
-	os.Remove(symlink)
-	os.Symlink(destBinary, symlink)
-
-	fmt.Print("Desktop integration... ")
-	hasWebKit := deployWrapper(target)
-	installDesktopAndIcon(home, target, hasWebKit)
-	fmt.Println("OK")
-
-	fmt.Println("\nStarting services...")
-	forceRecreate(composeCmd, filepath.Join(target, "compose-prod.yaml"))
-
-	// Remove old PIE Manager image versions — only our own images, never
-	// images from other Podman projects on the same machine.
-	fmt.Print("Removing old PIE Manager image versions... ")
-	for _, repo := range []string{
-		"quay.io/ltourreau/pie-manager-backend",
-		"quay.io/ltourreau/pie-manager-frontend",
-	} {
-		out, err := exec.Command("podman", "images", repo, "--format", "{{.Tag}}").Output()
-		if err != nil {
-			continue
-		}
-		for _, tag := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-			if tag != "" && tag != Version && tag != "latest" {
-				exec.Command("podman", "rmi", repo+":"+tag).Run() //nolint:errcheck
-			}
-		}
-	}
-	fmt.Println("OK")
-
-	fmt.Printf("\n✓ PIE Manager %s installed successfully!\n", Version)
-	fmt.Println("  Launch via the GNOME icon or: pie-manager start")
+	performInstall(home, target,
+		func() error { return nil },
+		func(home, target string) {
+			fmt.Print("Desktop integration... ")
+			hasWebKit := deployWrapper(target)
+			installDesktopAndIcon(home, target, hasWebKit)
+			fmt.Println("OK")
+		},
+		"Launch via the GNOME icon or: pie-manager start",
+	)
 }
 
 // deployWrapper writes wrapper.py if WebKitGTK is available. Returns true on success.

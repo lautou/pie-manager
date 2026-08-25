@@ -8,9 +8,10 @@ from typing import Any, Optional
 from datetime import date
 
 from app.core.database import get_db
-from app.models import Broker, Transaction, Product, AssetPrice, PortfolioAccount
+from app.models import Broker, Transaction, Product, PortfolioAccount
 from app.services.price_service import _to_eur, r2, held_quantity, get_forex_fee_adjustments, position_value_eur
 from app.api.routers.dashboard import _get_spot_rates
+from app.services.dashboard_service import _get_latest_price_rows
 from app.api.deps import get_or_404, ensure_unreferenced
 
 
@@ -315,22 +316,7 @@ async def get_accounts_summary(
     }
 
     # 4. Latest prices
-    if all_tickers:
-        subq = (
-            select(AssetPrice.ticker, func.max(AssetPrice.date).label("max_date"))
-            .where(AssetPrice.ticker.in_(all_tickers))
-            .group_by(AssetPrice.ticker)
-            .subquery()
-        )
-        price_rows = await db.execute(
-            select(AssetPrice).join(
-                subq,
-                (AssetPrice.ticker == subq.c.ticker) & (AssetPrice.date == subq.c.max_date),
-            )
-        )
-        price_meta: dict[str, AssetPrice] = {r.ticker: r for r in price_rows.scalars().all()}
-    else:
-        price_meta = {}
+    price_meta = await _get_latest_price_rows(db, list(all_tickers))
 
     spot_rates = await _get_spot_rates(db)
 

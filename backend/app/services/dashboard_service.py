@@ -80,6 +80,33 @@ async def _get_latest_prices(
     return {row.ticker: (row.price, row.currency) for row in result.scalars().all()}
 
 
+async def _get_latest_price_rows(
+    db: AsyncSession, tickers: list[str], as_of: Optional[date] = None
+) -> dict[str, AssetPrice]:
+    """Returns {ticker: AssetPrice} for the latest known price row of each ticker, or the
+    latest at or before `as_of` when given. Like _get_latest_prices, but keeps the full row
+    (date, source included) for callers that need that metadata too, instead of re-querying it
+    separately."""
+    if not tickers:
+        return {}
+    where_clauses = [AssetPrice.ticker.in_(tickers)]
+    if as_of is not None:
+        where_clauses.append(AssetPrice.date <= as_of)
+    subq = (
+        select(AssetPrice.ticker, func.max(AssetPrice.date).label("max_date"))
+        .where(*where_clauses)
+        .group_by(AssetPrice.ticker)
+        .subquery()
+    )
+    result = await db.execute(
+        select(AssetPrice).join(
+            subq,
+            (AssetPrice.ticker == subq.c.ticker) & (AssetPrice.date == subq.c.max_date),
+        )
+    )
+    return {row.ticker: row for row in result.scalars().all()}
+
+
 async def _get_spot_rates(db: AsyncSession, as_of: Optional[date] = None) -> dict[str, float]:
     """Returns {ticker: rate} for all forex tickers (e.g. GBPEUR=X) — the latest known rate,
     or the latest at or before `as_of` when given. The single shared implementation of

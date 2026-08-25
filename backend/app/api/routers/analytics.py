@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.models import DailySnapshot, Transaction
+from app.services.snapshot_service import dedupe_snapshots_by_date
 
 router = APIRouter(tags=["dashboard"])
 
@@ -41,11 +42,7 @@ async def get_twrr_summary(
         .where(DailySnapshot.portfolio_id == portfolio_id, DailySnapshot.total_eur > 0)
         .order_by(DailySnapshot.date.asc())
     )
-    seen_dates: dict = {}
-    for s in snaps_raw.scalars().all():
-        if s.date not in seen_dates or s.id > seen_dates[s.date].id:
-            seen_dates[s.date] = s
-    daily_list = sorted(seen_dates.values(), key=lambda s: s.date)
+    daily_list = dedupe_snapshots_by_date(snaps_raw.scalars().all())
 
     if len(daily_list) < 2:
         raise HTTPException(status_code=404, detail="Pas assez de snapshots pour calculer le TWRR")

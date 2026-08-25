@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 from datetime import date
+from typing import Sequence
 
 from sqlalchemy import select, select as sa_select, and_
 from sqlalchemy.dialects.postgresql import insert
@@ -12,6 +13,18 @@ from app.models.snapshot import DailySnapshot, DailyPoolSnapshot, MonthlySnapsho
 from app.models.transaction import Transaction
 from app.services.valuation_service import compute_pool_values, load_prices_at_date
 from app.services.dashboard_service import get_holdings, _get_spot_rates
+
+
+def dedupe_snapshots_by_date(snapshots: Sequence[DailySnapshot]) -> list[DailySnapshot]:
+    """Collapses same-day duplicate DailySnapshot rows (a portfolio can accumulate more than
+    one snapshot per date — e.g. a recompute after a backfilled transaction) down to one per
+    date, keeping the highest id (assumed to be the most recently computed), sorted ascending
+    by date."""
+    seen: dict[date, DailySnapshot] = {}
+    for snap in snapshots:
+        if snap.date not in seen or snap.id > seen[snap.date].id:
+            seen[snap.date] = snap
+    return sorted(seen.values(), key=lambda s: s.date)
 
 
 async def compute_daily_snapshot(db: AsyncSession, portfolio_id: int, snap_date: date) -> DailySnapshot:

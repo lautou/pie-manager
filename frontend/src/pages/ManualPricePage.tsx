@@ -25,6 +25,7 @@ import { useProducts, usePrices, useCreatePrice, useHoldings } from '../api/quer
 import type { Product } from '../types';
 import { localDateStr, formatPrice } from '../utils/format';
 import { INSTRUMENT_TYPE_GOLD } from '../utils/productConstants';
+import { renderLoadingState } from '../components/QueryStateGuard';
 import FrDatePicker from '../components/FrDatePicker';
 
 const today = () => localDateStr();
@@ -238,15 +239,7 @@ export default function ManualPricePage() {
     (p) => p.instrument_type === INSTRUMENT_TYPE_GOLD && heldTickers.has(p.ticker),
   );
 
-  if (isLoading) {
-    return (
-      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem' }}>
-          <Spinner size="xl" aria-label={t('common.loading')} />
-        </div>
-      </PageSection>
-    );
-  }
+  if (isLoading) return renderLoadingState(t('common.loading'));
 
   if (isError) {
     return (

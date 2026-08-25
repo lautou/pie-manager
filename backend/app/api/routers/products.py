@@ -2,13 +2,14 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select
 from pydantic import BaseModel, ConfigDict
 from typing import Optional
 
 from app.core.database import get_db
 from app.models import Product
 from app.models.transaction import Transaction
+from app.api.deps import get_or_404, ensure_unreferenced
 
 router = APIRouter(tags=["products"])
 
@@ -74,10 +75,7 @@ async def create_product(body: ProductCreate, db: AsyncSession = Depends(get_db)
 async def update_product(
     ticker: str, body: ProductUpdate, db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(Product).where(Product.ticker == ticker))
-    product = result.scalar_one_or_none()
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
+    product = await get_or_404(db, Product.ticker, ticker, "Product not found")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(product, field, value)
     await db.commit()
@@ -87,19 +85,10 @@ async def update_product(
 
 @router.delete("/{ticker}", status_code=204)
 async def delete_product(ticker: str, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Product).where(Product.ticker == ticker))
-    product = result.scalar_one_or_none()
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    # Check if any transactions reference this product
-    tx_count_result = await db.execute(
-        select(func.count()).select_from(Transaction).where(Transaction.ticker == ticker)
+    product = await get_or_404(db, Product.ticker, ticker, "Product not found")
+    await ensure_unreferenced(
+        db, Transaction.ticker, ticker,
+        lambda n: f"This product is used in {n} transaction(s) and cannot be deleted.",
     )
-    tx_count = tx_count_result.scalar_one()
-    if tx_count > 0:
-        raise HTTPException(
-            status_code=400,
-            detail=f"This product is used in {tx_count} transaction(s) and cannot be deleted.",
-        )
     await db.delete(product)
     await db.commit()

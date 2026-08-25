@@ -6,7 +6,7 @@ import {
   Card, CardBody, CardTitle,
   Grid, GridItem,
   PageSection, PageSectionVariants,
-  Spinner, Content, ContentVariants, Title,
+  Content, ContentVariants, Title,
 } from '@patternfly/react-core';
 import { Table, Thead, Tbody, Tr, Th, Td, SortByDirection } from '@patternfly/react-table';
 import { formatEUR, formatPct2, formatUnitPrice } from '../utils/format';
@@ -17,6 +17,7 @@ import SyncBadge from '../components/SyncBadge';
 import TickerLink from '../components/TickerLink';
 import EtfCompositionModal from '../components/EtfCompositionModal';
 import { PriceSourceBadge, StalePriceBadge } from '../components/PriceBadges';
+import { renderLoadingState, renderErrorState } from '../components/QueryStateGuard';
 import type { AccountPosition, AccountSummary } from '../types';
 
 // Fallback colors by account name (used when account.color is not set in DB)
@@ -230,27 +231,8 @@ export default function AccountsSummaryPage() {
     setAccSortDir(direction as 'asc' | 'desc');
   };
 
-  if (isLoading) {
-    return (
-      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem' }}>
-          <Spinner size="xl" />
-        </div>
-      </PageSection>
-    );
-  }
-
-  if (isError || !summaries) {
-    return (
-      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
-        <Content>
-          <Content component={ContentVariants.p} style={{ color: 'var(--pf-t--global--text--color--status--danger--default)' }}>
-            {t('accountsSummary.loadError')}
-          </Content>
-        </Content>
-      </PageSection>
-    );
-  }
+  if (isLoading) return renderLoadingState(t('common.loading'));
+  if (isError || !summaries) return renderErrorState(t('accountsSummary.loadError'));
 
   const grandTotalCash = summaries.reduce((s, a) => s + a.cash_balance_eur, 0);
   const grandTotalPositions = summaries.reduce((s, a) => s + a.positions_value_eur, 0);

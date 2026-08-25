@@ -5,13 +5,13 @@ import {
   Card, CardBody, CardTitle,
   Gallery, GalleryItem,
   PageSection, PageSectionVariants,
-  Spinner,
-  Content, ContentVariants, Title,
+  Title,
 } from '@patternfly/react-core';
 import { Table, Thead, Tbody, Tr, Th, Td, SortByDirection } from '@patternfly/react-table';
 import { useState, useMemo } from 'react';
 import { formatEUR, formatPct1, formatDate } from '../utils/format';
 import { pvColor } from '../utils/pv';
+import { renderLoadingState, renderErrorState } from '../components/QueryStateGuard';
 import { useCapitalGains } from '../api/queries';
 import type { TickerCapitalGains, CapitalGainsEvent } from '../types';
 
@@ -290,27 +290,9 @@ export default function CapitalGainsPage() {
   const { portfolioId } = useParams<{ portfolioId: string }>();
   const { data, isLoading, isError } = useCapitalGains(portfolioId!);
 
-  if (isLoading) {
-    return (
-      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem' }}>
-          <Spinner size="xl" aria-label={t('common.loading')} />
-        </div>
-      </PageSection>
-    );
-  }
+  if (isLoading) return renderLoadingState(t('common.loading'));
 
-  if (isError || !data) {
-    return (
-      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
-        <Content>
-          <Content component={ContentVariants.p} style={{ color: 'var(--pf-t--global--text--color--status--danger--default)' }}>
-            {t('error.loadingCapitalGains')}
-          </Content>
-        </Content>
-      </PageSection>
-    );
-  }
+  if (isError || !data) return renderErrorState(t('error.loadingCapitalGains'));
 
   // Filter: show tickers with open position or with realized events
   const visibleTickers = data.tickers.filter(

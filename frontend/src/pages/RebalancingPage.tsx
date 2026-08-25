@@ -4,8 +4,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Card, CardBody, CardTitle,
   PageSection, PageSectionVariants,
-  Spinner,
-  Content, ContentVariants, Title,
+  Title,
   ToggleGroup, ToggleGroupItem,
   Tooltip,
 } from '@patternfly/react-core';
@@ -14,6 +13,7 @@ import { formatEUR } from '../utils/format';
 import { useDashboard, useSystemSetting } from '../api/queries';
 import apiClient from '../api/client';
 import SyncBadge from '../components/SyncBadge';
+import { renderLoadingState, renderErrorState } from '../components/QueryStateGuard';
 
 const DEFAULT_TOLERANCE_OK_PCT = 1;
 const DEFAULT_TOLERANCE_WARNING_PCT = 2;
@@ -93,30 +93,8 @@ export default function RebalancingPage() {
     };
   }, []);
 
-  if (dashLoading) {
-    return (
-      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem' }}>
-          <Spinner size="xl" aria-label={t('rebalancing.loadingSimulator')} />
-        </div>
-      </PageSection>
-    );
-  }
-
-  if (dashError || !dashboard) {
-    return (
-      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
-        <Content>
-          <Content
-            component={ContentVariants.p}
-            style={{ color: 'var(--pf-t--global--text--color--status--danger--default)' }}
-          >
-            {t('error.loadingRebalancing')}
-          </Content>
-        </Content>
-      </PageSection>
-    );
-  }
+  if (dashLoading) return renderLoadingState(t('rebalancing.loadingSimulator'));
+  if (dashError || !dashboard) return renderErrorState(t('error.loadingRebalancing'));
 
   return (
     <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>

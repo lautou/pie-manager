@@ -20,6 +20,7 @@ from app.core.database import get_db
 from app.models.fiscal import FiscalCarryForward
 from app.models.broker import Broker
 from app.models.portfolio_account import PortfolioAccount
+from app.api.deps import get_or_404
 
 router = APIRouter(tags=["fiscal"])
 
@@ -89,12 +90,7 @@ async def update_carry_forward(
     body: CarryForwardUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(FiscalCarryForward).where(FiscalCarryForward.id == entry_id)
-    )
-    entry = result.scalar_one_or_none()
-    if not entry:
-        raise HTTPException(status_code=404, detail="Entry not found.")
+    entry = await get_or_404(db, FiscalCarryForward.id, entry_id, "Entry not found.")
     entry.amount_eur = body.amount_eur
     await db.commit()
     await db.refresh(entry)
@@ -106,12 +102,7 @@ async def delete_carry_forward(
     entry_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(FiscalCarryForward).where(FiscalCarryForward.id == entry_id)
-    )
-    entry = result.scalar_one_or_none()
-    if not entry:
-        raise HTTPException(status_code=404, detail="Entry not found.")
+    entry = await get_or_404(db, FiscalCarryForward.id, entry_id, "Entry not found.")
     await db.delete(entry)
     await db.commit()
 

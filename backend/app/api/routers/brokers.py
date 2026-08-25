@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.models import Broker, Transaction, Product, AssetPrice, PortfolioAccount
 from app.services.price_service import _to_eur, r2
 from app.api.routers.dashboard import _get_spot_rates
+from app.api.deps import get_or_404, ensure_unreferenced
 
 
 router = APIRouter(tags=["brokers"])
@@ -145,10 +146,7 @@ async def update_broker_portfolios(
     body: PortfolioIdsUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Broker).where(Broker.id == broker_id))
-    broker = result.scalar_one_or_none()
-    if not broker:
-        raise HTTPException(status_code=404, detail="Broker not found")
+    broker = await get_or_404(db, Broker.id, broker_id, "Broker not found")
     existing = await db.execute(
         select(PortfolioAccount).where(PortfolioAccount.broker_id == broker_id)
     )
@@ -167,10 +165,7 @@ async def update_broker(
     body: BrokerUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Broker).where(Broker.id == broker_id))
-    broker = result.scalar_one_or_none()
-    if not broker:
-        raise HTTPException(status_code=404, detail="Broker not found")
+    broker = await get_or_404(db, Broker.id, broker_id, "Broker not found")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(broker, field, value)
     await db.commit()
@@ -180,18 +175,11 @@ async def update_broker(
 
 @router.delete("/{broker_id}", status_code=204)
 async def delete_broker(broker_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Broker).where(Broker.id == broker_id))
-    broker = result.scalar_one_or_none()
-    if not broker:
-        raise HTTPException(status_code=404, detail="Broker not found")
-    tx_count = (await db.execute(
-        select(func.count()).select_from(Transaction).where(Transaction.account_id == broker_id)
-    )).scalar_one()
-    if tx_count > 0:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot delete: {tx_count} transaction(s) are linked to this broker.",
-        )
+    broker = await get_or_404(db, Broker.id, broker_id, "Broker not found")
+    await ensure_unreferenced(
+        db, Transaction.account_id, broker_id,
+        lambda n: f"Cannot delete: {n} transaction(s) are linked to this broker.",
+    )
     await db.delete(broker)
     await db.commit()
 
@@ -202,10 +190,7 @@ async def update_commission_schedule(
     body: CommissionScheduleUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Broker).where(Broker.id == broker_id))
-    broker = result.scalar_one_or_none()
-    if not broker:
-        raise HTTPException(status_code=404, detail="Broker not found")
+    broker = await get_or_404(db, Broker.id, broker_id, "Broker not found")
     broker.commission_schedule = body.commission_schedule
     await db.commit()
     await db.refresh(broker)
@@ -218,10 +203,7 @@ async def update_commission_sale_rate(
     body: CommissionSaleRateUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Broker).where(Broker.id == broker_id))
-    broker = result.scalar_one_or_none()
-    if not broker:
-        raise HTTPException(status_code=404, detail="Broker not found")
+    broker = await get_or_404(db, Broker.id, broker_id, "Broker not found")
     broker.commission_sale_rate = body.commission_sale_rate
     await db.commit()
     await db.refresh(broker)
@@ -234,10 +216,7 @@ async def update_include_fees_in_cump(
     body: IncludeFeesUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Broker).where(Broker.id == broker_id))
-    broker = result.scalar_one_or_none()
-    if not broker:
-        raise HTTPException(status_code=404, detail="Broker not found")
+    broker = await get_or_404(db, Broker.id, broker_id, "Broker not found")
     broker.include_fees_in_cump = body.include_fees_in_cump
     await db.commit()
     await db.refresh(broker)
@@ -250,10 +229,7 @@ async def update_fx_commission(
     body: FXCommissionUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Broker).where(Broker.id == broker_id))
-    broker = result.scalar_one_or_none()
-    if not broker:
-        raise HTTPException(status_code=404, detail="Broker not found")
+    broker = await get_or_404(db, Broker.id, broker_id, "Broker not found")
     broker.monthly_free_eur = body.monthly_free_eur
     broker.above_monthly_rate = body.above_monthly_rate
     broker.weekend_rate = body.weekend_rate
@@ -268,10 +244,7 @@ async def update_allowed_tickers(
     body: AllowedTickersUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Broker).where(Broker.id == broker_id))
-    broker = result.scalar_one_or_none()
-    if not broker:
-        raise HTTPException(status_code=404, detail="Broker not found")
+    broker = await get_or_404(db, Broker.id, broker_id, "Broker not found")
     broker.allowed_tickers = body.allowed_tickers
     await db.commit()
     await db.refresh(broker)

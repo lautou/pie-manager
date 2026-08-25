@@ -28,6 +28,8 @@ import type { DailySnapshot, Holding } from '../types';
 import IndexChart, { HOLDING_COLORS } from '../components/IndexChart';
 import type { IndexView, BrushState } from '../components/IndexChart';
 import PatrimoineChart from '../components/PatrimoineChart';
+import { renderLoadingState } from '../components/QueryStateGuard';
+import { clampZoomRange, timeAxisStyle } from '../utils/chartZoom';
 import SnapshotsTable from '../components/SnapshotsTable';
 import TickerLink from '../components/TickerLink';
 import EtfCompositionModal from '../components/EtfCompositionModal';
@@ -214,15 +216,7 @@ export default function PerformancePage() {
 
   const loading = loadingDaily || loadingMonthly || loadingTWRR;
 
-  if (loading) {
-    return (
-      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem' }}>
-          <Spinner size="xl" />
-        </div>
-      </PageSection>
-    );
-  }
+  if (loading) return renderLoadingState(t('common.loading'));
 
   // ── TWRR index series — rebased to 100 at the start of the zoom window ──
   const rebaseToZoom = (
@@ -298,30 +292,10 @@ export default function PerformancePage() {
     .map((s) => ({ x: new Date(s.date), y: Math.round(s.total_eur) }));
 
   // Adaptive date format: full date (YYYY-MM-DD) when zoomed < 90 days, month otherwise
-  const makeAxisStyle = (zoomDom?: { x?: [Date, Date] }) => {
-    const zoomDays = zoomDom?.x
-      ? (zoomDom.x[1].getTime() - zoomDom.x[0].getTime()) / 86_400_000
-      : Infinity;
-    return {
-      scale: 'time' as const,
-      tickFormat: (d: Date) => {
-        const dt = d instanceof Date ? d : new Date(d);
-        const yy = dt.getFullYear();
-        const mm = String(dt.getMonth() + 1).padStart(2, '0');
-        if (zoomDays < 90) {
-          const dd = String(dt.getDate()).padStart(2, '0');
-          return `${yy}-${mm}-${dd}`;
-        }
-        return `${yy}-${mm}`;
-      },
-      style: {
-        tickLabels: { fontSize: 10, angle: -45, textAnchor: 'end' as const },
-        grid: { stroke: '#d4d4d4', strokeWidth: 0.5 },
-      },
-      tickCount: 16,
-      fixLabelOverlap: true,
-    };
-  };
+  const makeAxisStyle = (zoomDom?: { x?: [Date, Date] }) => ({
+    scale: 'time' as const,
+    ...timeAxisStyle(zoomDom?.x),
+  });
 
   const MIN_ZOOM_INDEX_MS = 60 * 86_400_000;
   const MIN_ZOOM_PATRIMOINE_MS = 7 * 86_400_000;
@@ -329,13 +303,7 @@ export default function PerformancePage() {
 
   const clampZoom = (domain: { x?: [Date, Date]; y?: [number, number] }, minMs: number) => {
     if (!domain.x) return domain;
-    const [s, e] = domain.x;
-    const diff = e.getTime() - s.getTime();
-    if (diff < minMs) {
-      const center = (s.getTime() + e.getTime()) / 2;
-      return { ...domain, x: [new Date(center - minMs / 2), new Date(center + minMs / 2)] as [Date, Date] };
-    }
-    return domain;
+    return { ...domain, x: clampZoomRange(domain.x, minMs) };
   };
 
   return (

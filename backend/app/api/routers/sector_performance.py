@@ -4,7 +4,7 @@
 prefix as indicators.py/country_performance.py."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pgqueuer import Queries
 from pydantic import BaseModel
 
@@ -21,6 +21,7 @@ from app.services.sector_performance_service import (
     list_sector_configs,
     update_sector_config,
 )
+from app.services.code_keyed_crud import crud_or_http
 
 router = APIRouter(tags=["sector-performance"])
 
@@ -85,32 +86,21 @@ async def get_sectors(db: AsyncSession = Depends(get_db)):
 
 @router.post("/sector-performance/sectors", response_model=SectorPerfConfigOut, status_code=201)
 async def post_sector(body: SectorPerfConfigCreate, db: AsyncSession = Depends(get_db)):
-    try:
-        return await create_sector_config(
-            db, body.code, body.label, body.index_ticker, body.currency, body.index_label,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    return await crud_or_http(create_sector_config(
+        db, body.code, body.label, body.index_ticker, body.currency, body.index_label,
+    ))
 
 
 @router.put("/sector-performance/sectors/{code}", response_model=SectorPerfConfigOut)
 async def put_sector(code: str, body: SectorPerfConfigUpdate, db: AsyncSession = Depends(get_db)):
-    try:
-        sector = await update_sector_config(
-            db, code, body.label, body.index_ticker, body.currency, body.index_label,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    if sector is None:
-        raise HTTPException(status_code=404, detail=f"Unknown sector: {code}")
-    return sector
+    return await crud_or_http(update_sector_config(
+        db, code, body.label, body.index_ticker, body.currency, body.index_label,
+    ), f"Unknown sector: {code}")
 
 
 @router.delete("/sector-performance/sectors/{code}", status_code=204)
 async def delete_sector_endpoint(code: str, db: AsyncSession = Depends(get_db)):
-    result = await delete_sector_config(db, code)
-    if result is None:
-        raise HTTPException(status_code=404, detail=f"Unknown sector: {code}")
+    await crud_or_http(delete_sector_config(db, code), f"Unknown sector: {code}")
 
 
 # ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@ independent data), kept in its own router file since it's a distinct feature (a 
 not a region-scoped ratio) with its own CRUD/task/schemas."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pgqueuer import Queries
 from pydantic import BaseModel
 
@@ -23,6 +23,7 @@ from app.services.country_performance_service import (
     list_country_configs,
     update_country_config,
 )
+from app.services.code_keyed_crud import crud_or_http
 
 router = APIRouter(tags=["country-performance"])
 
@@ -87,32 +88,21 @@ async def get_countries(db: AsyncSession = Depends(get_db)):
 
 @router.post("/country-performance/countries", response_model=CountryPerfConfigOut, status_code=201)
 async def post_country(body: CountryPerfConfigCreate, db: AsyncSession = Depends(get_db)):
-    try:
-        return await create_country_config(
-            db, body.code, body.label, body.index_ticker, body.currency, body.index_label,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    return await crud_or_http(create_country_config(
+        db, body.code, body.label, body.index_ticker, body.currency, body.index_label,
+    ))
 
 
 @router.put("/country-performance/countries/{code}", response_model=CountryPerfConfigOut)
 async def put_country(code: str, body: CountryPerfConfigUpdate, db: AsyncSession = Depends(get_db)):
-    try:
-        country = await update_country_config(
-            db, code, body.label, body.index_ticker, body.currency, body.index_label,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    if country is None:
-        raise HTTPException(status_code=404, detail=f"Unknown country: {code}")
-    return country
+    return await crud_or_http(update_country_config(
+        db, code, body.label, body.index_ticker, body.currency, body.index_label,
+    ), f"Unknown country: {code}")
 
 
 @router.delete("/country-performance/countries/{code}", status_code=204)
 async def delete_country_endpoint(code: str, db: AsyncSession = Depends(get_db)):
-    result = await delete_country_config(db, code)
-    if result is None:
-        raise HTTPException(status_code=404, detail=f"Unknown country: {code}")
+    await crud_or_http(delete_country_config(db, code), f"Unknown country: {code}")
 
 
 # ---------------------------------------------------------------------------

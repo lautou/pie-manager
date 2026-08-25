@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import date
+from typing import Optional
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.price import AssetPrice
 from app.models.product import Product
+from app.models.transaction import Transaction
 
 
 def r2(val: float) -> float:
@@ -72,6 +74,83 @@ def held_quantity(raw_qty: float, instrument_type: str | None) -> float:
     (raw_qty already means "held"), everything else accumulates negative on buy (so
     held = -raw_qty)."""
     return max(0.0, raw_qty) if instrument_type == "Cash" else max(0.0, -raw_qty)
+
+
+async def get_forex_fee_adjustments(
+    db: AsyncSession,
+    portfolio_id: int,
+    held_tickers: list[str],
+    as_of: Optional[date] = None,
+    group_by_account: bool = False,
+) -> dict:
+    """Returns the EUR-independent fee amount to add to each held Cash/forex position, for
+    fees paid in that position's own currency — e.g. FRAIS.COURTAGE.JPY (type=Frais,
+    currency=JPY, total_amount=-165) reduces the JPYEUR=X position; its quantity=-1 is a
+    fee-event count, not JPY units, so total_amount carries the real deduction.
+
+    Only Product.instrument_type == 'Cash' tickers are matched — a foreign-currency
+    equity/ETF must never be adjusted just because its currency happens to match a fee's
+    currency (that would subtract a EUR/USD/... fee amount from a *share count*).
+
+    Returns {ticker: adjustment} normally, or {(account_id, ticker): adjustment} when
+    group_by_account=True (fees are matched to the position in the *same* account, never
+    pooled across accounts). Callers are responsible for applying the adjustment to their
+    own holdings dict (each has a different shape/timing relative to held_quantity()) — this
+    function only computes the amounts.
+    """
+    if not held_tickers:
+        return {}
+
+    ticker_clauses = [
+        Transaction.portfolio_id == portfolio_id,
+        Transaction.ticker.in_(held_tickers),
+        Transaction.type == "Actif",
+        Transaction.currency != "EUR",
+    ]
+    if as_of is not None:
+        ticker_clauses.append(Transaction.date <= as_of)
+
+    ticker_columns = [Transaction.ticker, Transaction.currency]
+    if group_by_account:
+        ticker_columns.insert(0, Transaction.account_id)
+
+    ticker_rows = (await db.execute(
+        select(*ticker_columns)
+        .join(Product, Transaction.ticker == Product.ticker)
+        .where(*ticker_clauses, Product.instrument_type == "Cash")
+        .distinct()
+    )).all()
+    if not ticker_rows:
+        return {}
+
+    foreign_currencies = list({r.currency for r in ticker_rows})
+
+    fee_clauses = [
+        Transaction.portfolio_id == portfolio_id,
+        Transaction.type == "Frais",
+        Transaction.currency.in_(foreign_currencies),
+    ]
+    if as_of is not None:
+        fee_clauses.append(Transaction.date <= as_of)
+
+    fee_columns = [Transaction.currency, func.sum(Transaction.total_amount).label("adj")]
+    fee_group_by = [Transaction.currency]
+    if group_by_account:
+        fee_columns.insert(0, Transaction.account_id)
+        fee_group_by.insert(0, Transaction.account_id)
+
+    fee_rows = (await db.execute(
+        select(*fee_columns).where(*fee_clauses).group_by(*fee_group_by)
+    )).all()
+
+    if group_by_account:
+        fee_by_key = {(r.account_id, r.currency): float(r.adj or 0) for r in fee_rows}
+        return {
+            (r.account_id, r.ticker): fee_by_key.get((r.account_id, r.currency), 0.0)
+            for r in ticker_rows
+        }
+    fee_by_currency = {r.currency: float(r.adj or 0) for r in fee_rows}
+    return {r.ticker: fee_by_currency.get(r.currency, 0.0) for r in ticker_rows}
 
 
 def _to_eur(price: float, currency: str, spot_rates: dict[str, float]) -> float:

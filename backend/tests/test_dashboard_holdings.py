@@ -691,6 +691,60 @@ async def test_holdings_forex_deducts_foreign_currency_fees(client, db_session):
 
 
 @pytest.mark.asyncio
+async def test_holdings_history_forex_deducts_foreign_currency_fees(client, db_session):
+    """
+    Regression: get_holdings_at_date used to hand-roll its own quantity query and never
+    applied get_forex_fee_adjustments, unlike the live /holdings endpoint (see
+    test_holdings_forex_deducts_foreign_currency_fees above) — a historical snapshot's
+    JPYEUR=X quantity was missing the fee deduction the live endpoint already applied.
+    """
+    suffix = f"histjpyfee-{id(db_session)}"
+    portfolio = Portfolio(name=f"HistJPYFee-{suffix}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name=f"Revolut-{suffix}", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    db_session.add(PortfolioAccount(portfolio_id=uid, broker_id=account.id))
+    await db_session.flush()
+
+    jpyeur_ticker = f"JPYEUR=X.{suffix}"
+    fee_ticker = f"FRAIS.COURTAGE.JPY.{suffix}"
+    db_session.add(Product(ticker=jpyeur_ticker, name="JPY/EUR", category="Actif", instrument_type="Cash", currency="EUR"))
+    db_session.add(Product(ticker=fee_ticker, name="Frais JPY", category="Frais", currency="JPY"))
+    await db_session.flush()
+
+    snap_date = date(2025, 6, 2)
+    db_session.add(Transaction(
+        portfolio_id=uid, account_id=account.id,
+        date=date(2025, 6, 1), type="Actif", ticker=jpyeur_ticker,
+        currency="JPY", exchange_rate=0.006,
+        quantity=300_000.0, unit_price=1.0, unit_price_eur=0.006,
+        total_amount=300_000.0, total_amount_eur=1800.0,
+    ))
+    db_session.add(Transaction(
+        portfolio_id=uid, account_id=account.id,
+        date=date(2025, 6, 1), type="Frais", ticker=fee_ticker,
+        currency="JPY", exchange_rate=0.006,
+        quantity=-1.0, unit_price=165.0, unit_price_eur=0.99,
+        total_amount=-165.0, total_amount_eur=-0.99,
+    ))
+    db_session.add(AssetPrice(ticker=jpyeur_ticker, date=snap_date,
+                               price=0.006, currency="EUR", source="yfinance"))
+    await db_session.flush()
+
+    r = await client.get("/api/dashboard/holdings/history",
+                         params={"portfolio_id": uid, "snap_date": snap_date.isoformat()})
+    assert r.status_code == 200
+    pos = next((p for p in r.json() if p["ticker"] == jpyeur_ticker), None)
+    assert pos is not None
+    # 300,000 - 165 = 299,835 JPY (not 300,000) — same forex-fee deduction as the live endpoint
+    assert pos["quantity"] == pytest.approx(299_835.0, rel=0.001)
+
+
+@pytest.mark.asyncio
 async def test_holdings_foreign_equity_not_confused_with_forex_position(client, db_session):
     """
     Regression guard: a held foreign-currency EQUITY (instrument_type='Action', not 'Cash')

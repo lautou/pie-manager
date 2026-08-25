@@ -9,11 +9,12 @@ from datetime import date, datetime
 
 from app.core.database import get_db
 from app.models import Pool, PoolProduct, AssetPrice, Transaction, Product
-from app.services.price_service import _to_eur, r2, held_quantity
+from app.services.price_service import _to_eur, held_quantity, position_value_eur
 from app.services.dashboard_service import (
     _get_latest_prices,
     _get_spot_rates,
     _get_latest_holdings,
+    get_holdings as get_portfolio_holdings,
 )
 from app.services.etf_holdings_service import get_composition
 
@@ -126,8 +127,7 @@ async def get_holdings(
         price_eur_unit = _to_eur(native_price, price_currency, spot_rates)
         category = prod.category if prod else ""
         instrument_type = prod.instrument_type if prod else ""
-        # Or physique assets (OR.PHYSIQUE): price IS the total value, not per-unit
-        value_eur = r2(price_eur_unit) if instrument_type == "Or physique" else r2(qty * price_eur_unit)
+        value_eur = position_value_eur(qty, price_eur_unit, instrument_type)
         result.append(HoldingOut(
             ticker=ticker,
             product_name=prod.name if prod else ticker,
@@ -162,26 +162,18 @@ async def get_holdings_at_date(
     snap_date: date = Query(...),
     db: AsyncSession = Depends(get_db),
 ):
-    """Returns portfolio holdings as they were on snap_date, using prices <= snap_date."""
+    """Returns portfolio holdings as they were on snap_date, using prices <= snap_date.
 
-    # Holdings: sum quantities from all transactions up to snap_date
-    tx_result = await db.execute(
-        select(Transaction.ticker, func.sum(Transaction.quantity).label("qty"))
-        .where(
-            Transaction.portfolio_id == portfolio_id,
-            Transaction.type == "Actif",
-            Transaction.ticker.notin_(["LIQUIDITE.EURO"]),
-            Transaction.date <= snap_date,
-        )
-        .group_by(Transaction.ticker)
-        .having(func.sum(Transaction.quantity) != 0)
-    )
-    raw_holdings = {r.ticker: float(r.qty) for r in tx_result.all()}
+    Held quantities (including the forex-fee adjustment — see
+    price_service.get_forex_fee_adjustments) are delegated to dashboard_service.get_holdings,
+    the same as the live /holdings endpoint, rather than re-summing transactions here."""
+    holdings = await get_portfolio_holdings(db, portfolio_id, as_of=snap_date)
+    holdings.pop("LIQUIDITE.EURO", None)
 
-    if not raw_holdings:
+    if not holdings:
         return []
 
-    tickers = list(raw_holdings.keys())
+    tickers = list(holdings.keys())
 
     # Prices at or before snap_date (latest known for each ticker)
     price_subq = (
@@ -210,7 +202,7 @@ async def get_holdings_at_date(
     product_map: dict[str, Product] = {p.ticker: p for p in products_result.scalars().all()}
 
     result = []
-    for ticker, raw_qty in raw_holdings.items():
+    for ticker, held in holdings.items():
         prod = product_map.get(ticker)
         category = prod.category if prod else ""
         instrument_type = prod.instrument_type if prod else ""
@@ -220,12 +212,7 @@ async def get_holdings_at_date(
         price_eur = _to_eur(native_price, price_currency, snap_spot_rates)
         pool = ticker_to_pool.get(ticker)
 
-        held = held_quantity(raw_qty, instrument_type)
-
-        if held == 0 and instrument_type != "Or physique":
-            continue
-
-        value_eur = r2(price_eur) if instrument_type == "Or physique" else r2(held * price_eur)
+        value_eur = position_value_eur(held, price_eur, instrument_type)
         if value_eur <= 0:
             continue
 
@@ -402,17 +389,8 @@ async def get_daily_holding_values(
             price_cur = latest_price_currency.get(ticker, "EUR")
             price = _to_eur(native_price, price_cur, spot_rates_dhv)
 
-            if instrument_type == "Cash":
-                held = max(0.0, raw_qty)
-            elif instrument_type == "Or physique":
-                held = abs(raw_qty) if raw_qty != 0 else 0.0
-            else:
-                held = max(0.0, -raw_qty)
-
-            if instrument_type == "Or physique":
-                value_eur = price if held > 0 else 0.0
-            else:
-                value_eur = r2(held * price)
+            held = held_quantity(raw_qty, instrument_type)
+            value_eur = position_value_eur(held, price, instrument_type)
 
             if value_eur > 0:
                 day_holdings.append(HoldingValueEntry(

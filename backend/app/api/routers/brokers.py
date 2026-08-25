@@ -9,7 +9,7 @@ from datetime import date
 
 from app.core.database import get_db
 from app.models import Broker, Transaction, Product, AssetPrice, PortfolioAccount
-from app.services.price_service import _to_eur, r2, held_quantity, get_forex_fee_adjustments
+from app.services.price_service import _to_eur, r2, held_quantity, get_forex_fee_adjustments, position_value_eur
 from app.api.routers.dashboard import _get_spot_rates
 from app.api.deps import get_or_404, ensure_unreferenced
 
@@ -353,10 +353,7 @@ async def get_accounts_summary(
             if held == 0:
                 continue
 
-            if instrument_type == "Or physique":
-                value_eur = _to_eur(price, currency, spot_rates)
-            else:
-                value_eur = r2(held * _to_eur(price, currency, spot_rates))
+            value_eur = position_value_eur(held, _to_eur(price, currency, spot_rates), instrument_type)
 
             positions_value += value_eur
             positions_out.append(AccountHoldingOut(

@@ -9,7 +9,7 @@ from app.models import Pool, AssetPrice
 from app.models.snapshot import DailySnapshot, DailyPoolSnapshot
 from app.models.transaction import Transaction
 from app.models.product import Product
-from app.services.price_service import _to_eur, r2
+from app.services.price_service import _to_eur, held_quantity, position_value_eur
 from app.services.dashboard_service import _get_spot_rates
 
 
@@ -201,12 +201,8 @@ async def fetch_position_twrr_data(
             currency = prices[price_idx][2]
             price = _to_eur(raw_price, currency, spot_rates)
 
-            if instrument_type == "Or physique":
-                held = max(0.0, abs(cum_raw_qty)) if cum_raw_qty != 0 else 0.0
-                value = price if held > 0 else 0.0
-            else:
-                held = max(0.0, -cum_raw_qty)
-                value = r2(held * price)
+            held = held_quantity(cum_raw_qty, instrument_type)
+            value = position_value_eur(held, price, instrument_type)
 
             if value > 0:
                 value_series.append((snap_dt, value))

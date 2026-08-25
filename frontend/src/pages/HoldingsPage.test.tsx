@@ -51,6 +51,7 @@ vi.mock('../utils/format', () => ({
   formatPct1: (val: number) => `${val.toFixed(1)} %`,
   formatPct2: (val: number, withSign?: boolean) =>
     `${withSign && val > 0 ? '+' : ''}${val.toFixed(2)} %`,
+  formatNativeCurrency: (val: number, currency: string, maxDecimals = 3) => `${val.toFixed(maxDecimals)} ${currency}`,
 }));
 
 

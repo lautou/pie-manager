@@ -9,7 +9,7 @@ import {
   Content, ContentVariants, Title,
 } from '@patternfly/react-core';
 import { Table, Thead, Tbody, Tr, Th, Td, SortByDirection } from '@patternfly/react-table';
-import { formatEUR, formatPct2, formatUnitPrice } from '../utils/format';
+import { formatEUR, formatPct2, formatUnitPrice, formatNativeCurrency } from '../utils/format';
 import { pvColor } from '../utils/pv';
 import { INSTRUMENT_TYPE_GOLD } from '../utils/productConstants';
 import { useAccountsSummary, useCapitalGains } from '../api/queries';
@@ -165,10 +165,7 @@ function AccountDetailCard({
                     </Td>
                     <Td>
                       {pos.currency !== 'EUR' && pos.last_price > 0 && pos.instrument_type !== INSTRUMENT_TYPE_GOLD
-                        ? new Intl.NumberFormat('fr-FR', {
-                            minimumFractionDigits: 0,
-                            maximumFractionDigits: 0,
-                          }).format(pos.value_eur / pos.last_price) + ' ' + pos.currency
+                        ? formatNativeCurrency(pos.value_eur / pos.last_price, pos.currency, 0)
                         : '—'}
                     </Td>
                     <Td>

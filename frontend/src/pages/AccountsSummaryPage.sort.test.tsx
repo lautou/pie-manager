@@ -48,6 +48,7 @@ vi.mock('../utils/format', () => ({
   formatUnitPrice: (v: number, _c?: string) => `${v} €`,
   formatEUR: (val: number) => `${val.toFixed(2)} €`,
   formatPct2: (val: number, withSign?: boolean) => `${withSign && val > 0 ? '+' : ''}${val.toFixed(2)} %`,
+  formatNativeCurrency: (val: number, currency: string, maxDecimals = 3) => `${val.toFixed(maxDecimals)} ${currency}`,
 }));
 
 const mockUseAccountsSummary = vi.fn();

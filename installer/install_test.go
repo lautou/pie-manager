@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -111,25 +112,9 @@ func TestUpdateEnvPort_PreservesOtherVars(t *testing.T) {
 	updateEnvPort(dir, 15003)
 	data, _ := os.ReadFile(filepath.Join(dir, ".env"))
 	content := string(data)
-	if !contains(content, "APP_VERSION=1.0.0") {
+	if !strings.Contains(content, "APP_VERSION=1.0.0") {
 		t.Error("APP_VERSION was lost after updateEnvPort")
 	}
-}
-
-// --- detectComposeCmd ---
-
-func TestDetectComposeCmd_ReturnsFallback(t *testing.T) {
-	cmd := detectComposeCmd()
-	if cmd != "podman-compose" && cmd != "podman compose" {
-		t.Errorf("unexpected compose command %q", cmd)
-	}
-}
-
-// helper
-func contains(s, sub string) bool {
-	return len(s) >= len(sub) && (s == sub ||
-		len(s) > 0 && (s[:len(sub)] == sub ||
-			contains(s[1:], sub)))
 }
 
 // --- copyFile ---

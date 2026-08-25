@@ -57,6 +57,23 @@ class HoldingOut(BaseModel):
     currency: str
 
 
+async def _get_ticker_to_pool_map(db: AsyncSession, portfolio_id: int) -> dict[str, Pool]:
+    """Maps each held ticker to its active Pool for this portfolio, via the Pool/PoolProduct
+    join — shared by get_holdings and get_holdings_at_date, which each need the same lookup
+    to attach pool_id/pool_name to a holding."""
+    pools_result = await db.execute(
+        select(Pool).where(Pool.portfolio_id == portfolio_id, Pool.is_active == True)  # noqa: E712
+    )
+    pools = {p.id: p for p in pools_result.scalars().all()}
+    pp_result = await db.execute(
+        select(PoolProduct).where(PoolProduct.pool_id.in_(pools.keys()))
+    )
+    ticker_to_pool: dict[str, Pool] = {}
+    for pp in pp_result.scalars().all():
+        ticker_to_pool[pp.ticker] = pools[pp.pool_id]
+    return ticker_to_pool
+
+
 @router.get("/holdings", response_model=list[HoldingOut])
 async def get_holdings(
     portfolio_id: int = Query(...),
@@ -89,16 +106,7 @@ async def get_holdings(
     price_meta: dict[str, AssetPrice] = {r.ticker: r for r in price_rows_result.scalars().all()}
 
     # Pool membership
-    pools_result = await db.execute(
-        select(Pool).where(Pool.portfolio_id == portfolio_id, Pool.is_active == True)  # noqa: E712
-    )
-    pools = {p.id: p for p in pools_result.scalars().all()}
-    pp_result = await db.execute(
-        select(PoolProduct).where(PoolProduct.pool_id.in_(pools.keys()))
-    )
-    ticker_to_pool: dict[str, Pool] = {}
-    for pp in pp_result.scalars().all():
-        ticker_to_pool[pp.ticker] = pools[pp.pool_id]
+    ticker_to_pool = await _get_ticker_to_pool_map(db, portfolio_id)
 
     # Product names
     products_result = await db.execute(
@@ -194,16 +202,7 @@ async def get_holdings_at_date(
     snap_spot_rates = await _get_spot_rates(db, as_of=snap_date)
 
     # Pools & products
-    pools_result = await db.execute(
-        select(Pool).where(Pool.portfolio_id == portfolio_id, Pool.is_active == True)  # noqa: E712
-    )
-    pools = {p.id: p for p in pools_result.scalars().all()}
-    pp_result = await db.execute(
-        select(PoolProduct).where(PoolProduct.pool_id.in_(pools.keys()))
-    )
-    ticker_to_pool: dict[str, Pool] = {}
-    for pp in pp_result.scalars().all():
-        ticker_to_pool[pp.ticker] = pools[pp.pool_id]
+    ticker_to_pool = await _get_ticker_to_pool_map(db, portfolio_id)
 
     products_result = await db.execute(
         select(Product).where(Product.ticker.in_(tickers))

@@ -10,6 +10,7 @@ from datetime import date
 from app.core.database import get_db
 from app.models import DailySnapshot, MonthlySnapshot, Pool
 from app.services.price_service import r2
+from app.services.snapshot_service import dedupe_snapshots_by_date
 
 router = APIRouter(tags=["snapshots"])
 
@@ -120,12 +121,7 @@ async def list_daily_with_pools(
     result = await db.execute(stmt)
     all_snaps = result.scalars().all()
 
-    # Deduplicate: keep only one snapshot per date (latest by id)
-    seen: dict[date, DailySnapshot] = {}
-    for snap in all_snaps:
-        if snap.date not in seen or snap.id > seen[snap.date].id:
-            seen[snap.date] = snap
-    snapshots = sorted(seen.values(), key=lambda s: s.date)
+    snapshots = dedupe_snapshots_by_date(all_snaps)
 
     out = []
     for snap in snapshots:
@@ -218,12 +214,7 @@ async def get_twrr(
         .where(DailySnapshot.portfolio_id == portfolio_id, DailySnapshot.total_eur > 0)
         .order_by(DailySnapshot.date.asc())
     )
-    # Deduplicate per date (keep latest id)
-    seen_dates: dict[date, DailySnapshot] = {}
-    for s in snaps_raw.scalars().all():
-        if s.date not in seen_dates or s.id > seen_dates[s.date].id:
-            seen_dates[s.date] = s
-    daily_list = sorted(seen_dates.values(), key=lambda s: s.date)
+    daily_list = dedupe_snapshots_by_date(snaps_raw.scalars().all())
     if not daily_list:
         return {"total": [], "offensive": [], "defensive": [], "pools": {}}
 

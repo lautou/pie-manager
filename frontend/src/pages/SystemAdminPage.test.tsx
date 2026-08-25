@@ -381,11 +381,9 @@ describe('SystemAdminPage — additional coverage', () => {
     vi.restoreAllMocks();
   }, 10000);
 
-  it('handleBackup: apiClient.get throws → shows alert', async () => {
+  it('handleBackup: apiClient.get throws → page stays stable', async () => {
     const apiClientMock = (await import('../api/client')).default;
     vi.mocked(apiClientMock.get).mockRejectedValueOnce(new Error('Network error'));
-
-    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
 
     const user = userEvent.setup({ delay: null });
     render(<SystemAdminPage />);
@@ -394,7 +392,6 @@ describe('SystemAdminPage — additional coverage', () => {
     await user.click(backupBtn);
 
     expect(screen.getByText('Administration système')).toBeTruthy();
-    alertSpy.mockRestore();
   }, 10000);
 
   it('handleRun: triggerRecompute is called when clicking Lancer le recalcul', async () => {

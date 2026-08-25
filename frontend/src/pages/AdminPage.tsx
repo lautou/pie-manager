@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
+  Alert,
   Button,
   Card, CardBody, CardTitle,
   PageSection, PageSectionVariants,
@@ -49,6 +50,7 @@ function PoolManager({ portfolioId }: { portfolioId: string }) {
   const [tickerSearch, setTickerSearch] = useState('');
   const [poolDeleteTarget, setPoolDeleteTarget] = useState<Pool | null>(null);
   const [isDeletingPool, setIsDeletingPool] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const openNew = () => {
     setEditingPool({ id: 0, portfolio_id: Number(portfolioId), name: '', strategy: 'Offensive', target_pct: 0.25, is_active: true, color: null });
@@ -89,15 +91,16 @@ function PoolManager({ portfolioId }: { portfolioId: string }) {
       if (selectedPool?.id === poolDeleteTarget.id) setSelectedPool(null);
       refetchPools();
       setPoolDeleteTarget(null);
-    } catch (e: any) { alert(e?.response?.data?.detail ?? t('error.deleteFailed')); }
+      setActionError(null);
+    } catch (e: any) { setActionError(e?.response?.data?.detail ?? t('error.deleteFailed')); }
     finally { setIsDeletingPool(false); }
   };
 
   const handleAddTicker = async (ticker: string) => {
     /* v8 ignore next -- @preserve */
     if (!selectedPool) return;
-    try { await addTickerToPool(selectedPool.id, ticker); refetchProducts(); setTickerSearch(''); }
-    catch (e: any) { alert(e?.response?.data?.detail ?? t('error.saveFailed')); }
+    try { await addTickerToPool(selectedPool.id, ticker); refetchProducts(); setTickerSearch(''); setActionError(null); }
+    catch (e: any) { setActionError(e?.response?.data?.detail ?? t('error.saveFailed')); }
   };
 
   const handleRemoveTicker = async (ticker: string) => {
@@ -117,6 +120,10 @@ function PoolManager({ portfolioId }: { portfolioId: string }) {
 
   return (
     <div>
+      {actionError && (
+        <Alert variant="danger" isInline title={actionError} style={{ marginBottom: '0.75rem' }} />
+      )}
+
       {/* Pool list */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
         <span style={{ fontSize: '0.85rem', color: '#6A6E73' }}>{pools.length} pool(s)</span>

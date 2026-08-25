@@ -77,7 +77,7 @@ export default function SystemAdminPage() {
       document.body.removeChild(a);
     } catch (e) {
       /* v8 ignore next -- @preserve */
-      alert(t('admin.backup') + ' : ' + String(e));
+      setRestoreMsg({ type: 'danger', text: t('admin.backup') + ' : ' + String(e) });
     } finally {
       setIsBackingUp(false);
     }

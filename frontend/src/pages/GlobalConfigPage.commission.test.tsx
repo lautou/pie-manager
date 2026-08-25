@@ -957,8 +957,7 @@ describe('GlobalConfigPage — CommissionManager broker CRUD', () => {
     }
   }, 10000);
 
-  it('delete broker API error shows alert', async () => {
-    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+  it('delete broker API error shows an Alert', async () => {
     const { deleteBrokerAPI } = await import('../api/queries');
     vi.mocked(deleteBrokerAPI).mockRejectedValueOnce({ response: { data: { detail: 'Has transactions' } } });
     const user = userEvent.setup({ delay: null });
@@ -967,9 +966,8 @@ describe('GlobalConfigPage — CommissionManager broker CRUD', () => {
     if (deleteBtns.length > 0) {
       await user.click(deleteBtns[0]);
       await user.click(screen.getByText('Supprimer'));
-      expect(alertSpy).toHaveBeenCalled();
+      await rtlWaitFor(() => expect(screen.getByText('Has transactions')).toBeTruthy());
     }
-    alertSpy.mockRestore();
   }, 10000);
 });
 
@@ -1113,7 +1111,6 @@ describe('GlobalConfigPage — additional branch coverage', () => {
   }, 10000);
 
   it('handleDeleteBroker catch without detail uses "Impossible de supprimer" fallback (line 102 ?? branch)', async () => {
-    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
     const { deleteBrokerAPI } = await import('../api/queries');
     vi.mocked(deleteBrokerAPI).mockRejectedValueOnce(new Error('Generic error'));
     const user = userEvent.setup({ delay: null });
@@ -1122,9 +1119,8 @@ describe('GlobalConfigPage — additional branch coverage', () => {
     if (deleteBtns.length > 0) {
       await user.click(deleteBtns[0]);
       await user.click(screen.getByText('Supprimer'));
-      expect(alertSpy).toHaveBeenCalledWith('Impossible de supprimer');
+      await rtlWaitFor(() => expect(screen.getByText('Impossible de supprimer')).toBeTruthy());
     }
-    alertSpy.mockRestore();
   }, 10000);
 
   it('tiersFromSchedule with null schedule uses [] fallback (line 131 ?? branch)', async () => {
@@ -1166,13 +1162,12 @@ describe('GlobalConfigPage — additional branch coverage', () => {
     expect(screen.getByText(/Aucun — tous autorisés/i)).toBeTruthy();
   }, 10000);
 
-  it('putCommissionSaleRate fetch error is caught by caller and shown via alert', async () => {
+  it('putCommissionSaleRate fetch error is caught by caller and shown via an Alert', async () => {
     // The onChange handler of sale_rate input calls putCommissionSaleRate which calls fetch
     const fetchSpy = vi.spyOn(window, 'fetch').mockResolvedValueOnce({
       ok: false,
       text: () => Promise.resolve('Sale rate error'),
     } as any);
-    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
     const { container } = render(<GlobalConfigPage />);
     const inputs = screen.getAllByRole('spinbutton');
     const saleRateInput = inputs.find((inp: HTMLElement) =>
@@ -1186,15 +1181,13 @@ describe('GlobalConfigPage — additional branch coverage', () => {
       await Promise.resolve();
     });
 
-    expect(alertSpy).toHaveBeenCalledWith('Sale rate error');
+    await rtlWaitFor(() => expect(screen.getByText('Sale rate error')).toBeTruthy());
     expect(container).toBeTruthy();
     fetchSpy.mockRestore();
-    alertSpy.mockRestore();
   }, 10000);
 
-  it('putCommissionSaleRate: non-Error rejection falls back to generic alert message', async () => {
+  it('putCommissionSaleRate: non-Error rejection falls back to a generic Alert message', async () => {
     const fetchSpy = vi.spyOn(window, 'fetch').mockRejectedValueOnce('network down');
-    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
     render(<GlobalConfigPage />);
     const inputs = screen.getAllByRole('spinbutton');
     const saleRateInput = inputs.find((inp: HTMLElement) =>
@@ -1208,9 +1201,8 @@ describe('GlobalConfigPage — additional branch coverage', () => {
       await Promise.resolve();
     });
 
-    expect(alertSpy).toHaveBeenCalledWith('Erreur lors de la mise à jour du taux de vente');
+    await rtlWaitFor(() => expect(screen.getByText('Erreur lors de la mise à jour du taux de vente')).toBeTruthy());
     fetchSpy.mockRestore();
-    alertSpy.mockRestore();
   }, 10000);
 
   it('ttfSetting without value skips useEffect (line 564 false branch)', () => {

@@ -400,8 +400,7 @@ describe('AdminPage — coverage for uncovered branches', () => {
     }
   }, 10000);
 
-  it('handleDelete: delete throws shows alert', async () => {
-    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+  it('handleDelete: delete throws shows an Alert', async () => {
     const { deletePool } = await import('../api/queries');
     vi.mocked(deletePool).mockRejectedValueOnce({
       response: { data: { detail: 'Cannot delete pool with positions' } },
@@ -415,9 +414,8 @@ describe('AdminPage — coverage for uncovered branches', () => {
     if (deleteBtn) {
       await user.click(deleteBtn);
       await user.click(screen.getByText('Supprimer'));
-      expect(alertSpy).toHaveBeenCalled();
+      await rtlWaitFor(() => expect(screen.getByText('Cannot delete pool with positions')).toBeTruthy());
     }
-    alertSpy.mockRestore();
   }, 10000);
 
   it('handleAddTicker: click product in search results adds to pool', async () => {
@@ -470,8 +468,7 @@ describe('AdminPage — coverage for uncovered branches', () => {
     }
   }, 10000);
 
-  it('handleAddTicker: addTickerToPool throws shows alert', async () => {
-    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+  it('handleAddTicker: addTickerToPool throws shows an Alert', async () => {
     const { addTickerToPool } = await import('../api/queries');
     vi.mocked(addTickerToPool).mockRejectedValueOnce({
       response: { data: { detail: 'Ticker already assigned' } },
@@ -491,8 +488,7 @@ describe('AdminPage — coverage for uncovered branches', () => {
         await user.click(results[results.length - 1]);
       }
     }
-    alertSpy.mockRestore();
-    expect(screen.getByText('Paramètres')).toBeTruthy();
+    await rtlWaitFor(() => expect(screen.getByText('Ticker already assigned')).toBeTruthy());
   }, 10000);
 
   it('change strategy select in pool form', async () => {
@@ -578,8 +574,7 @@ describe('AdminPage — direct state rendering coverage', () => {
     }
   }, 10000);
 
-  it('handleDelete: delete throws without detail → alert uses ?? fallback', async () => {
-    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+  it('handleDelete: delete throws without detail → Alert uses ?? fallback', async () => {
     const { deletePool } = await import('../api/queries');
     vi.mocked(deletePool).mockRejectedValueOnce(new Error('Generic error'));
 
@@ -591,13 +586,11 @@ describe('AdminPage — direct state rendering coverage', () => {
     if (deleteBtn) {
       await user.click(deleteBtn);
       await user.click(screen.getByText('Supprimer'));
+      await rtlWaitFor(() => expect(screen.getByText('Erreur suppression')).toBeTruthy());
     }
-    alertSpy.mockRestore();
-    expect(screen.getByText('Paramètres')).toBeTruthy();
   }, 10000);
 
-  it('handleAddTicker: addTickerToPool throws without detail → alert uses ?? fallback', async () => {
-    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+  it('handleAddTicker: addTickerToPool throws without detail → Alert uses ?? fallback', async () => {
     const { addTickerToPool } = await import('../api/queries');
     vi.mocked(addTickerToPool).mockRejectedValueOnce(new Error('Generic add error'));
 
@@ -615,12 +608,10 @@ describe('AdminPage — direct state rendering coverage', () => {
         await user.click(results[results.length - 1]);
       }
     }
-    alertSpy.mockRestore();
-    expect(screen.getByText('Paramètres')).toBeTruthy();
+    await rtlWaitFor(() => expect(screen.getAllByText('Erreur').length).toBeGreaterThan(0));
   }, 10000);
 
   it('handleAddTicker: error without detail falls back to "Erreur" (bare object)', async () => {
-    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
     const { addTickerToPool } = await import('../api/queries');
     vi.mocked(addTickerToPool).mockReset();
     vi.mocked(addTickerToPool).mockRejectedValueOnce({});
@@ -639,8 +630,7 @@ describe('AdminPage — direct state rendering coverage', () => {
       await user.click(addBtn);
     }
 
-    await rtlWaitFor(() => expect(alertSpy).toHaveBeenCalledWith('Erreur'));
-    alertSpy.mockRestore();
+    await rtlWaitFor(() => expect(screen.getAllByText('Erreur').length).toBeGreaterThan(0));
   }, 10000);
 
   it('ticker search result onMouseLeave resets search result background', async () => {

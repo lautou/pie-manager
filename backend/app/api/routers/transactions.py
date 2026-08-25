@@ -11,6 +11,7 @@ from datetime import date as Date
 from app.core.database import get_db
 from app.core.pgq import get_pgq_queries
 from app.models import Transaction, Broker, PortfolioAccount
+from app.api.deps import get_or_404
 
 
 def _no_neg_zero(v: float) -> float:
@@ -460,10 +461,7 @@ async def update_transaction(
     db: AsyncSession = Depends(get_db),
     queries: Queries = Depends(get_pgq_queries),
 ):
-    result = await db.execute(select(Transaction).where(Transaction.id == transaction_id))
-    tx = result.scalar_one_or_none()
-    if not tx:
-        raise HTTPException(status_code=404, detail="Transaction not found")
+    tx = await get_or_404(db, Transaction.id, transaction_id, "Transaction not found")
 
     old_total_eur = tx.total_amount_eur
     old_date = tx.date
@@ -601,10 +599,7 @@ async def delete_transaction(
     db: AsyncSession = Depends(get_db),
     queries: Queries = Depends(get_pgq_queries),
 ):
-    result = await db.execute(select(Transaction).where(Transaction.id == transaction_id))
-    tx = result.scalar_one_or_none()
-    if not tx:
-        raise HTTPException(status_code=404, detail="Transaction not found")
+    tx = await get_or_404(db, Transaction.id, transaction_id, "Transaction not found")
     portfolio_id, tx_date, account_id = tx.portfolio_id, tx.date, tx.account_id
     tx_type, tx_ticker, tx_operation = tx.type, tx.ticker, tx.operation
 

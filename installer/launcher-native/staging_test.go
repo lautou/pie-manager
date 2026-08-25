@@ -18,6 +18,19 @@ func writeTestFile(t *testing.T, path, content string) {
 	}
 }
 
+// lockDirectory populates dir with a file then strips its permission bits, making it
+// un-removable by os.RemoveAll (a permission-stripped directory can't be traversed/deleted) -
+// shared by every "existing destination cannot be cleared" test below. Restores permissions via
+// t.Cleanup so t.TempDir()'s own cleanup can still remove it afterward.
+func lockDirectory(t *testing.T, dir string) {
+	t.Helper()
+	writeTestFile(t, filepath.Join(dir, "file.txt"), "content")
+	if err := os.Chmod(dir, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+}
+
 // writeBackendAppSourceFixtures populates pkgRoot/python's app/alembic content - shared by every
 // stageBundledFiles test below that needs to get past stageBackendAppSource to exercise a
 // different step, plus the "happy path" stageBackendAppSource test itself.
@@ -264,14 +277,7 @@ func TestStageIfBundleChanged_ErrorWhenDestinationCannotBeCleared(t *testing.T) 
 	src := t.TempDir()
 	writeTestFile(t, filepath.Join(src, "bin", "tool.exe"), "content")
 	dst := t.TempDir()
-	// Same technique as TestCopyTree_ErrorWhenDestinationFileBlockedByDirectory's sibling tests:
-	// a permission-stripped subdirectory can't be traversed/deleted by os.RemoveAll.
-	locked := filepath.Join(dst, "locked")
-	writeTestFile(t, filepath.Join(locked, "file.txt"), "content")
-	if err := os.Chmod(locked, 0); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+	lockDirectory(t, filepath.Join(dst, "locked"))
 	bundleIDPath := filepath.Join(t.TempDir(), "bundle-id.txt")
 	writeTestFile(t, bundleIDPath, "v2")
 	stagedIDPath := filepath.Join(dst, "staged-bundle-id.txt")
@@ -455,15 +461,7 @@ func TestStageBundledFiles_ErrorWhenFrontendDistCannotBeCleared(t *testing.T) {
 	writeBackendAppSourceFixtures(t, pkgRoot)
 	writeTestFile(t, filepath.Join(pkgRoot, "frontend_dist", "index.html"), "<html></html>")
 
-	// Make the existing staged frontend_dist un-removable: a subdirectory with its permission
-	// bits stripped can't be traversed/deleted by os.RemoveAll. Restore permissions afterward
-	// so t.TempDir()'s own cleanup can still remove it.
-	locked := filepath.Join(frontendDistDir(home), "locked")
-	writeTestFile(t, filepath.Join(locked, "file.txt"), "content")
-	if err := os.Chmod(locked, 0); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+	lockDirectory(t, filepath.Join(frontendDistDir(home), "locked"))
 
 	if err := stageBundledFiles(pkgRoot, home); err == nil {
 		t.Error("expected an error when the existing frontend_dist cannot be cleared")
@@ -643,14 +641,7 @@ func TestStageBackendAppSource_ErrorWhenAppDirCannotBeCleared(t *testing.T) {
 	home := t.TempDir()
 	writeBackendAppSourceFixtures(t, pkgRoot)
 
-	// Make the previously-staged app/ directory un-removable, same technique as
-	// TestStageBundledFiles_ErrorWhenFrontendDistCannotBeCleared above.
-	locked := filepath.Join(backendAppDir(home), "app", "locked")
-	writeTestFile(t, filepath.Join(locked, "file.txt"), "content")
-	if err := os.Chmod(locked, 0); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+	lockDirectory(t, filepath.Join(backendAppDir(home), "app", "locked"))
 
 	if err := stageBackendAppSource(pkgRoot, home); err == nil {
 		t.Error("expected an error when the existing app directory cannot be cleared")
@@ -662,12 +653,7 @@ func TestStageBackendAppSource_ErrorWhenAlembicDirCannotBeCleared(t *testing.T) 
 	home := t.TempDir()
 	writeBackendAppSourceFixtures(t, pkgRoot)
 
-	locked := filepath.Join(backendAppDir(home), "alembic", "locked")
-	writeTestFile(t, filepath.Join(locked, "file.txt"), "content")
-	if err := os.Chmod(locked, 0); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+	lockDirectory(t, filepath.Join(backendAppDir(home), "alembic", "locked"))
 
 	if err := stageBackendAppSource(pkgRoot, home); err == nil {
 		t.Error("expected an error when the existing alembic directory cannot be cleared")

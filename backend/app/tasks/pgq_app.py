@@ -172,18 +172,33 @@ async def _run_tracked(
     )
 
 
-def _register_schedules(pgq: PgQueuer) -> None:
-    """The 5 tasks with a matching entrypoint enqueue onto it (payload=b"schedule") instead of
-    calling _run_tracked directly — see the module docstring's "Overlap prevention" section for
-    why. compute_monthly_snapshots_all_users has no entrypoint to unify onto, so it keeps the
-    old direct-dispatch shape."""
-    @pgq.schedule("refresh_prices_live", REFRESH_PRICES_LIVE_CRON)
-    async def _refresh_prices_live_schedule(schedule: Schedule) -> None:
-        await pgq.queries.enqueue("refresh_prices_live", payload=b"schedule")
+# Tasks whose schedule handler just enqueues onto their own matching concurrency_limit=1
+# entrypoint (see the module docstring's "Overlap prevention" section) instead of calling
+# _run_tracked directly.
+_ENQUEUE_ONTO_ENTRYPOINT_SCHEDULES = (
+    ("refresh_prices_live", REFRESH_PRICES_LIVE_CRON),
+    ("compute_daily_snapshots_all_users", COMPUTE_DAILY_SNAPSHOTS_CRON),
+    ("refresh_etf_holdings", REFRESH_ETF_HOLDINGS_CRON),
+    ("refresh_macro_indicators", REFRESH_MACRO_INDICATORS_CRON),
+    ("refresh_country_performance", REFRESH_COUNTRY_PERFORMANCE_CRON),
+    ("refresh_sector_performance", REFRESH_SECTOR_PERFORMANCE_CRON),
+    ("refresh_equity_premium", REFRESH_EQUITY_PREMIUM_CRON),
+)
 
-    @pgq.schedule("compute_daily_snapshots_all_users", COMPUTE_DAILY_SNAPSHOTS_CRON)
-    async def _compute_daily_snapshots_schedule(schedule: Schedule) -> None:
-        await pgq.queries.enqueue("compute_daily_snapshots_all_users", payload=b"schedule")
+
+def _register_enqueue_schedule(pgq: PgQueuer, name: str, cron: str) -> None:
+    @pgq.schedule(name, cron)
+    async def _schedule(schedule: Schedule) -> None:
+        await pgq.queries.enqueue(name, payload=b"schedule")
+
+
+def _register_schedules(pgq: PgQueuer) -> None:
+    """The tasks in _ENQUEUE_ONTO_ENTRYPOINT_SCHEDULES enqueue onto their matching entrypoint
+    instead of calling _run_tracked directly — see the module docstring's "Overlap prevention"
+    section for why. compute_monthly_snapshots_all_users has no entrypoint to unify onto, so it
+    keeps the old direct-dispatch shape."""
+    for name, cron in _ENQUEUE_ONTO_ENTRYPOINT_SCHEDULES:
+        _register_enqueue_schedule(pgq, name, cron)
 
     @pgq.schedule("compute_monthly_snapshots_all_users", COMPUTE_MONTHLY_SNAPSHOTS_CRON)
     async def _compute_monthly_snapshots_schedule(schedule: Schedule) -> None:
@@ -191,26 +206,6 @@ def _register_schedules(pgq: PgQueuer) -> None:
             await _compute_monthly_snapshots_all_users(None)
             return {"status": "success"}
         await _run_tracked("compute_monthly_snapshots_all_users", "schedule", _core)
-
-    @pgq.schedule("refresh_etf_holdings", REFRESH_ETF_HOLDINGS_CRON)
-    async def _refresh_etf_holdings_schedule(schedule: Schedule) -> None:
-        await pgq.queries.enqueue("refresh_etf_holdings", payload=b"schedule")
-
-    @pgq.schedule("refresh_macro_indicators", REFRESH_MACRO_INDICATORS_CRON)
-    async def _refresh_macro_indicators_schedule(schedule: Schedule) -> None:
-        await pgq.queries.enqueue("refresh_macro_indicators", payload=b"schedule")
-
-    @pgq.schedule("refresh_country_performance", REFRESH_COUNTRY_PERFORMANCE_CRON)
-    async def _refresh_country_performance_schedule(schedule: Schedule) -> None:
-        await pgq.queries.enqueue("refresh_country_performance", payload=b"schedule")
-
-    @pgq.schedule("refresh_sector_performance", REFRESH_SECTOR_PERFORMANCE_CRON)
-    async def _refresh_sector_performance_schedule(schedule: Schedule) -> None:
-        await pgq.queries.enqueue("refresh_sector_performance", payload=b"schedule")
-
-    @pgq.schedule("refresh_equity_premium", REFRESH_EQUITY_PREMIUM_CRON)
-    async def _refresh_equity_premium_schedule(schedule: Schedule) -> None:
-        await pgq.queries.enqueue("refresh_equity_premium", payload=b"schedule")
 
     @pgq.schedule("check_github_update", CHECK_GITHUB_UPDATE_CRON)
     async def _check_github_update_schedule(schedule: Schedule) -> None:
@@ -220,42 +215,32 @@ def _register_schedules(pgq: PgQueuer) -> None:
             logger.exception("pgq task failed: check_github_update")
 
 
+# (entrypoint name, core function's *module-global name*) pairs sharing the identical
+# concurrency_limit=1 + _run_tracked shape. Stored as a name, not a direct function reference,
+# and resolved via globals() inside the handler below — tests patch these cores by module
+# attribute name (e.g. patch("app.tasks.pgq_app._run_etf_holdings_refresh")), which only takes
+# effect on a lookup made *after* the patch is applied. A direct reference captured once at
+# import time would keep pointing at the original, unpatched function forever.
+_SIMPLE_TRACKED_ENTRYPOINTS = (
+    ("refresh_prices_live", _run_price_refresh.__name__),
+    ("refresh_etf_holdings", _run_etf_holdings_refresh.__name__),
+    ("refresh_macro_indicators", _run_macro_indicators_refresh.__name__),
+    ("refresh_country_performance", _run_country_performance_refresh.__name__),
+    ("refresh_sector_performance", _run_sector_performance_refresh.__name__),
+    ("refresh_equity_premium", _run_equity_premium_refresh.__name__),
+)
+
+
+def _register_tracked_entrypoint(pgq: PgQueuer, name: str, core_name: str) -> None:
+    @pgq.entrypoint(name, concurrency_limit=1)
+    async def _entrypoint(job: Job) -> None:
+        core: Callable[[], Awaitable[dict]] = globals()[core_name]
+        await _run_tracked(name, _decode_trigger(job.payload), core, pgq_job_id=job.id)
+
+
 def _register_entrypoints(pgq: PgQueuer) -> None:
-    @pgq.entrypoint("refresh_prices_live", concurrency_limit=1)
-    async def _refresh_prices_live_entrypoint(job: Job) -> None:
-        await _run_tracked(
-            "refresh_prices_live", _decode_trigger(job.payload), _run_price_refresh, pgq_job_id=job.id,
-        )
-
-    @pgq.entrypoint("refresh_etf_holdings", concurrency_limit=1)
-    async def _refresh_etf_holdings_entrypoint(job: Job) -> None:
-        await _run_tracked(
-            "refresh_etf_holdings", _decode_trigger(job.payload), _run_etf_holdings_refresh, pgq_job_id=job.id,
-        )
-
-    @pgq.entrypoint("refresh_macro_indicators", concurrency_limit=1)
-    async def _refresh_macro_indicators_entrypoint(job: Job) -> None:
-        await _run_tracked(
-            "refresh_macro_indicators", _decode_trigger(job.payload), _run_macro_indicators_refresh, pgq_job_id=job.id,
-        )
-
-    @pgq.entrypoint("refresh_country_performance", concurrency_limit=1)
-    async def _refresh_country_performance_entrypoint(job: Job) -> None:
-        await _run_tracked(
-            "refresh_country_performance", _decode_trigger(job.payload), _run_country_performance_refresh, pgq_job_id=job.id,
-        )
-
-    @pgq.entrypoint("refresh_sector_performance", concurrency_limit=1)
-    async def _refresh_sector_performance_entrypoint(job: Job) -> None:
-        await _run_tracked(
-            "refresh_sector_performance", _decode_trigger(job.payload), _run_sector_performance_refresh, pgq_job_id=job.id,
-        )
-
-    @pgq.entrypoint("refresh_equity_premium", concurrency_limit=1)
-    async def _refresh_equity_premium_entrypoint(job: Job) -> None:
-        await _run_tracked(
-            "refresh_equity_premium", _decode_trigger(job.payload), _run_equity_premium_refresh, pgq_job_id=job.id,
-        )
+    for name, core in _SIMPLE_TRACKED_ENTRYPOINTS:
+        _register_tracked_entrypoint(pgq, name, core)
 
     @pgq.entrypoint("compute_daily_snapshots_all_users", concurrency_limit=1)
     async def _compute_daily_snapshots_entrypoint(job: Job) -> None:

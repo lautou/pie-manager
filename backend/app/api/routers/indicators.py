@@ -23,6 +23,7 @@ from app.services.macro_indicators_service import (
     list_regions,
     update_region,
 )
+from app.services.code_keyed_crud import crud_or_http
 
 router = APIRouter(tags=["indicators"])
 
@@ -123,34 +124,23 @@ async def get_regions(db: AsyncSession = Depends(get_db)):
 
 @router.post("/regions", response_model=MacroRegionOut, status_code=201)
 async def post_region(body: MacroRegionCreate, db: AsyncSession = Depends(get_db)):
-    try:
-        return await create_region(
-            db, body.code, body.label, body.equity_ticker, body.bond_ticker,
-            body.equity_label, body.bond_label,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    return await crud_or_http(create_region(
+        db, body.code, body.label, body.equity_ticker, body.bond_ticker,
+        body.equity_label, body.bond_label,
+    ))
 
 
 @router.put("/regions/{code}", response_model=MacroRegionOut)
 async def put_region(code: str, body: MacroRegionUpdate, db: AsyncSession = Depends(get_db)):
-    region = await update_region(
+    return await crud_or_http(update_region(
         db, code, body.label, body.equity_ticker, body.bond_ticker,
         body.equity_label, body.bond_label,
-    )
-    if region is None:
-        raise HTTPException(status_code=404, detail=f"Unknown region: {code}")
-    return region
+    ), f"Unknown region: {code}")
 
 
 @router.delete("/regions/{code}", status_code=204)
 async def delete_region_endpoint(code: str, db: AsyncSession = Depends(get_db)):
-    try:
-        result = await delete_region(db, code)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    if result is None:
-        raise HTTPException(status_code=404, detail=f"Unknown region: {code}")
+    await crud_or_http(delete_region(db, code), f"Unknown region: {code}")
 
 
 @router.post("/refresh", response_model=dict)

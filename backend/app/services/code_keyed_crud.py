@@ -14,6 +14,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Optional
 
+from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -94,3 +95,18 @@ def make_code_keyed_crud(
         return True
 
     return CodeKeyedCrud(list=list_all, create=create, update=update, delete=delete)
+
+
+async def crud_or_http(coro: Awaitable[Any], not_found_detail: Optional[str] = None) -> Any:
+    """Router-level wrapper for a `CodeKeyedCrud` call: translates a `ValueError` (invalid
+    field, duplicate code, last-row guard) into a 400, and — when `not_found_detail` is given
+    — a `None` result (unknown code on update/delete) into a 404. Hand-copied identically
+    across indicators.py/country_performance.py/sector_performance.py/equity_premium.py
+    before being collapsed here."""
+    try:
+        result = await coro
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not_found_detail is not None and result is None:
+        raise HTTPException(status_code=404, detail=not_found_detail)
+    return result

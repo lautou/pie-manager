@@ -4,7 +4,7 @@ action" tab of the Indicateurs page. Mounted at the same /api/indicators prefix 
 indicators.py/country_performance.py/sector_performance.py."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pgqueuer import Queries
 from pydantic import BaseModel
 
@@ -21,6 +21,7 @@ from app.services.equity_premium_service import (
     list_premium_configs,
     update_premium_config,
 )
+from app.services.code_keyed_crud import crud_or_http
 
 router = APIRouter(tags=["equity-premium"])
 
@@ -89,13 +90,10 @@ async def get_premium_countries(db: AsyncSession = Depends(get_db)):
 
 @router.post("/equity-premium/countries", response_model=EquityPremiumConfigOut, status_code=201)
 async def post_premium_country(body: EquityPremiumConfigCreate, db: AsyncSession = Depends(get_db)):
-    try:
-        return await create_premium_config(
-            db, body.code, body.label, body.equity_ticker, body.bond_ticker,
-            body.equity_label, body.bond_label,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    return await crud_or_http(create_premium_config(
+        db, body.code, body.label, body.equity_ticker, body.bond_ticker,
+        body.equity_label, body.bond_label,
+    ))
 
 
 @router.put("/equity-premium/countries/{code}", response_model=EquityPremiumConfigOut)
@@ -103,23 +101,15 @@ async def put_premium_country(code: str, body: EquityPremiumConfigUpdate, db: As
     """Unlike sector-performance's PUT, update_premium_config has no field left to
     revalidate (code is immutable, there's no currency column) — it can only return None for
     an unknown code, never raise ValueError."""
-    config = await update_premium_config(
+    return await crud_or_http(update_premium_config(
         db, code, body.label, body.equity_ticker, body.bond_ticker,
         body.equity_label, body.bond_label,
-    )
-    if config is None:
-        raise HTTPException(status_code=404, detail=f"Unknown country: {code}")
-    return config
+    ), f"Unknown country: {code}")
 
 
 @router.delete("/equity-premium/countries/{code}", status_code=204)
 async def delete_premium_country_endpoint(code: str, db: AsyncSession = Depends(get_db)):
-    try:
-        result = await delete_premium_config(db, code)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    if result is None:
-        raise HTTPException(status_code=404, detail=f"Unknown country: {code}")
+    await crud_or_http(delete_premium_config(db, code), f"Unknown country: {code}")
 
 
 # ---------------------------------------------------------------------------

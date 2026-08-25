@@ -6,8 +6,7 @@ import {
   Card, CardBody, CardTitle,
   Gallery, GalleryItem,
   PageSection, PageSectionVariants,
-  Spinner,
-  Content, ContentVariants, Title,
+  Title,
   Tooltip,
 } from '@patternfly/react-core';
 import { ExclamationTriangleIcon } from '@patternfly/react-icons';
@@ -24,6 +23,7 @@ import TickerLink from '../components/TickerLink';
 import EtfCompositionModal from '../components/EtfCompositionModal';
 import PoolAllocationSection from '../components/PoolAllocationSection';
 import { PriceSourceBadge, StalePriceBadge } from '../components/PriceBadges';
+import { renderLoadingState, renderErrorState } from '../components/QueryStateGuard';
 import {
   groupAndSort,
   UNASSIGNED_POOL_KEY,
@@ -246,30 +246,8 @@ export default function HoldingsPage() {
   const isLoading = dashLoading || holdingsLoading;
   const isError = dashError || holdingsError;
 
-  if (isLoading) {
-    return (
-      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem' }}>
-          <Spinner size="xl" aria-label={t('common.loading')} />
-        </div>
-      </PageSection>
-    );
-  }
-
-  if (isError || !dashboard || !holdings) {
-    return (
-      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
-        <Content>
-          <Content
-            component={ContentVariants.p}
-            style={{ color: 'var(--pf-t--global--text--color--status--danger--default)' }}
-          >
-            {t('error.loadingPositions')}
-          </Content>
-        </Content>
-      </PageSection>
-    );
-  }
+  if (isLoading) return renderLoadingState(t('common.loading'));
+  if (isError || !dashboard || !holdings) return renderErrorState(t('error.loadingPositions'));
 
   // Separate liquidity from investable holdings
   const investableHoldings = holdings.filter((h) => h.ticker !== 'LIQUIDITE.EURO');

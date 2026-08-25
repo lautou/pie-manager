@@ -32,6 +32,7 @@ import {
 import { Treemap, ResponsiveContainer } from 'recharts';
 import { formatEUR, formatPct1, formatUnitPrice, localDateStr } from '../utils/format';
 import { INSTRUMENT_TYPE_GOLD } from '../utils/productConstants';
+import { renderLoadingState, renderErrorState } from '../components/QueryStateGuard';
 import { useCapitalGains, useDashboard, useHoldings, useProducts, usePrices } from '../api/queries';
 import type { Product } from '../types';
 import SyncBadge from '../components/SyncBadge';
@@ -235,27 +236,9 @@ export default function DashboardPage() {
     (p) => p.instrument_type === INSTRUMENT_TYPE_GOLD && heldTickers.has(p.ticker),
   );
 
-  if (isLoading) {
-    return (
-      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem' }}>
-          <Spinner size="xl" />
-        </div>
-      </PageSection>
-    );
-  }
+  if (isLoading) return renderLoadingState(t('common.loading'));
 
-  if (isError) {
-    return (
-      <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
-        <Content>
-          <Content component={ContentVariants.p} style={{ color: 'var(--pf-t--global--text--color--status--danger--default)' }}>
-            {t('error.loadingDashboard')}
-          </Content>
-        </Content>
-      </PageSection>
-    );
-  }
+  if (isError) return renderErrorState(t('error.loadingDashboard'));
 
   if (!dashboard || dashboard.pools.length === 0) {
     return (

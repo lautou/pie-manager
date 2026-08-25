@@ -10,6 +10,7 @@ from datetime import datetime
 from app.core.database import get_db
 from app.models import Pool, PoolProduct
 from app.services.etf_holdings_service import compute_pool_lookthrough
+from app.api.deps import get_or_404
 
 router = APIRouter(tags=["pools"])
 
@@ -96,10 +97,7 @@ async def update_pool(
     body: PoolUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Pool).where(Pool.id == pool_id))
-    pool = result.scalar_one_or_none()
-    if not pool:
-        raise HTTPException(status_code=404, detail="Pool not found")
+    pool = await get_or_404(db, Pool.id, pool_id, "Pool not found")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(pool, field, value)
     await db.commit()
@@ -109,10 +107,7 @@ async def update_pool(
 
 @router.delete("/{pool_id}", status_code=204)
 async def delete_pool(pool_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Pool).where(Pool.id == pool_id))
-    pool = result.scalar_one_or_none()
-    if not pool:
-        raise HTTPException(status_code=404, detail="Pool not found")
+    pool = await get_or_404(db, Pool.id, pool_id, "Pool not found")
     await db.delete(pool)
     await db.commit()
 
@@ -148,10 +143,7 @@ async def add_product_to_pool(
     body: PoolProductAdd,
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Pool).where(Pool.id == pool_id))
-    pool = result.scalar_one_or_none()
-    if not pool:
-        raise HTTPException(status_code=404, detail="Pool not found")
+    pool = await get_or_404(db, Pool.id, pool_id, "Pool not found")
 
     # Rule: a ticker can belong to at most one pool (per portfolio)
     any_pool = await db.execute(

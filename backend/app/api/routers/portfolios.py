@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, field_serializer
 from app.core.database import get_db
 from app.models import Portfolio
 from app.utils.datetime_utils import to_utc_iso
+from app.api.deps import get_or_404
 
 router = APIRouter(tags=["portfolios"])
 
@@ -55,19 +56,12 @@ async def create_portfolio(body: PortfolioCreate, db: AsyncSession = Depends(get
 
 @router.get("/{portfolio_id}", response_model=PortfolioOut)
 async def get_portfolio(portfolio_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Portfolio).where(Portfolio.id == portfolio_id))
-    portfolio = result.scalar_one_or_none()
-    if not portfolio:
-        raise HTTPException(status_code=404, detail="Portfolio not found")
-    return portfolio
+    return await get_or_404(db, Portfolio.id, portfolio_id, "Portfolio not found")
 
 
 @router.put("/{portfolio_id}", response_model=PortfolioOut)
 async def rename_portfolio(portfolio_id: int, body: PortfolioRename, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Portfolio).where(Portfolio.id == portfolio_id))
-    portfolio = result.scalar_one_or_none()
-    if not portfolio:
-        raise HTTPException(status_code=404, detail="Portfolio not found")
+    portfolio = await get_or_404(db, Portfolio.id, portfolio_id, "Portfolio not found")
     conflict = await db.execute(
         select(Portfolio).where(Portfolio.name == body.name.strip(), Portfolio.id != portfolio_id)
     )
@@ -81,10 +75,7 @@ async def rename_portfolio(portfolio_id: int, body: PortfolioRename, db: AsyncSe
 
 @router.delete("/{portfolio_id}", status_code=204)
 async def delete_portfolio(portfolio_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Portfolio).where(Portfolio.id == portfolio_id))
-    portfolio = result.scalar_one_or_none()
-    if not portfolio:
-        raise HTTPException(status_code=404, detail="Portfolio not found")
+    portfolio = await get_or_404(db, Portfolio.id, portfolio_id, "Portfolio not found")
 
     # Cascade-delete in correct FK order (no DB-level CASCADE on portfolio_id FKs)
     await db.execute(text(

@@ -8,83 +8,30 @@ import (
 	"testing"
 )
 
-func TestDataDir(t *testing.T) {
-	got := dataDir(`C:\Users\pie`)
-	want := filepath.Join(`C:\Users\pie`, "PieManager")
-	if got != want {
-		t.Errorf("dataDir() = %q, want %q", got, want)
+func TestPathBuilders(t *testing.T) {
+	home := `C:\Users\pie`
+	cases := []struct {
+		name string
+		fn   func(string) string
+		want string
+	}{
+		{"dataDir", dataDir, filepath.Join(home, "PieManager")},
+		{"pgDataDir", pgDataDir, filepath.Join(home, "PieManager", "pgdata")},
+		{"pgBinDir", pgBinDir, filepath.Join(home, "PieManager", "pgsql", "bin")},
+		{"pythonDir", pythonDir, filepath.Join(home, "PieManager", "python")},
+		{"logDir", logDir, filepath.Join(home, "PieManager", "logs")},
+		{"frontendDistDir", frontendDistDir, filepath.Join(home, "PieManager", "frontend_dist")},
+		{"pgVersionMarkerPath", pgVersionMarkerPath, filepath.Join(home, "PieManager", "pgdata", "PG_VERSION")},
+		{"postmasterPidPath", postmasterPidPath, filepath.Join(home, "PieManager", "pgdata", "postmaster.pid")},
+		{"backendPidPath", backendPidPath, filepath.Join(home, "PieManager", "backend.pid")},
+		{"workerPidPath", workerPidPath, filepath.Join(home, "PieManager", "worker.pid")},
 	}
-}
-
-func TestPgDataDir(t *testing.T) {
-	got := pgDataDir(`C:\Users\pie`)
-	want := filepath.Join(`C:\Users\pie`, "PieManager", "pgdata")
-	if got != want {
-		t.Errorf("pgDataDir() = %q, want %q", got, want)
-	}
-}
-
-func TestPgBinDir(t *testing.T) {
-	got := pgBinDir(`C:\Users\pie`)
-	want := filepath.Join(`C:\Users\pie`, "PieManager", "pgsql", "bin")
-	if got != want {
-		t.Errorf("pgBinDir() = %q, want %q", got, want)
-	}
-}
-
-func TestPythonDir(t *testing.T) {
-	got := pythonDir(`C:\Users\pie`)
-	want := filepath.Join(`C:\Users\pie`, "PieManager", "python")
-	if got != want {
-		t.Errorf("pythonDir() = %q, want %q", got, want)
-	}
-}
-
-func TestLogDir(t *testing.T) {
-	got := logDir(`C:\Users\pie`)
-	want := filepath.Join(`C:\Users\pie`, "PieManager", "logs")
-	if got != want {
-		t.Errorf("logDir() = %q, want %q", got, want)
-	}
-}
-
-func TestFrontendDistDir(t *testing.T) {
-	got := frontendDistDir(`C:\Users\pie`)
-	want := filepath.Join(`C:\Users\pie`, "PieManager", "frontend_dist")
-	if got != want {
-		t.Errorf("frontendDistDir() = %q, want %q", got, want)
-	}
-}
-
-func TestPgVersionMarkerPath(t *testing.T) {
-	got := pgVersionMarkerPath(`C:\Users\pie`)
-	want := filepath.Join(`C:\Users\pie`, "PieManager", "pgdata", "PG_VERSION")
-	if got != want {
-		t.Errorf("pgVersionMarkerPath() = %q, want %q", got, want)
-	}
-}
-
-func TestPostmasterPidPath(t *testing.T) {
-	got := postmasterPidPath(`C:\Users\pie`)
-	want := filepath.Join(`C:\Users\pie`, "PieManager", "pgdata", "postmaster.pid")
-	if got != want {
-		t.Errorf("postmasterPidPath() = %q, want %q", got, want)
-	}
-}
-
-func TestBackendPidPath(t *testing.T) {
-	got := backendPidPath(`C:\Users\pie`)
-	want := filepath.Join(`C:\Users\pie`, "PieManager", "backend.pid")
-	if got != want {
-		t.Errorf("backendPidPath() = %q, want %q", got, want)
-	}
-}
-
-func TestWorkerPidPath(t *testing.T) {
-	got := workerPidPath(`C:\Users\pie`)
-	want := filepath.Join(`C:\Users\pie`, "PieManager", "worker.pid")
-	if got != want {
-		t.Errorf("workerPidPath() = %q, want %q", got, want)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := c.fn(home); got != c.want {
+				t.Errorf("%s(%q) = %q, want %q", c.name, home, got, c.want)
+			}
+		})
 	}
 }
 

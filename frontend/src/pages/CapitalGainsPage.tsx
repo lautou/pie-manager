@@ -7,12 +7,12 @@ import {
   PageSection, PageSectionVariants,
   Title,
 } from '@patternfly/react-core';
-import { Table, Thead, Tbody, Tr, Th, Td, SortByDirection } from '@patternfly/react-table';
-import { useState, useMemo } from 'react';
+import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import { formatEUR, formatPct1, formatDate } from '../utils/format';
 import { pvColor } from '../utils/pv';
 import { renderLoadingState, renderErrorState } from '../components/QueryStateGuard';
 import { useCapitalGains } from '../api/queries';
+import { useColumnSort } from '../hooks/useColumnSort';
 import type { TickerCapitalGains, CapitalGainsEvent } from '../types';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -47,45 +47,33 @@ function summaryColKey(index: number): SummarySortCol {
   return (SUMMARY_COLS[index]?.key ?? 'net_pv') as SummarySortCol; // ?? fallback unreachable
 }
 
-function sortTickers(tickers: TickerCapitalGains[], col: SummarySortCol, dir: 'asc' | 'desc'): TickerCapitalGains[] {
+function compareTickers(a: TickerCapitalGains, b: TickerCapitalGains, col: SummarySortCol): number {
+  const netA = a.unrealized_pv + a.realized_pv_total;
+  const netB = b.unrealized_pv + b.realized_pv_total;
   /* v8 ignore next -- @preserve */
-  const sign = dir === 'asc' ? 1 : -1;
-  return [...tickers].sort((a, b) => {
-    const netA = a.unrealized_pv + a.realized_pv_total;
-    const netB = b.unrealized_pv + b.realized_pv_total;
+  const pctA = a.cost_basis_eur !== 0 ? a.unrealized_pv / a.cost_basis_eur : 0;
+  /* v8 ignore next -- @preserve */
+  const pctB = b.cost_basis_eur !== 0 ? b.unrealized_pv / b.cost_basis_eur : 0;
+  switch (col) {
+    case 'ticker':            return a.ticker.localeCompare(b.ticker);
+    case 'cump':              return a.cump - b.cump;
+    case 'current_value_eur': return a.current_value_eur - b.current_value_eur;
+    case 'cost_basis_eur':    return a.cost_basis_eur - b.cost_basis_eur;
+    case 'unrealized_pv':     return a.unrealized_pv - b.unrealized_pv;
+    case 'unrealized_pv_pct': return pctA - pctB;
+    case 'realized_pv_total': return a.realized_pv_total - b.realized_pv_total;
+    case 'net_pv':            return netA - netB;
     /* v8 ignore next -- @preserve */
-    const pctA = a.cost_basis_eur !== 0 ? a.unrealized_pv / a.cost_basis_eur : 0;
-    /* v8 ignore next -- @preserve */
-    const pctB = b.cost_basis_eur !== 0 ? b.unrealized_pv / b.cost_basis_eur : 0;
-    switch (col) {
-      case 'ticker':            return a.ticker.localeCompare(b.ticker) * sign;
-      case 'cump':              return (a.cump - b.cump) * sign;
-      case 'current_value_eur': return (a.current_value_eur - b.current_value_eur) * sign;
-      case 'cost_basis_eur':    return (a.cost_basis_eur - b.cost_basis_eur) * sign;
-      case 'unrealized_pv':     return (a.unrealized_pv - b.unrealized_pv) * sign;
-      case 'unrealized_pv_pct': return (pctA - pctB) * sign;
-      case 'realized_pv_total': return (a.realized_pv_total - b.realized_pv_total) * sign;
-      case 'net_pv':            return (netA - netB) * sign;
-      /* v8 ignore next -- @preserve */
-      default:                  return 0; // TypeScript exhaustive switch — unreachable
-    }
-  });
+    default:                  return 0; // TypeScript exhaustive switch — unreachable
+  }
 }
 
 function SummaryTable({ tickers }: { tickers: TickerCapitalGains[] }) {
   const { t } = useTranslation();
-  const [sortIndex, setSortIndex] = useState(0); // default: Ticker ASC
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-
-  const onSort = (_: React.MouseEvent, index: number, direction: SortByDirection) => {
-    setSortIndex(index);
-    setSortDir(direction as 'asc' | 'desc');
-  };
-  const sortBy = { index: sortIndex, direction: sortDir as SortByDirection };
-
-  const sorted = useMemo(
-    () => sortTickers(tickers, summaryColKey(sortIndex), sortDir),
-    [tickers, sortIndex, sortDir],
+  const { sorted, sortBy, onSort } = useColumnSort(
+    tickers,
+    (a, b, index) => compareTickers(a, b, summaryColKey(index)),
+    0, // default: Ticker ASC
   );
 
   const summaryColLabels = [
@@ -198,40 +186,30 @@ const EVENT_COLS: { key: EventSortCol; label: string }[] = [
   { key: 'realized_pv',   label: 'PV réalisée' },
 ];
 
-function sortEvents(events: CapitalGainsEvent[], col: EventSortCol, dir: 'asc' | 'desc'): CapitalGainsEvent[] {
-  const sign = dir === 'asc' ? 1 : -1;
-  return [...events].sort((a, b) => {
-    switch (col) {
-      case 'date':           return a.date.localeCompare(b.date) * sign;
-      case 'ticker':         return a.ticker.localeCompare(b.ticker) * sign;
-      case 'qty_sold':       return (a.qty_sold - b.qty_sold) * sign;
-      case 'cump_at_sell':   return (a.cump_at_sell - b.cump_at_sell) * sign;
-      case 'sell_price_eur': return (a.sell_price_eur - b.sell_price_eur) * sign;
-      case 'realized_pv':   return (a.realized_pv - b.realized_pv) * sign;
-      /* v8 ignore next -- @preserve */
-      default:               return 0; // TypeScript exhaustive switch — unreachable
-    }
-  });
+function compareEvents(a: CapitalGainsEvent, b: CapitalGainsEvent, col: EventSortCol): number {
+  switch (col) {
+    case 'date':           return a.date.localeCompare(b.date);
+    case 'ticker':         return a.ticker.localeCompare(b.ticker);
+    case 'qty_sold':       return a.qty_sold - b.qty_sold;
+    case 'cump_at_sell':   return a.cump_at_sell - b.cump_at_sell;
+    case 'sell_price_eur': return a.sell_price_eur - b.sell_price_eur;
+    case 'realized_pv':    return a.realized_pv - b.realized_pv;
+    /* v8 ignore next -- @preserve */
+    default:               return 0; // TypeScript exhaustive switch — unreachable
+  }
 }
 
 function HistoryTable({ events }: { events: CapitalGainsEvent[] }) {
   const { t } = useTranslation();
-  const [sortIndex, setSortIndex] = useState(0); // default: date
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-
-  const onSort = (_: React.MouseEvent, index: number, direction: SortByDirection) => {
-    setSortIndex(index);
-    setSortDir(direction as 'asc' | 'desc');
-  };
-  const sortBy = { index: sortIndex, direction: sortDir as SortByDirection };
 
   /* v8 ignore next -- @preserve */
   const colKey = (index: number): EventSortCol => (EVENT_COLS[index]?.key ?? 'date') as EventSortCol; // ?? fallback unreachable
 
-  const sorted = useMemo(
-    () => sortEvents(events, colKey(sortIndex), sortDir),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [events, sortIndex, sortDir],
+  const { sorted, sortBy, onSort } = useColumnSort(
+    events,
+    (a, b, index) => compareEvents(a, b, colKey(index)),
+    0, // default: date
+    'desc',
   );
 
   const eventColLabels = [

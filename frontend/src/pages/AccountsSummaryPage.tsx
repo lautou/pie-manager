@@ -8,11 +8,12 @@ import {
   PageSection, PageSectionVariants,
   Content, ContentVariants, Title,
 } from '@patternfly/react-core';
-import { Table, Thead, Tbody, Tr, Th, Td, SortByDirection } from '@patternfly/react-table';
+import { Table, Thead, Tbody, Tr, Th, Td, type SortByDirection } from '@patternfly/react-table';
 import { formatEUR, formatPct2, formatUnitPrice, formatNativeCurrency } from '../utils/format';
 import { pvColor } from '../utils/pv';
 import { INSTRUMENT_TYPE_GOLD } from '../utils/productConstants';
 import { useAccountsSummary, useCapitalGains } from '../api/queries';
+import { useSortState, applyColumnSort, type SortDir } from '../hooks/useColumnSort';
 import SyncBadge from '../components/SyncBadge';
 import TickerLink from '../components/TickerLink';
 import EtfCompositionModal from '../components/EtfCompositionModal';
@@ -54,10 +55,10 @@ function AccountDetailCard({
 }: {
   account: AccountSummary;
   portfolioId: string;
-  accSortIndex: AccColIndex;
-  accSortDir: 'asc' | 'desc';
+  accSortIndex: number;
+  accSortDir: SortDir;
   accSortBy: { index: number; direction: SortByDirection };
-  onAccSort: (_: React.MouseEvent, index: number, direction: SortByDirection) => void;
+  onAccSort: (event: React.MouseEvent, index: number, direction: SortByDirection) => void;
 }) {
   const { t } = useTranslation();
   const [compositionTicker, setCompositionTicker] = useState<string | null>(null);
@@ -127,22 +128,21 @@ function AccountDetailCard({
               </Tr>
             </Thead>
             <Tbody>
-              {[...account.positions].sort((a, b) => {
-                const dir = accSortDir === 'asc' ? 1 : -1;
+              {applyColumnSort(account.positions, (a, b, index) => {
                 const pvA = computePV(a, cumpMap[a.ticker])?.pvEur ?? -Infinity;
                 const pvB = computePV(b, cumpMap[b.ticker])?.pvEur ?? -Infinity;
                 const pctA = computePV(a, cumpMap[a.ticker])?.pvPct ?? -Infinity;
                 const pctB = computePV(b, cumpMap[b.ticker])?.pvPct ?? -Infinity;
-                switch (accSortIndex) {
-                  case ACC_COL.ticker:   return a.ticker.localeCompare(b.ticker) * dir;
-                  case ACC_COL.name:     return a.product_name.localeCompare(b.product_name) * dir;
-                  case ACC_COL.totalEur: return (a.value_eur - b.value_eur) * dir;
-                  case ACC_COL.pvEur:    return (pvA - pvB) * dir;
-                  case ACC_COL.pvPct:    return (pctA - pctB) * dir;
+                switch (index as AccColIndex) {
+                  case ACC_COL.ticker:   return a.ticker.localeCompare(b.ticker);
+                  case ACC_COL.name:     return a.product_name.localeCompare(b.product_name);
+                  case ACC_COL.totalEur: return a.value_eur - b.value_eur;
+                  case ACC_COL.pvEur:    return pvA - pvB;
+                  case ACC_COL.pvPct:    return pctA - pctB;
                   /* v8 ignore next -- @preserve */
                   default: return 0;
                 }
-              }).map((pos, idx) => {
+              }, accSortIndex, accSortDir).map((pos, idx) => {
                 const pv = computePV(pos, cumpMap[pos.ticker]);
                 return (
                   <Tr key={pos.ticker} style={{ backgroundColor: idx % 2 === 0 ? '#fff' : '#f5f5f5' }}>
@@ -211,22 +211,12 @@ export default function AccountsSummaryPage() {
   const { data: summaries, isLoading, isError } = useAccountsSummary(portfolioId!);
 
   // Summary table sort state
-  const [summSortIndex, setSummSortIndex] = useState<SummColIndex>(SUMM_COL.name);
-  const [summSortDir, setSummSortDir] = useState<'asc' | 'desc'>('asc');
-
-  const onSummSort = (_: React.MouseEvent, index: number, direction: SortByDirection) => {
-    setSummSortIndex(index as SummColIndex);
-    setSummSortDir(direction as 'asc' | 'desc');
-  };
+  const { sortIndex: summSortIndex, sortDir: summSortDir, sortBy: summSortBy, onSort: onSummSort } =
+    useSortState(SUMM_COL.name);
 
   // Per-account detail table sort state (shared — same columns for all accounts)
-  const [accSortIndex, setAccSortIndex] = useState<AccColIndex>(ACC_COL.ticker);
-  const [accSortDir, setAccSortDir] = useState<'asc' | 'desc'>('asc');
-
-  const onAccSort = (_: React.MouseEvent, index: number, direction: SortByDirection) => {
-    setAccSortIndex(index as AccColIndex);
-    setAccSortDir(direction as 'asc' | 'desc');
-  };
+  const { sortIndex: accSortIndex, sortDir: accSortDir, sortBy: accSortBy, onSort: onAccSort } =
+    useSortState(ACC_COL.ticker);
 
   if (isLoading) return renderLoadingState(t('common.loading'));
   if (isError || !summaries) return renderErrorState(t('accountsSummary.loadError'));
@@ -236,25 +226,22 @@ export default function AccountsSummaryPage() {
   const grandTotal = summaries.reduce((s, a) => s + a.total_eur, 0);
 
   // Sort summaries for the summary table
-  const sortedSummaries = [...summaries].sort((a, b) => {
-    const dir = summSortDir === 'asc' ? 1 : -1;
-    switch (summSortIndex) {
-      case SUMM_COL.name:      return a.name.localeCompare(b.name) * dir;
-      case SUMM_COL.cash:      return (a.cash_balance_eur - b.cash_balance_eur) * dir;
-      case SUMM_COL.positions: return (a.positions_value_eur - b.positions_value_eur) * dir;
-      case SUMM_COL.total:     return (a.total_eur - b.total_eur) * dir;
+  const compareSummaries = (a: AccountSummary, b: AccountSummary, index: number): number => {
+    switch (index as SummColIndex) {
+      case SUMM_COL.name:      return a.name.localeCompare(b.name);
+      case SUMM_COL.cash:      return a.cash_balance_eur - b.cash_balance_eur;
+      case SUMM_COL.positions: return a.positions_value_eur - b.positions_value_eur;
+      case SUMM_COL.total:     return a.total_eur - b.total_eur;
       case SUMM_COL.pct: {
         const pA = grandTotal > 0 ? a.total_eur / grandTotal : 0;
         const pB = grandTotal > 0 ? b.total_eur / grandTotal : 0;
-        return (pA - pB) * dir;
+        return pA - pB;
       }
       /* v8 ignore next -- @preserve */
       default: return 0; // TypeScript exhaustive switch — unreachable
     }
-  });
-
-  const summSortBy = { index: summSortIndex, direction: summSortDir as SortByDirection };
-  const accSortBy  = { index: accSortIndex,  direction: accSortDir  as SortByDirection };
+  };
+  const sortedSummaries = applyColumnSort(summaries, compareSummaries, summSortIndex, summSortDir);
 
   return (
     <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>

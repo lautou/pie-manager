@@ -250,6 +250,38 @@ async def _update_account_cash_balance(
         pa.cash_balance_eur = round((pa.cash_balance_eur or 0.0) + delta, 2)
 
 
+async def _create_fee_transaction(
+    db: AsyncSession, tx: Transaction, fee_amount: float, fee_ticker: str,
+) -> Transaction:
+    """Create and balance-stamp an auto-linked courtage/TTF Frais transaction for `tx`, then
+    apply its cash impact. Shared by create_transaction_core (initial creation) and
+    update_transaction (fee recreation on edit) — identical shape in both; only the calling
+    loop's fee-amount/ticker tuple construction differs (Optional-vs-required fields)."""
+    fee_tx = Transaction(
+        portfolio_id=tx.portfolio_id,
+        account_id=tx.account_id,
+        date=tx.date,
+        type="Frais",
+        ticker=fee_ticker,
+        currency="EUR",
+        exchange_rate=1.0,
+        quantity=-1,
+        unit_price=fee_amount,
+        unit_price_eur=fee_amount,
+        total_amount=-fee_amount,
+        total_amount_eur=-fee_amount,
+        linked_transaction_id=tx.id,
+    )
+    db.add(fee_tx)
+    await db.flush()
+    prev_fee_balance = await _prev_balance_eur(db, fee_tx.account_id, fee_tx.portfolio_id, fee_tx.date, fee_tx.id)
+    if prev_fee_balance is not None:
+        fee_tx.balance_eur = _no_neg_zero(round(prev_fee_balance - fee_amount, 2))
+        fee_tx.balance_currency = fee_tx.balance_eur
+    await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, -fee_amount, fee_tx.type, fee_tx.ticker, fee_tx.operation)
+    return fee_tx
+
+
 @router.get("/", response_model=list[TransactionOut])
 async def list_transactions(
     portfolio_id: int = Query(...),
@@ -403,29 +435,7 @@ async def create_transaction_core(body: TransactionCreate, db: AsyncSession) -> 
             (body.ttf_eur, "FRAIS.TTF.EUR"),
         ):
             if fee_amount > 0:
-                fee_tx = Transaction(
-                    portfolio_id=tx.portfolio_id,
-                    account_id=tx.account_id,
-                    date=tx.date,
-                    type="Frais",
-                    ticker=fee_ticker,
-                    currency="EUR",
-                    exchange_rate=1.0,
-                    quantity=-1,
-                    unit_price=fee_amount,
-                    unit_price_eur=fee_amount,
-                    total_amount=-fee_amount,
-                    total_amount_eur=-fee_amount,
-                    linked_transaction_id=tx.id,
-                )
-                db.add(fee_tx)
-                await db.flush()
-                # Calculate balance_eur for the auto-created fee transaction
-                prev_fee_balance = await _prev_balance_eur(db, fee_tx.account_id, fee_tx.portfolio_id, fee_tx.date, fee_tx.id)
-                if prev_fee_balance is not None:
-                    fee_tx.balance_eur = _no_neg_zero(round(prev_fee_balance - fee_amount, 2))
-                    fee_tx.balance_currency = fee_tx.balance_eur
-                await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, -fee_amount, fee_tx.type, fee_tx.ticker, fee_tx.operation)
+                await _create_fee_transaction(db, tx, fee_amount, fee_ticker)
 
     return tx
 
@@ -574,31 +584,10 @@ async def update_transaction(
             (body.ttf_eur or 0, "FRAIS.TTF.EUR"),
         ):
             if fee_amount > 0:
-                fee_tx = Transaction(
-                    portfolio_id=tx.portfolio_id,
-                    account_id=tx.account_id,
-                    date=tx.date,
-                    type="Frais",
-                    ticker=fee_ticker,
-                    currency="EUR",
-                    exchange_rate=1.0,
-                    quantity=-1,
-                    unit_price=fee_amount,
-                    unit_price_eur=fee_amount,
-                    total_amount=-fee_amount,
-                    total_amount_eur=-fee_amount,
-                    linked_transaction_id=tx.id,
-                )
-                db.add(fee_tx)
-                await db.flush()
-                # Calculate balance_eur for the recreated fee transaction (same logic as
-                # auto-created fees on create_transaction) — otherwise it stays null and
-                # masks the parent's balance in the UI (highest id per day/currency wins).
-                prev_fee_balance = await _prev_balance_eur(db, fee_tx.account_id, fee_tx.portfolio_id, fee_tx.date, fee_tx.id)
-                if prev_fee_balance is not None:
-                    fee_tx.balance_eur = _no_neg_zero(round(prev_fee_balance - fee_amount, 2))
-                    fee_tx.balance_currency = fee_tx.balance_eur
-                await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, -fee_amount, fee_tx.type, fee_tx.ticker, fee_tx.operation)
+                # Same logic as auto-created fees on create_transaction (via
+                # _create_fee_transaction) — otherwise it stays null and masks the
+                # parent's balance in the UI (highest id per day/currency wins).
+                await _create_fee_transaction(db, tx, fee_amount, fee_ticker)
 
     await db.commit()
     await db.refresh(tx)

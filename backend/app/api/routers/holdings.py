@@ -9,7 +9,7 @@ from datetime import date, datetime
 
 from app.core.database import get_db
 from app.models import Pool, PoolProduct, AssetPrice, Transaction, Product
-from app.services.price_service import _to_eur, r2
+from app.services.price_service import _to_eur, r2, held_quantity
 from app.services.dashboard_service import (
     _get_latest_prices,
     _get_spot_rates,
@@ -221,10 +221,7 @@ async def get_holdings_at_date(
         price_eur = _to_eur(native_price, price_currency, snap_spot_rates)
         pool = ticker_to_pool.get(ticker)
 
-        if instrument_type == "Cash":
-            held = max(0.0, raw_qty)
-        else:
-            held = max(0.0, -raw_qty)
+        held = held_quantity(raw_qty, instrument_type)
 
         if held == 0 and instrument_type != "Or physique":
             continue

@@ -66,6 +66,14 @@ async def get_price_on_date(
     return (row.price, row.currency) if row else None
 
 
+def held_quantity(raw_qty: float, instrument_type: str | None) -> float:
+    """Convert a raw (signed) summed transaction quantity into a non-negative "units held"
+    figure, per this app's sign convention: Cash instruments accumulate positive on deposit
+    (raw_qty already means "held"), everything else accumulates negative on buy (so
+    held = -raw_qty)."""
+    return max(0.0, raw_qty) if instrument_type == "Cash" else max(0.0, -raw_qty)
+
+
 def _to_eur(price: float, currency: str, spot_rates: dict[str, float]) -> float:
     """Convert a price to EUR using known spot rates (from asset_prices for forex tickers).
 

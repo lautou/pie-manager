@@ -6,7 +6,7 @@ from datetime import date
 from typing import Optional
 
 from app.models import AssetPrice, Transaction, Product, PortfolioAccount
-from app.services.price_service import r2
+from app.services.price_service import r2, held_quantity
 
 
 async def get_holdings(
@@ -42,10 +42,7 @@ async def get_holdings(
     holdings: dict[str, float] = {}
     for row in result.all():
         ticker, qty, instrument_type = row.ticker, float(row.qty or 0), row.instrument_type
-        if instrument_type == "Cash":
-            held = max(0.0, qty)
-        else:
-            held = max(0.0, -qty)
+        held = held_quantity(qty, instrument_type)
         if held > 0:
             holdings[ticker] = held
 

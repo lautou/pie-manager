@@ -9,7 +9,7 @@ from datetime import date
 
 from app.core.database import get_db
 from app.models import Broker, Transaction, Product, AssetPrice, PortfolioAccount
-from app.services.price_service import _to_eur, r2
+from app.services.price_service import _to_eur, r2, held_quantity
 from app.api.routers.dashboard import _get_spot_rates
 from app.api.deps import get_or_404, ensure_unreferenced
 
@@ -380,10 +380,7 @@ async def get_accounts_summary(
             price = pm.price if pm else 0.0
             currency = pm.currency if pm else "EUR"
 
-            if instrument_type == "Cash":
-                held = max(0.0, raw_qty)
-            else:
-                held = max(0.0, -raw_qty)
+            held = held_quantity(raw_qty, instrument_type)
 
             if held == 0:
                 continue

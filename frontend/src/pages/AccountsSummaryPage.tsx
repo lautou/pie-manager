@@ -5,19 +5,18 @@ import { useParams } from 'react-router-dom';
 import {
   Card, CardBody, CardTitle,
   Grid, GridItem,
-  Label,
   PageSection, PageSectionVariants,
   Spinner, Content, ContentVariants, Title,
-  Tooltip,
 } from '@patternfly/react-core';
-import { ExclamationTriangleIcon } from '@patternfly/react-icons';
 import { Table, Thead, Tbody, Tr, Th, Td, SortByDirection } from '@patternfly/react-table';
 import { formatEUR, formatPct2, formatUnitPrice } from '../utils/format';
+import { pvColor } from '../utils/pv';
+import { INSTRUMENT_TYPE_GOLD } from '../utils/productConstants';
 import { useAccountsSummary, useCapitalGains } from '../api/queries';
 import SyncBadge from '../components/SyncBadge';
 import TickerLink from '../components/TickerLink';
 import EtfCompositionModal from '../components/EtfCompositionModal';
-import { StalePriceBadge } from './HoldingsPage';
+import { PriceSourceBadge, StalePriceBadge } from '../components/PriceBadges';
 import type { AccountPosition, AccountSummary } from '../types';
 
 // Fallback colors by account name (used when account.color is not set in DB)
@@ -31,21 +30,6 @@ const ACCOUNT_COLOR_FB: Record<string, string> = {
 const getAccountColor = (account: { name: string; color?: string | null }): string =>
   account.color ?? ACCOUNT_COLOR_FB[account.name] ?? '#6A6E73';
 
-function PriceSourceBadge({ source }: { source: string }) {
-  const { t } = useTranslation();
-  if (source === 'manual') {
-    return (
-      <Label color="orange" style={{ gap: '0.25rem' }}>
-        <Tooltip content={t('positions.manualPriceTooltip')}>
-          <ExclamationTriangleIcon style={{ cursor: 'pointer' }} />
-        </Tooltip>
-        manual
-      </Label>
-    );
-  }
-  return <Label color="blue">{source}</Label>;
-}
-
 // Column indices for summary table
 const SUMM_COL = { name: 0, cash: 1, positions: 2, total: 3, pct: 4 } as const;
 type SummColIndex = typeof SUMM_COL[keyof typeof SUMM_COL];
@@ -53,12 +37,6 @@ type SummColIndex = typeof SUMM_COL[keyof typeof SUMM_COL];
 // Column indices for per-account detail table
 const ACC_COL = { ticker: 0, name: 1, qty: 2, price: 3, native: 4, totalEur: 5, pvEur: 6, pvPct: 7, source: 8 } as const;
 type AccColIndex = typeof ACC_COL[keyof typeof ACC_COL];
-
-function pvColor(val: number): string {
-  if (val > 0) return '#137333';
-  if (val < 0) return '#C9190B';
-  return 'var(--pf-t--global--text--color--subtle)';
-}
 
 function computePV(pos: AccountPosition, cump: number | undefined): { pvEur: number; pvPct: number } | null {
   if (!cump || cump === 0 || pos.category === 'Frais') return null;
@@ -175,17 +153,17 @@ function AccountDetailCard({
                     </Td>
                     <Td>{pos.product_name}</Td>
                     <Td>
-                      {pos.instrument_type === 'Or physique'
+                      {pos.instrument_type === INSTRUMENT_TYPE_GOLD
                         ? '—'
                         : pos.quantity.toLocaleString('fr-FR', { maximumFractionDigits: 4 })}
                     </Td>
                     <Td>
-                      {pos.instrument_type === 'Or physique' ? '—' : (
+                      {pos.instrument_type === INSTRUMENT_TYPE_GOLD ? '—' : (
                         formatUnitPrice(pos.last_price, pos.currency || 'EUR')
                       )}
                     </Td>
                     <Td>
-                      {pos.currency !== 'EUR' && pos.last_price > 0 && pos.instrument_type !== 'Or physique'
+                      {pos.currency !== 'EUR' && pos.last_price > 0 && pos.instrument_type !== INSTRUMENT_TYPE_GOLD
                         ? new Intl.NumberFormat('fr-FR', {
                             minimumFractionDigits: 0,
                             maximumFractionDigits: 0,
@@ -194,7 +172,7 @@ function AccountDetailCard({
                     </Td>
                     <Td>
                       {formatEUR(pos.value_eur)}
-                      {pos.instrument_type === 'Or physique' && pos.last_price_date && (
+                      {pos.instrument_type === INSTRUMENT_TYPE_GOLD && pos.last_price_date && (
                         <div style={{ fontSize: '0.8rem', color: 'var(--pf-t--global--text--color--subtle)' }}>
                           {pos.last_price_date}
                         </div>

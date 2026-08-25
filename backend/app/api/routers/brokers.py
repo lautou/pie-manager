@@ -180,13 +180,12 @@ async def update_broker(
 
 @router.delete("/{broker_id}", status_code=204)
 async def delete_broker(broker_id: int, db: AsyncSession = Depends(get_db)):
-    from sqlalchemy import func as sa_func
     result = await db.execute(select(Broker).where(Broker.id == broker_id))
     broker = result.scalar_one_or_none()
     if not broker:
         raise HTTPException(status_code=404, detail="Broker not found")
     tx_count = (await db.execute(
-        select(sa_func.count()).select_from(Transaction).where(Transaction.account_id == broker_id)
+        select(func.count()).select_from(Transaction).where(Transaction.account_id == broker_id)
     )).scalar_one()
     if tx_count > 0:
         raise HTTPException(

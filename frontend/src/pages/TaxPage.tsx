@@ -31,6 +31,7 @@ import {
   useUpdateCarryForward,
   useDeleteCarryForward,
 } from '../api/queries';
+import { formatEUR } from '../utils/format';
 import type { FiscalCarryForward } from '../types';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -48,14 +49,6 @@ function isExpiring(taxYear: number): boolean {
 
 function isCurrent(taxYear: number): boolean {
   return taxYear === CURRENT_YEAR;
-}
-
-function formatEUR(value: number): string {
-  return new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 2,
-  }).format(value);
 }
 
 // ── Year selector helpers ─────────────────────────────────────────────────────

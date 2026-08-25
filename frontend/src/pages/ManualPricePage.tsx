@@ -23,13 +23,11 @@ import {
 import { useParams } from 'react-router-dom';
 import { useProducts, usePrices, useCreatePrice, useHoldings } from '../api/queries';
 import type { Product } from '../types';
-import { localDateStr } from '../utils/format';
+import { localDateStr, formatPrice } from '../utils/format';
+import { INSTRUMENT_TYPE_GOLD } from '../utils/productConstants';
 import FrDatePicker from '../components/FrDatePicker';
 
 const today = () => localDateStr();
-
-const formatEUR = (val: number, currency = 'EUR') =>
-  new Intl.NumberFormat('fr-FR', { style: 'currency', currency }).format(val);
 
 /** Returns how many calendar days ago `dateStr` (YYYY-MM-DD) is relative to today. */
 function priceDaysAgo(dateStr: string): number {
@@ -129,7 +127,7 @@ function ProductCard({ product }: ProductCardProps) {
             <Content>
               <Content component={ContentVariants.p}>
                 <strong>{t('manualPrices.lastKnownPrice')}</strong>{' '}
-                {formatEUR(latestPrice.price, latestPrice.currency)}{' '}
+                {formatPrice(latestPrice.price, latestPrice.currency)}{' '}
                 <span style={{ color: 'var(--pf-t--global--text--color--subtle)', fontSize: '0.85rem' }}>
                   ({latestPrice.date})
                 </span>
@@ -237,7 +235,7 @@ export default function ManualPricePage() {
   // this screen for every portfolio regardless of whether it ever held physical gold.
   const heldTickers = new Set((holdings ?? []).map((h) => h.ticker));
   const manualProducts: Product[] = (products ?? []).filter(
-    (p) => p.instrument_type === 'Or physique' && heldTickers.has(p.ticker),
+    (p) => p.instrument_type === INSTRUMENT_TYPE_GOLD && heldTickers.has(p.ticker),
   );
 
   if (isLoading) {

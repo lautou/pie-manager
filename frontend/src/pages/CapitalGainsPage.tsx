@@ -11,16 +11,11 @@ import {
 import { Table, Thead, Tbody, Tr, Th, Td, SortByDirection } from '@patternfly/react-table';
 import { useState, useMemo } from 'react';
 import { formatEUR, formatPct1, formatDate } from '../utils/format';
+import { pvColor } from '../utils/pv';
 import { useCapitalGains } from '../api/queries';
 import type { TickerCapitalGains, CapitalGainsEvent } from '../types';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function pvColor(val: number): string {
-  if (val > 0) return '#137333';
-  if (val < 0) return '#D93025';
-  return 'var(--pf-t--global--text--color--subtle)';
-}
 
 function PvCell({ val }: { val: number }) {
   return (

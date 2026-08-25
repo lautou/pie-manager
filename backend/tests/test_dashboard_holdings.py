@@ -690,6 +690,107 @@ async def test_holdings_forex_deducts_foreign_currency_fees(client, db_session):
     assert pos["quantity"] == pytest.approx(299_815.0, rel=0.001)
 
 
+@pytest.mark.asyncio
+async def test_holdings_foreign_equity_not_confused_with_forex_position(client, db_session):
+    """
+    Regression guard: a held foreign-currency EQUITY (instrument_type='Action', not 'Cash')
+    must never be adjusted by a fee denominated in that same currency — the forex-fee
+    adjustment is only meant for genuine Cash/forex positions (e.g. JPYEUR=X). Before
+    get_forex_fee_adjustments() added the Product.instrument_type == 'Cash' filter to
+    dashboard_service.get_holdings() (it was already present in brokers.py's own version),
+    a USD-denominated fee could have silently subtracted dollars from a held stock's *share
+    count* instead of leaving it untouched.
+    """
+    suffix = f"usdequity-{id(db_session)}"
+    portfolio = Portfolio(name=f"USDEquity-{suffix}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name=f"IBKR-{suffix}", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    db_session.add(PortfolioAccount(portfolio_id=uid, broker_id=account.id))
+    await db_session.flush()
+
+    stock_ticker = f"AAPL.{suffix}"
+    fee_ticker = f"FRAIS.COURTAGE.USD.{suffix}"
+    db_session.add(Product(ticker=stock_ticker, name="Apple", category="Actif", instrument_type="Action", currency="USD"))
+    db_session.add(Product(ticker=fee_ticker, name="Frais USD", category="Frais", currency="USD"))
+    await db_session.flush()
+
+    # Buy 10 shares (quantity is negative on buy for a non-Cash instrument)
+    db_session.add(Transaction(
+        portfolio_id=uid, account_id=account.id,
+        date=date(2025, 6, 1), type="Actif", ticker=stock_ticker,
+        currency="USD", exchange_rate=0.93,
+        quantity=-10.0, unit_price=200.0, unit_price_eur=186.0,
+        total_amount=-2000.0, total_amount_eur=-1860.0,
+    ))
+    # A 5 USD brokerage fee — must NOT be subtracted from the 10-share position
+    db_session.add(Transaction(
+        portfolio_id=uid, account_id=account.id,
+        date=date(2025, 6, 1), type="Frais", ticker=fee_ticker,
+        currency="USD", exchange_rate=0.93,
+        quantity=-1.0, unit_price=5.0, unit_price_eur=4.65,
+        total_amount=-5.0, total_amount_eur=-4.65,
+    ))
+    db_session.add(AssetPrice(ticker=stock_ticker, date=date(2025, 6, 1),
+                               price=200.0, currency="USD", source="yfinance"))
+    await db_session.flush()
+
+    r = await client.get("/api/dashboard/holdings", params={"portfolio_id": uid})
+    assert r.status_code == 200
+    pos = next((p for p in r.json() if p["ticker"] == stock_ticker), None)
+    assert pos is not None
+    # Exactly 10 shares — untouched by the 5 USD fee
+    assert pos["quantity"] == pytest.approx(10.0, rel=0.001)
+
+
+@pytest.mark.asyncio
+async def test_holdings_forex_position_with_no_matching_fee_is_unadjusted(client, db_session):
+    """
+    A genuine Cash/forex position (instrument_type='Cash') held with zero Frais
+    transactions in its own currency must be returned unadjusted — covers
+    get_forex_fee_adjustments's ticker_rows branch where the computed adjustment is 0
+    (no matching fee currency), as opposed to the ticker being absent from the held set
+    entirely.
+    """
+    suffix = f"gbpnofee-{id(db_session)}"
+    portfolio = Portfolio(name=f"GBPNoFee-{suffix}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name=f"Revolut-{suffix}", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    db_session.add(PortfolioAccount(portfolio_id=uid, broker_id=account.id))
+    await db_session.flush()
+
+    gbpeur_ticker = f"GBPEUR=X.{suffix}"
+    db_session.add(Product(ticker=gbpeur_ticker, name="GBP/EUR", category="Actif", instrument_type="Cash", currency="EUR"))
+    await db_session.flush()
+
+    # Buy 1,000 GBP — no Frais transaction in GBP anywhere for this portfolio
+    db_session.add(Transaction(
+        portfolio_id=uid, account_id=account.id,
+        date=date(2025, 6, 1), type="Actif", ticker=gbpeur_ticker,
+        currency="GBP", exchange_rate=1.17,
+        quantity=1_000.0, unit_price=1.0, unit_price_eur=1.17,
+        total_amount=1_000.0, total_amount_eur=1170.0,
+    ))
+    db_session.add(AssetPrice(ticker=gbpeur_ticker, date=date(2025, 6, 1),
+                               price=1.17, currency="EUR", source="yfinance"))
+    await db_session.flush()
+
+    r = await client.get("/api/dashboard/holdings", params={"portfolio_id": uid})
+    assert r.status_code == 200
+    pos = next((p for p in r.json() if p["ticker"] == gbpeur_ticker), None)
+    assert pos is not None
+    assert pos["quantity"] == pytest.approx(1_000.0, rel=0.001)
+
+
 # ---------------------------------------------------------------------------
 # GET /api/dashboard/holdings/{ticker}/composition
 # ---------------------------------------------------------------------------

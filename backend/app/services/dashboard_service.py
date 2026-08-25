@@ -6,7 +6,7 @@ from datetime import date
 from typing import Optional
 
 from app.models import AssetPrice, Transaction, Product, PortfolioAccount
-from app.services.price_service import r2, held_quantity
+from app.services.price_service import r2, held_quantity, get_forex_fee_adjustments
 
 
 async def get_holdings(
@@ -51,43 +51,10 @@ async def get_holdings(
     # reduces the JPYEUR=X held position — the quantity=-1 in fee rows is the
     # number of fee events, not JPY units; total_amount holds the actual amount.
     if holdings:
-        tc_clauses = [
-            Transaction.portfolio_id == portfolio_id,
-            Transaction.ticker.in_(list(holdings.keys())),
-            Transaction.type == "Actif",
-            Transaction.currency != "EUR",
-        ]
-        if as_of is not None:
-            tc_clauses.append(Transaction.date <= as_of)
-
-        tc_result = await db.execute(
-            select(Transaction.ticker, Transaction.currency)
-            .where(*tc_clauses)
-            .distinct()
-        )
-        ticker_to_currency = {r.ticker: r.currency for r in tc_result.all()}
-        foreign_currencies = list(set(ticker_to_currency.values()))
-
-        if foreign_currencies:
-            fee_clauses = [
-                Transaction.portfolio_id == portfolio_id,
-                Transaction.type == "Frais",
-                Transaction.currency.in_(foreign_currencies),
-            ]
-            if as_of is not None:
-                fee_clauses.append(Transaction.date <= as_of)
-
-            fee_result = await db.execute(
-                select(Transaction.currency, func.sum(Transaction.total_amount).label("adj"))
-                .where(*fee_clauses)
-                .group_by(Transaction.currency)
-            )
-            fee_by_currency = {r.currency: float(r.adj or 0) for r in fee_result.all()}
-
-            for ticker, currency in ticker_to_currency.items():
-                adj = fee_by_currency.get(currency, 0.0)
-                if adj and ticker in holdings:
-                    holdings[ticker] = max(0.0, holdings[ticker] + adj)
+        adjustments = await get_forex_fee_adjustments(db, portfolio_id, list(holdings.keys()), as_of)
+        for ticker, adj in adjustments.items():
+            if adj and ticker in holdings:
+                holdings[ticker] = max(0.0, holdings[ticker] + adj)
 
     return holdings
 

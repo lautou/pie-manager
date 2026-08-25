@@ -9,7 +9,7 @@ from datetime import date
 
 from app.core.database import get_db
 from app.models import Broker, Transaction, Product, AssetPrice, PortfolioAccount
-from app.services.price_service import _to_eur, r2, held_quantity
+from app.services.price_service import _to_eur, r2, held_quantity, get_forex_fee_adjustments
 from app.api.routers.dashboard import _get_spot_rates
 from app.api.deps import get_or_404, ensure_unreferenced
 
@@ -291,47 +291,15 @@ async def get_accounts_summary(
     for row in qty_result.all():
         raw_positions.setdefault(row.account_id, {})[row.ticker] = float(row.qty)
 
-    # Adjust forex holdings for fees paid in the foreign currency
-    # (same logic as get_holdings in dashboard_service.py).
-    # e.g. FRAIS.COURTAGE.JPY (type=Frais, currency=JPY, total_amount=-165)
-    # reduces the JPYEUR=X quantity; its quantity=-1 is a fee-event count, not JPY.
-    fee_adj_result = await db.execute(
-        select(
-            Transaction.account_id,
-            Transaction.currency,
-            func.sum(Transaction.total_amount).label("adj"),
-        )
-        .where(
-            Transaction.portfolio_id == portfolio_id,
-            Transaction.type == "Frais",
-            Transaction.currency != "EUR",
-        )
-        .group_by(Transaction.account_id, Transaction.currency)
+    # Adjust forex holdings for fees paid in the foreign currency — per account, since a fee
+    # incurred on one account must never adjust another account's forex position.
+    all_held_tickers = {t for tickers in raw_positions.values() for t in tickers}
+    adjustments = await get_forex_fee_adjustments(
+        db, portfolio_id, list(all_held_tickers), group_by_account=True,
     )
-    # Map (broker_id, currency) → fee adjustment amount
-    fee_adj: dict[tuple[int, str], float] = {
-        (r.account_id, r.currency): float(r.adj or 0) for r in fee_adj_result.all()
-    }
-
-    if fee_adj:
-        # Find the forex ticker for each (broker, currency) pair
-        tc_result = await db.execute(
-            select(Transaction.account_id, Transaction.ticker, Transaction.currency)
-            .join(Product, Transaction.ticker == Product.ticker)
-            .where(
-                Transaction.portfolio_id == portfolio_id,
-                Transaction.type == "Actif",
-                Transaction.currency != "EUR",
-                Product.instrument_type == "Cash",
-            )
-            .distinct()
-        )
-        for row in tc_result.all():
-            adj = fee_adj.get((row.account_id, row.currency), 0.0)
-            if adj and row.ticker in raw_positions.get(row.account_id, {}):
-                raw_positions[row.account_id][row.ticker] = max(
-                    0.0, raw_positions[row.account_id][row.ticker] + adj
-                )
+    for (account_id, ticker), adj in adjustments.items():
+        if adj and ticker in raw_positions.get(account_id, {}):
+            raw_positions[account_id][ticker] = max(0.0, raw_positions[account_id][ticker] + adj)
 
     # 3. Product metadata
     all_tickers: set[str] = set()

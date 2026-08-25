@@ -1027,13 +1027,17 @@ async def test_summary_forex_deducts_foreign_currency_fees(client, db_session):
 @pytest.mark.asyncio
 async def test_summary_forex_fee_with_fully_sold_position(client, db_session):
     """
-    brokers.py line 357->355 False branch:
-    `if adj and row.ticker in raw_positions.get(row.account_id, {})`
-    is False when adj != 0 but the forex position has been fully closed.
+    get_forex_fee_adjustments scopes its ticker search to currently-held tickers across
+    *all* accounts (group_by_account=True still takes one combined ticker list) — so this
+    branch (adj != 0 for an account whose own position in that ticker is fully closed) only
+    reproduces with the SAME ticker held in one account and fully closed in another, not a
+    single account acting alone (a lone closed position is excluded before the ticker search
+    even runs, since it never appears in any account's held-ticker set).
 
-    A broker holds JPY (buy 300k, sell 300k → net qty = 0).
-    The JPYEUR=X ticker is not in raw_positions, so the fee-adjustment
-    branch skips it without error.
+    Broker A holds JPYEUR=X (still open). Broker B bought and fully sold the same ticker,
+    with a fee booked against broker B after the position was closed. Broker B's fee-
+    adjustment branch (`if adj and ticker in raw_positions.get(account_id, {})`) must skip
+    it without error or without leaking into broker A's own position.
     """
     from datetime import date
 
@@ -1043,10 +1047,13 @@ async def test_summary_forex_fee_with_fully_sold_position(client, db_session):
     await db_session.flush()
     pid = portfolio.id
 
-    broker = Broker(name=f"MUFG-{suffix}", currency="JPY")
-    db_session.add(broker)
+    broker_open = Broker(name=f"Revolut-{suffix}", currency="EUR")
+    broker_closed = Broker(name=f"MUFG-{suffix}", currency="JPY")
+    db_session.add(broker_open)
+    db_session.add(broker_closed)
     await db_session.flush()
-    db_session.add(PortfolioAccount(portfolio_id=pid, broker_id=broker.id))
+    db_session.add(PortfolioAccount(portfolio_id=pid, broker_id=broker_open.id))
+    db_session.add(PortfolioAccount(portfolio_id=pid, broker_id=broker_closed.id))
 
     jpyeur_ticker = f"JPYEUR.SOLD.{suffix}"
     fee_ticker = f"FRAIS.JPY.SOLD.{suffix}"
@@ -1054,24 +1061,32 @@ async def test_summary_forex_fee_with_fully_sold_position(client, db_session):
     db_session.add(Product(ticker=fee_ticker, name="JPY Fee closed", category="Fee", currency="JPY"))
     await db_session.flush()
 
-    # Buy 300k JPY, then sell all 300k → net qty = 0, no position in raw_positions
+    # Broker A: still holds 100k JPY (keeps the ticker in the combined held-ticker set)
     db_session.add(Transaction(
-        portfolio_id=pid, account_id=broker.id,
+        portfolio_id=pid, account_id=broker_open.id,
+        date=date(2025, 6, 1), type="Actif", ticker=jpyeur_ticker,
+        currency="JPY", exchange_rate=0.006,
+        quantity=100_000.0, unit_price=1.0, unit_price_eur=0.006,
+        total_amount=100_000.0, total_amount_eur=600.0,
+    ))
+    # Broker B: buy 300k JPY, then sell all 300k → net qty = 0 for this account
+    db_session.add(Transaction(
+        portfolio_id=pid, account_id=broker_closed.id,
         date=date(2025, 6, 1), type="Actif", ticker=jpyeur_ticker,
         currency="JPY", exchange_rate=0.006,
         quantity=300_000.0, unit_price=1.0, unit_price_eur=0.006,
         total_amount=300_000.0, total_amount_eur=1800.0,
     ))
     db_session.add(Transaction(
-        portfolio_id=pid, account_id=broker.id,
+        portfolio_id=pid, account_id=broker_closed.id,
         date=date(2025, 6, 3), type="Actif", ticker=jpyeur_ticker,
         currency="JPY", exchange_rate=0.006,
         quantity=-300_000.0, unit_price=1.0, unit_price_eur=0.006,
         total_amount=-300_000.0, total_amount_eur=-1800.0,
     ))
-    # Fee still exists even though position is fully closed
+    # Fee booked against broker B, after broker B's position is fully closed
     db_session.add(Transaction(
-        portfolio_id=pid, account_id=broker.id,
+        portfolio_id=pid, account_id=broker_closed.id,
         date=date(2025, 6, 2), type="Frais", ticker=fee_ticker,
         currency="JPY", exchange_rate=0.006,
         quantity=-1.0, unit_price=185.0, unit_price_eur=1.11,
@@ -1081,9 +1096,16 @@ async def test_summary_forex_fee_with_fully_sold_position(client, db_session):
 
     r = await client.get("/api/brokers/summary", params={"portfolio_id": pid})
     assert r.status_code == 200
-    # No crash; the broker with a closed position and a fee is handled gracefully
-    broker_data = next((b for b in r.json() if b["name"] == f"MUFG-{suffix}"), None)
-    assert broker_data is not None
-    # Position is fully closed — should not appear
-    positions = [p for p in broker_data["positions"] if p["ticker"] == jpyeur_ticker]
-    assert positions == []
+    body = r.json()
+
+    # Broker B's position is fully closed — should not appear, and broker B's fee must
+    # never leak into broker A's own (unrelated) position.
+    broker_b_data = next((b for b in body if b["name"] == f"MUFG-{suffix}"), None)
+    assert broker_b_data is not None
+    assert [p for p in broker_b_data["positions"] if p["ticker"] == jpyeur_ticker] == []
+
+    broker_a_data = next((b for b in body if b["name"] == f"Revolut-{suffix}"), None)
+    assert broker_a_data is not None
+    pos_a = next((p for p in broker_a_data["positions"] if p["ticker"] == jpyeur_ticker), None)
+    assert pos_a is not None
+    assert pos_a["quantity"] == pytest.approx(100_000.0, rel=0.001)

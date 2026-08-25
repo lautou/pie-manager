@@ -12,7 +12,7 @@ import {
 import { ExclamationTriangleIcon } from '@patternfly/react-icons';
 import { Table, Thead, Tbody, Tr, Th, Td, SortByDirection } from '@patternfly/react-table';
 import { useState } from 'react';
-import { formatEUR, formatPct1, formatPct2, formatUnitPrice } from '../utils/format';
+import { formatEUR, formatPct1, formatPct2, formatUnitPrice, formatNativeCurrency } from '../utils/format';
 import { pvColor } from '../utils/pv';
 import { INSTRUMENT_TYPE_GOLD } from '../utils/productConstants';
 import { useCapitalGains, useDashboard, useHoldings } from '../api/queries';
@@ -165,10 +165,7 @@ function PoolHoldingsTable({ holdings, poolName, failedTickers, pvMap }: {
                 </Td>
                 <Td>
                   {valueNative != null
-                    ? new Intl.NumberFormat('fr-FR', {
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0,
-                      }).format(valueNative) + ' ' + currency
+                    ? formatNativeCurrency(valueNative, currency, 0)
                     : '—'}
                 </Td>
                 <Td>{formatPct1(pctOfPool)}</Td>

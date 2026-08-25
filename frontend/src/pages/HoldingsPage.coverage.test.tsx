@@ -66,6 +66,7 @@ vi.mock('../utils/format', () => ({
     `${withSign && val > 0 ? '+' : ''}${val.toFixed(2)} %`,
   formatPct1: (val: number, withSign?: boolean) =>
     `${withSign && val > 0 ? '+' : ''}${val.toFixed(1)} %`,
+  formatNativeCurrency: (val: number, currency: string, maxDecimals = 3) => `${val.toFixed(maxDecimals)} ${currency}`,
 }));
 
 vi.mock('../hooks/useSyncStatus', () => ({

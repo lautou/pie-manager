@@ -36,6 +36,7 @@ import EtfCompositionModal from '../components/EtfCompositionModal';
 import SettingField from '../components/SettingField';
 import type { Broker, CommissionTier, CountryPerfConfig, EquityPremiumConfig, MacroRegionConfig, Product, SectorPerfConfig } from '../types';
 import { computeCommission } from '../utils/commission';
+import { INSTRUMENT_TYPE_GOLD } from '../utils/productConstants';
 
 // ── Broker Manager ─────────────────────────────────────────────────────────
 
@@ -472,7 +473,7 @@ function CommissionManager() {
 // ── Product Manager ───────────────────────────────────────────────────────
 
 const PRODUCT_CATEGORIES = ['Actif', 'Frais'] as const;
-const INSTRUMENT_TYPES = ['ETF', 'SICAV/FCP', 'Action', 'Obligation', 'Or physique', 'Cash'] as const;
+const INSTRUMENT_TYPES = ['ETF', 'SICAV/FCP', 'Action', 'Obligation', INSTRUMENT_TYPE_GOLD, 'Cash'] as const;
 const FEE_TYPES = ['Courtage', 'Tenue de compte', 'Intérêts négatifs', 'Bourse', 'TTF', 'Impôts', 'Conversion'] as const;
 type ProductForm = { ticker: string; name: string; category: string; instrument_type: string; fee_type: string; currency: string };
 const EMPTY_FORM: ProductForm = { ticker: '', name: '', category: 'Actif', instrument_type: '', fee_type: '', currency: 'EUR' };

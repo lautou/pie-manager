@@ -129,8 +129,7 @@ const mockAccountSummaryNoPositions = {
 };
 
 import AccountsSummaryPage from './AccountsSummaryPage';
-// StalePriceBadge is defined in PositionsPage and re-used by SyntheseComptesPage
-import { StalePriceBadge } from './HoldingsPage';
+import { StalePriceBadge } from '../components/PriceBadges';
 
 describe('AccountsSummaryPage', () => {
   beforeEach(() => {
@@ -685,7 +684,7 @@ describe('AccountsSummaryPage — computePV and pvColor coverage', () => {
     });
 
     render(<AccountsSummaryPage />);
-    // hasPV = true → renders PV column; pvColor = '#C9190B' for negative
+    // hasPV = true → renders PV column; pvColor = '#D93025' for negative
     expect(screen.getByText('Comptes')).toBeTruthy();
   });
 

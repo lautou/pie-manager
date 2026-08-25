@@ -296,9 +296,8 @@ async def get_daily_holding_values(
     product_instrument_types: dict[str, str] = {r.ticker: r.instrument_type for r in ticker_rows}
 
     # 2. Earliest transaction date
-    from sqlalchemy import func as sa_func
     earliest_result = await db.execute(
-        select(sa_func.min(Transaction.date))
+        select(func.min(Transaction.date))
         .where(Transaction.portfolio_id == portfolio_id, Transaction.type == "Actif")
     )
     earliest_date: date_cls | None = earliest_result.scalar_one_or_none()

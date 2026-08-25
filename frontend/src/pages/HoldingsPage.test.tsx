@@ -130,7 +130,8 @@ const mockManuelPosition = {
   last_price_source: 'manual', value_eur: 32336.34, currency: 'EUR',
 };
 
-import HoldingsPage, { StalePriceBadge } from './HoldingsPage';
+import HoldingsPage from './HoldingsPage';
+import { StalePriceBadge } from '../components/PriceBadges';
 
 describe('HoldingsPage', () => {
   beforeEach(() => {

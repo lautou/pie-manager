@@ -31,6 +31,7 @@ import {
 } from '@patternfly/react-charts/victory';
 import { Treemap, ResponsiveContainer } from 'recharts';
 import { formatEUR, formatPct1, formatUnitPrice, localDateStr } from '../utils/format';
+import { INSTRUMENT_TYPE_GOLD } from '../utils/productConstants';
 import { useCapitalGains, useDashboard, useHoldings, useProducts, usePrices } from '../api/queries';
 import type { Product } from '../types';
 import SyncBadge from '../components/SyncBadge';
@@ -231,7 +232,7 @@ export default function DashboardPage() {
   // the stale-price banner for every portfolio regardless of whether it ever held physical gold.
   const heldTickers = new Set((holdings ?? []).map((h) => h.ticker));
   const manuelProducts = (products ?? []).filter(
-    (p) => p.instrument_type === 'Or physique' && heldTickers.has(p.ticker),
+    (p) => p.instrument_type === INSTRUMENT_TYPE_GOLD && heldTickers.has(p.ticker),
   );
 
   if (isLoading) {

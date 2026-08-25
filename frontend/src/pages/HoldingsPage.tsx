@@ -5,7 +5,6 @@ import {
   Badge,
   Card, CardBody, CardTitle,
   Gallery, GalleryItem,
-  Label,
   PageSection, PageSectionVariants,
   Spinner,
   Content, ContentVariants, Title,
@@ -15,6 +14,8 @@ import { ExclamationTriangleIcon } from '@patternfly/react-icons';
 import { Table, Thead, Tbody, Tr, Th, Td, SortByDirection } from '@patternfly/react-table';
 import { useState } from 'react';
 import { formatEUR, formatPct1, formatPct2, formatUnitPrice } from '../utils/format';
+import { pvColor } from '../utils/pv';
+import { INSTRUMENT_TYPE_GOLD } from '../utils/productConstants';
 import { useCapitalGains, useDashboard, useHoldings } from '../api/queries';
 import type { TickerCapitalGains } from '../types';
 import { useSyncStatus } from '../hooks/useSyncStatus';
@@ -22,58 +23,16 @@ import SyncBadge from '../components/SyncBadge';
 import TickerLink from '../components/TickerLink';
 import EtfCompositionModal from '../components/EtfCompositionModal';
 import PoolAllocationSection from '../components/PoolAllocationSection';
+import { PriceSourceBadge, StalePriceBadge } from '../components/PriceBadges';
 import {
   groupAndSort,
   UNASSIGNED_POOL_KEY,
 } from './holdings.utils';
 import type { Holding } from '../types';
 
-
-function PriceSourceBadge({ source }: { source: string }) {
-  const { t } = useTranslation();
-  if (source === 'manual') {
-    return (
-      <Label color="orange" style={{ gap: '0.25rem' }}>
-        <Tooltip content={t('positions.manualPriceTooltip')}>
-          <ExclamationTriangleIcon style={{ cursor: 'pointer' }} />
-        </Tooltip>
-        manual
-      </Label>
-    );
-  }
-  return <Label color="blue">{source}</Label>;
-}
-
-export function StalePriceBadge({ lastPriceDate, source }: { lastPriceDate: string | null; source: string }) {
-  const { t } = useTranslation();
-  if (source === 'manuel' || source === 'manual') return null;
-  if (lastPriceDate === null) {
-    return (
-      <Label color="orange" isCompact style={{ marginLeft: '0.25rem', verticalAlign: 'middle' }}>
-        {t('positions.priceUnknown')}
-      </Label>
-    );
-  }
-  const diffDays = Math.floor(
-    (Date.now() - new Date(lastPriceDate).getTime()) / (1000 * 60 * 60 * 24),
-  );
-  if (diffDays <= 2) return null;
-  return (
-    <Label color="orange" isCompact style={{ marginLeft: '0.25rem', verticalAlign: 'middle' }}>
-      {t('positions.priceDaysOld', { days: diffDays })}
-    </Label>
-  );
-}
-
 // Column indices for holdings table sort
 const POS_COL = { ticker: 0, name: 1, qty: 2, price: 3, totalEur: 4, totalNative: 5, pctPool: 6, source: 7, pvLatente: 8, pvLatentePct: 9 } as const;
 type PosColIndex = typeof POS_COL[keyof typeof POS_COL];
-
-function pvColor(val: number): string {
-  if (val > 0) return '#137333';
-  if (val < 0) return '#D93025';
-  return 'var(--pf-t--global--text--color--subtle)';
-}
 
 function PoolHoldingsTable({ holdings, poolName, failedTickers, pvMap }: {
   holdings: Holding[];
@@ -177,12 +136,12 @@ function PoolHoldingsTable({ holdings, poolName, failedTickers, pvMap }: {
                 </Td>
                 <Td>{h.product_name}</Td>
                 <Td>
-                  {h.instrument_type === 'Or physique' ? '—' : h.quantity.toLocaleString('fr-FR', {
+                  {h.instrument_type === INSTRUMENT_TYPE_GOLD ? '—' : h.quantity.toLocaleString('fr-FR', {
                     maximumFractionDigits: 4,
                   })}
                 </Td>
                 <Td>
-                  {h.instrument_type === 'Or physique' ? '—' : (
+                  {h.instrument_type === INSTRUMENT_TYPE_GOLD ? '—' : (
                     <>
                       {formatUnitPrice(h.last_price, currency)}
                       {isStale && h.last_price_date && (
@@ -198,7 +157,7 @@ function PoolHoldingsTable({ holdings, poolName, failedTickers, pvMap }: {
                 </Td>
                 <Td>
                   {formatEUR(h.value_eur)}
-                  {h.instrument_type === 'Or physique' && h.last_price_date && (
+                  {h.instrument_type === INSTRUMENT_TYPE_GOLD && h.last_price_date && (
                     <div style={{ fontSize: '0.78rem', color: 'var(--pf-t--global--text--color--subtle)', marginTop: '2px' }}>
                       {h.last_price_date}
                     </div>

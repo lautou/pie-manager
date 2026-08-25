@@ -76,6 +76,16 @@ def held_quantity(raw_qty: float, instrument_type: str | None) -> float:
     return max(0.0, raw_qty) if instrument_type == "Cash" else max(0.0, -raw_qty)
 
 
+def position_value_eur(held: float, price_eur: float, instrument_type: str | None) -> float:
+    """EUR value of a position, from its held quantity (see held_quantity()) and its
+    per-unit EUR price. Or physique's AssetPrice.price already stores the position's total
+    value rather than a per-unit price (see CLAUDE.md's "Or physique instrument_type" rule),
+    so it's returned as-is while still held, instead of being multiplied by held."""
+    if instrument_type == "Or physique":
+        return r2(price_eur) if held > 0 else 0.0
+    return r2(held * price_eur)
+
+
 async def get_forex_fee_adjustments(
     db: AsyncSession,
     portfolio_id: int,

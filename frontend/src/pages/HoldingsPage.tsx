@@ -10,8 +10,9 @@ import {
   Tooltip,
 } from '@patternfly/react-core';
 import { ExclamationTriangleIcon } from '@patternfly/react-icons';
-import { Table, Thead, Tbody, Tr, Th, Td, SortByDirection } from '@patternfly/react-table';
+import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import { useState } from 'react';
+import { useColumnSort } from '../hooks/useColumnSort';
 import { formatEUR, formatPct1, formatPct2, formatUnitPrice, formatNativeCurrency } from '../utils/format';
 import { pvColor } from '../utils/pv';
 import { INSTRUMENT_TYPE_GOLD } from '../utils/productConstants';
@@ -41,46 +42,38 @@ function PoolHoldingsTable({ holdings, poolName, failedTickers, pvMap }: {
   pvMap: Map<string, TickerCapitalGains>;
 }) {
   const { t } = useTranslation();
-  // Default sort: by product name (col index 1) ASC — preserves existing behaviour
-  const [sortIndex, setSortIndex] = useState<PosColIndex>(POS_COL.name);
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [compositionTicker, setCompositionTicker] = useState<string | null>(null);
-
-  const onSort = (_: React.MouseEvent, index: number, direction: SortByDirection) => {
-    setSortIndex(index as PosColIndex);
-    setSortDir(direction as 'asc' | 'desc');
-  };
 
   const poolTotal = holdings.reduce((sum, h) => sum + h.value_eur, 0);
 
-  const sorted = [...holdings].sort((a, b) => {
-    const dir = sortDir === 'asc' ? 1 : -1;
-    switch (sortIndex) {
-      case POS_COL.ticker:   return a.ticker.localeCompare(b.ticker) * dir;
-      case POS_COL.name:     return a.product_name.localeCompare(b.product_name) * dir;
-      case POS_COL.totalEur: return (a.value_eur - b.value_eur) * dir;
+  const compareHoldings = (a: Holding, b: Holding, index: number): number => {
+    switch (index as PosColIndex) {
+      case POS_COL.ticker:   return a.ticker.localeCompare(b.ticker);
+      case POS_COL.name:     return a.product_name.localeCompare(b.product_name);
+      case POS_COL.totalEur: return a.value_eur - b.value_eur;
       case POS_COL.pctPool: {
         const pctA = poolTotal > 0 ? a.value_eur / poolTotal : 0;
         const pctB = poolTotal > 0 ? b.value_eur / poolTotal : 0;
-        return (pctA - pctB) * dir;
+        return pctA - pctB;
       }
       case POS_COL.pvLatente: {
         const pvA = pvMap.get(a.ticker)?.unrealized_pv ?? 0;
         const pvB = pvMap.get(b.ticker)?.unrealized_pv ?? 0;
-        return (pvA - pvB) * dir;
+        return pvA - pvB;
       }
       case POS_COL.pvLatentePct: {
         const dA = pvMap.get(a.ticker);
         const dB = pvMap.get(b.ticker);
         const pctA = dA && dA.cost_basis_eur !== 0 ? dA.unrealized_pv / dA.cost_basis_eur : 0;
         const pctB = dB && dB.cost_basis_eur !== 0 ? dB.unrealized_pv / dB.cost_basis_eur : 0;
-        return (pctA - pctB) * dir;
+        return pctA - pctB;
       }
       default: return 0;
     }
-  });
+  };
 
-  const sortBy = { index: sortIndex, direction: sortDir as SortByDirection };
+  // Default sort: by product name (col index 1) ASC — preserves existing behaviour
+  const { sorted, sortBy, onSort } = useColumnSort(holdings, compareHoldings, POS_COL.name);
 
   // Pool-level PV subtotals
   const poolPvTotal = holdings.reduce((sum, h) => {

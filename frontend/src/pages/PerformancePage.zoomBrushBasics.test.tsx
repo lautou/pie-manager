@@ -189,7 +189,7 @@ describe('PerformancePage — coverage for uncovered branches', () => {
       fireEvent.mouseMove(indexDiv, { clientX: 400, clientY: 50 });
       fireEvent.mouseUp(indexDiv);
     }
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('brush with large drag on patrimoine chart triggers zoom change', () => {
@@ -206,7 +206,7 @@ describe('PerformancePage — coverage for uncovered branches', () => {
       fireEvent.mouseMove(patrimoineDiv, { clientX: 600, clientY: 50 });
       fireEvent.mouseUp(patrimoineDiv);
     }
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('brush endBrush with allData.length < 2 returns early (no zoom)', () => {
@@ -227,7 +227,7 @@ describe('PerformancePage — coverage for uncovered branches', () => {
       fireEvent.mouseMove(div, { clientX: 600, clientY: 50 });
       fireEvent.mouseUp(div);
     }
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('moveBrush when brush is not active — no-op', () => {
@@ -242,7 +242,7 @@ describe('PerformancePage — coverage for uncovered branches', () => {
     if (chartDivs.length > 0) {
       fireEvent.mouseMove(chartDivs[0] as HTMLElement, { clientX: 200, clientY: 50 });
     }
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('strategie view: clicking toggle Offensif twice removes then resets', async () => {
@@ -265,7 +265,7 @@ describe('PerformancePage — coverage for uncovered branches', () => {
     const offBtn = screen.getByText('Offensif');
     await user.click(offBtn); // solo Offensif (remove Défensif)
     await user.click(offBtn); // remove Offensif (reset to null)
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('strategie view: ↺ Tout afficher button resets visibleStrats to null', async () => {
@@ -292,7 +292,7 @@ describe('PerformancePage — coverage for uncovered branches', () => {
     if (resetBtn) {
       await user.click(resetBtn);
     }
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('pools view: ↺ Tout afficher appears and works after hiding a pool', async () => {
@@ -325,7 +325,7 @@ describe('PerformancePage — coverage for uncovered branches', () => {
         await user.click(resetBtn);
       }
     }
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('positions view: ↺ Tout afficher appears and works after hiding a position', async () => {
@@ -358,7 +358,7 @@ describe('PerformancePage — coverage for uncovered branches', () => {
         await user.click(resetBtn);
       }
     }
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('positions with long ticker name (>12 chars) shows truncated label', async () => {
@@ -390,7 +390,7 @@ describe('PerformancePage — coverage for uncovered branches', () => {
     // label = ticker.length > 12 ? ticker.slice(0,12) + '…' : ticker
     const allBtns = screen.getAllByRole('button');
     const tickerBtn = allBtns.find(b => b.textContent?.startsWith('VERYLONGTICK'));
-    expect(tickerBtn).toBeTruthy();
+    expect(tickerBtn).toBeInTheDocument();
   });
 
   it('modal positions sorted: Non assigné pool goes last', async () => {
@@ -413,9 +413,9 @@ describe('PerformancePage — coverage for uncovered branches', () => {
       await user.click(snapRow);
       // Modal should show with Asie first, Non assigné last
       const modal = screen.getByTestId('modal');
-      expect(modal).toBeTruthy();
+      expect(modal).toBeInTheDocument();
       // Both tickers should appear
-      expect(screen.getByText('AAPL')).toBeTruthy();
+      expect(screen.getByText('AAPL')).toBeInTheDocument();
     }
   });
 
@@ -434,7 +434,7 @@ describe('PerformancePage — coverage for uncovered branches', () => {
     mockUseTWRR.mockReturnValue({ data: twrrFuture, isLoading: false });
 
     render(<PerformancePage />);
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('patrimoine reset zoom button works after brush zoom', async () => {
@@ -462,7 +462,7 @@ describe('PerformancePage — coverage for uncovered branches', () => {
     if (resetBtns.length > 0) {
       fireEvent.click(resetBtns[0]);
     }
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
 
     vi.restoreAllMocks();
   });
@@ -497,12 +497,12 @@ describe('PerformancePage — coverage for uncovered branches', () => {
     await user.click(screen.getAllByText('MAX')[0]);
     // Switch to pools view — triggers lines 583-611
     await user.click(screen.getByTestId('toggle-Pools'));
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
     // Both pools should appear in legend
-    expect(screen.getByText('Asie')).toBeTruthy();
+    expect(screen.getByText('Asie')).toBeInTheDocument();
   });
 
-  it('positions chart renders when position data is within zoom window (line 636 fallback)', async () => {
+  it('positions chart renders when position data is within the MAX zoom window', async () => {
     const recentDate1 = new Date(); recentDate1.setMonth(recentDate1.getMonth() - 6);
     const recentDate2 = new Date(); recentDate2.setMonth(recentDate2.getMonth() - 1);
     const d1 = recentDate1.toISOString().slice(0, 10);
@@ -530,10 +530,10 @@ describe('PerformancePage — coverage for uncovered branches', () => {
     await user.click(screen.getAllByText('MAX')[0]);
     // Switch to positions view — triggers lines 613-641
     await user.click(screen.getByTestId('toggle-Positions'));
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
-  it('pools chart line uses POOL_COLORS fallback for unknown pool name (line 606)', async () => {
+  it('pools chart line uses the fallback color for a pool name not in POOL_COLORS', async () => {
     // A pool name not in POOL_COLORS triggers the ?? '#6A6E73' fallback
     const recentDate1 = new Date(); recentDate1.setMonth(recentDate1.getMonth() - 3);
     const recentDate2 = new Date(); recentDate2.setMonth(recentDate2.getMonth() - 1);
@@ -558,10 +558,10 @@ describe('PerformancePage — coverage for uncovered branches', () => {
 
     await user.click(screen.getAllByText('MAX')[0]);
     await user.click(screen.getByTestId('toggle-Pools'));
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
-  it('patrimoine chart renders with daily data and brush overlay (lines 668-720)', () => {
+  it('patrimoine chart renders with daily snapshots and supports brush-drag interaction', () => {
     // Multiple daily snapshots to fill patrimoineData and trigger the chart section
     const manySnapshots = Array.from({ length: 5 }, (_, i) => {
       const d = new Date(); d.setDate(d.getDate() - (i + 1) * 10);
@@ -575,7 +575,7 @@ describe('PerformancePage — coverage for uncovered branches', () => {
 
     // The patrimoine chart section should render (patrimoineData.length > 0)
     const patrimoineHeading = screen.getByText(/Évolution du patrimoine/i);
-    expect(patrimoineHeading).toBeTruthy();
+    expect(patrimoineHeading).toBeInTheDocument();
 
     // Trigger a brush interaction on the patrimoine chart div to exercise brush overlay (line 682)
     const chartDivs = document.querySelectorAll('[style*="user-select: none"]');
@@ -586,7 +586,7 @@ describe('PerformancePage — coverage for uncovered branches', () => {
       // Now the brush is active and chartId === 'patrimoine' → brush overlay div renders (line 682-694)
       fireEvent.mouseUp(patrimoineDiv);
     }
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
 });

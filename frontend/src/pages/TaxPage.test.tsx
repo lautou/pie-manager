@@ -130,7 +130,7 @@ describe('TaxPage', () => {
       isError: false,
     });
     render(<TaxPage />);
-    expect(screen.getByText('Fiscalité')).toBeTruthy();
+    expect(screen.getByText('Fiscalité')).toBeInTheDocument();
   });
 
   // ── Test 2: shows active carry-forwards ────────────────────────────────────
@@ -141,7 +141,7 @@ describe('TaxPage', () => {
       isError: false,
     });
     render(<TaxPage />);
-    expect(screen.getByText('2022')).toBeTruthy();
+    expect(screen.getByText('2022')).toBeInTheDocument();
   });
 
   // ── Test 3: expired row has gray style and expiry message ──────────────────
@@ -152,10 +152,10 @@ describe('TaxPage', () => {
       isError: false,
     });
     render(<TaxPage />);
-    expect(screen.getByText('2013')).toBeTruthy();
+    expect(screen.getByText('2013')).toBeInTheDocument();
     expect(
       screen.getByText(/Délai d.imputation dépassé — cette MV ne peut plus être imputée/i)
-    ).toBeTruthy();
+    ).toBeInTheDocument();
   });
 
   // ── Test 4: 2016 shows expiry warning badge ────────────────────────────────
@@ -166,8 +166,8 @@ describe('TaxPage', () => {
       isError: false,
     });
     render(<TaxPage />);
-    expect(screen.getByTestId('expiry-warning')).toBeTruthy();
-    expect(screen.getByText(/Expire en 2026/)).toBeTruthy();
+    expect(screen.getByTestId('expiry-warning')).toBeInTheDocument();
+    expect(screen.getByText(/Expire en 2026/)).toBeInTheDocument();
   });
 
   // ── Test 5: totals exclude expired rows ────────────────────────────────────
@@ -200,7 +200,7 @@ describe('TaxPage', () => {
     const addBtn = screen.getByText('Ajouter une année');
     fireEvent.click(addBtn);
 
-    expect(screen.getByTestId('new-row')).toBeTruthy();
+    expect(screen.getByTestId('new-row')).toBeInTheDocument();
   });
 
   // ── Test 7: spinner shown while loading ───────────────────────────────────
@@ -211,7 +211,7 @@ describe('TaxPage', () => {
       isError: false,
     });
     render(<TaxPage />);
-    expect(screen.getByTestId('spinner')).toBeTruthy();
+    expect(screen.getByTestId('spinner')).toBeInTheDocument();
   });
 
   // ── Test 8: error alert when isError ──────────────────────────────────────
@@ -222,7 +222,7 @@ describe('TaxPage', () => {
       isError: true,
     });
     render(<TaxPage />);
-    expect(screen.getByTestId('alert-danger')).toBeTruthy();
+    expect(screen.getByTestId('alert-danger')).toBeInTheDocument();
   });
 
   // ── Test 9: new row Annuler hides the row ─────────────────────────────────
@@ -235,7 +235,7 @@ describe('TaxPage', () => {
     render(<TaxPage />);
 
     fireEvent.click(screen.getByText('Ajouter une année'));
-    expect(screen.getByTestId('new-row')).toBeTruthy();
+    expect(screen.getByTestId('new-row')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Annuler'));
     expect(screen.queryByTestId('new-row')).toBeNull();
@@ -272,7 +272,7 @@ describe('TaxPage', () => {
       isError: false,
     });
     render(<TaxPage />);
-    expect(screen.getByText(/Aucune moins-value reportable enregistrée/i)).toBeTruthy();
+    expect(screen.getByText(/Aucune moins-value reportable enregistrée/i)).toBeInTheDocument();
   });
 
   // ── Test 12: new row Enregistrer calls createMutation.mutateAsync ─────────
@@ -336,7 +336,7 @@ describe('TaxPage', () => {
   });
 
   // ── Test 14b: NewRow handleSave — amountAbs <= 0 shows error (lines 247-248) ──
-  it('NewRow handleSave: amountAbs=0 shows "Le montant doit être positif" (lines 247-248)', async () => {
+  it('shows "Le montant doit être positif" and skips the create mutation when the amount is zero', async () => {
     mockUseFiscalCarryForwards.mockReturnValue({
       data: [],
       isLoading: false,
@@ -350,12 +350,12 @@ describe('TaxPage', () => {
 
     // Do NOT set amount → amountAbs stays 0
     fireEvent.click(screen.getByText('Enregistrer'));
-    expect(screen.getByText('Le montant doit être positif.')).toBeTruthy();
+    expect(screen.getByText('Le montant doit être positif.')).toBeInTheDocument();
     expect(mockMutateAsync).not.toHaveBeenCalled();
   });
 
   // ── Test 14c: Inline edit — onFocus/onChange (lines 175-176) ─────────────────
-  it('inline amount edit: onFocus calls select, onChange updates editValue (lines 175-176)', () => {
+  it('inline amount edit input selects its text on focus and accepts a changed value', () => {
     mockUseFiscalCarryForwards.mockReturnValue({
       data: [activeEntry],
       isLoading: false,
@@ -378,12 +378,12 @@ describe('TaxPage', () => {
       expect(selectSpy).toHaveBeenCalled();
 
       fireEvent.change(editInput, { target: { value: '6000' } }); // line 176 - onChange
-      expect(screen.getByText('Fiscalité')).toBeTruthy();
+      expect(screen.getByText('Fiscalité')).toBeInTheDocument();
     }
   });
 
   // ── Test 14d: saveEdit on blur and handleKeyDown (lines 112-122) ──────────────
-  it('saveEdit: onBlur saves the edit when value changed (lines 113-117)', () => {
+  it('saves the edited amount on blur when the value has changed', () => {
     mockUseFiscalCarryForwards.mockReturnValue({
       data: [activeEntry],
       isLoading: false,
@@ -407,7 +407,7 @@ describe('TaxPage', () => {
     }
   });
 
-  it('saveEdit: onBlur with unchanged value does NOT call mutate (lines 113-117)', () => {
+  it('does not call the update mutation on blur when the amount is unchanged', () => {
     mockUseFiscalCarryForwards.mockReturnValue({
       data: [activeEntry], // amount_eur = -5000
       isLoading: false,
@@ -427,7 +427,7 @@ describe('TaxPage', () => {
     }
   });
 
-  it('handleKeyDown: Enter key calls saveEdit (line 121)', () => {
+  it('pressing Enter while editing the amount saves the change', () => {
     mockUseFiscalCarryForwards.mockReturnValue({
       data: [activeEntry],
       isLoading: false,
@@ -447,7 +447,7 @@ describe('TaxPage', () => {
     }
   });
 
-  it('handleKeyDown: Escape key cancels edit (line 122)', () => {
+  it('pressing Escape while editing the amount cancels the edit', () => {
     mockUseFiscalCarryForwards.mockReturnValue({
       data: [activeEntry],
       isLoading: false,
@@ -458,7 +458,7 @@ describe('TaxPage', () => {
 
     render(<TaxPage />);
     fireEvent.click(screen.getByTestId('amount-display'));
-    expect(document.querySelector('input[type="number"]')).toBeTruthy();
+    expect(document.querySelector('input[type="number"]')).toBeInTheDocument();
 
     const editInput = document.querySelector('input[type="number"]') as HTMLInputElement | null;
     if (editInput) {
@@ -484,11 +484,11 @@ describe('TaxPage', () => {
     fireEvent.change(amountInput, { target: { value: '500' } });
 
     fireEvent.click(screen.getByText('Enregistrer'));
-    await waitFor(() => expect(screen.getByText('Erreur lors de la création.')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Erreur lors de la création.')).toBeInTheDocument());
   });
 
   // ── Test 16: NewRow year select onChange (line 270) ───────────────────────────
-  it('NewRow: changing year select calls setTaxYear (line 270)', () => {
+  it('changing the year select in the new row updates the selected tax year', () => {
     mockUseFiscalCarryForwards.mockReturnValue({
       data: [],
       isLoading: false,
@@ -508,12 +508,12 @@ describe('TaxPage', () => {
       expect((yearSelect as HTMLSelectElement).value).toBe(options[1].value);
     } else {
       // Only one option, just verify the select exists
-      expect(yearSelect).toBeTruthy();
+      expect(yearSelect).toBeInTheDocument();
     }
   });
 
   // ── Test 17: expiring badge renders (line 148 branch) ─────────────────────────
-  it('expiring entry renders expiry-warning badge (line 148 branch coverage)', () => {
+  it('renders an expiry-warning badge for each entry expiring this year', () => {
     const expiringYear = { id: 10, portfolio_id: 1, tax_year: 2016, amount_eur: -2000 };
     mockUseFiscalCarryForwards.mockReturnValue({
       data: [expiringYear],
@@ -536,7 +536,7 @@ describe('TaxPage', () => {
       mockUseCreateCarryForward.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
     });
 
-    it('renders fiscal simulation when pvNetCurrentYear is non-null (lines 450-487)', () => {
+    it('renders the fiscal simulation section when current-year net PV is available', () => {
       // Need stockAjuste !== null AND pvNetCurrentYear !== null
       // stockAjuste = totalRemaining + pvNetCurrentYear
       // totalRemaining = sum of non-expired entries (amount_eur)
@@ -553,10 +553,10 @@ describe('TaxPage', () => {
 
       render(<TaxPage />);
       // stockAjuste = -5000 + 2000 = -3000 (negative → no warning)
-      expect(screen.getByText(/Simulation fiscale 2026/i)).toBeTruthy();
+      expect(screen.getByText(/Simulation fiscale 2026/i)).toBeInTheDocument();
     });
 
-    it('renders warning when stockAjuste >= 0 (line 487 branch)', () => {
+    it('shows the taxable-gains warning when the adjusted loss stock is non-negative', () => {
       // stockAjuste >= 0 → shows PV imposables warning
       const smallEntry = { id: 1, portfolio_id: 1, tax_year: 2022, amount_eur: -1000 };
       mockUseFiscalCarryForwards.mockReturnValue({
@@ -572,10 +572,10 @@ describe('TaxPage', () => {
 
       render(<TaxPage />);
       // Should show the warning about PV imposables
-      expect(screen.getByText(/PV imposables estimées/i)).toBeTruthy();
+      expect(screen.getByText(/PV imposables estimées/i)).toBeInTheDocument();
     });
 
-    it('pvNetCurrentYear < 0 shows negative color (line 470 branch)', () => {
+    it('renders the fiscal simulation with a negative net realized gain for the current year', () => {
       const activeEntry2022 = { id: 1, portfolio_id: 1, tax_year: 2022, amount_eur: -8000 };
       mockUseFiscalCarryForwards.mockReturnValue({
         data: [activeEntry2022],
@@ -589,10 +589,10 @@ describe('TaxPage', () => {
 
       render(<TaxPage />);
       // pvNetCurrentYear = -1500 < 0 → shows with '-' prefix (no '+')
-      expect(screen.getByText(/Simulation fiscale 2026/i)).toBeTruthy();
+      expect(screen.getByText(/Simulation fiscale 2026/i)).toBeInTheDocument();
     });
 
-    it('shows no simulation when pvNetCurrentYear is null (line 345 null branch)', () => {
+    it('hides the fiscal simulation section when current-year PV data is unavailable', () => {
       const activeEntry = { id: 1, portfolio_id: 1, tax_year: 2022, amount_eur: -5000 };
       mockUseFiscalCarryForwards.mockReturnValue({
         data: [activeEntry],
@@ -612,7 +612,7 @@ describe('TaxPage', () => {
 
 // ── Additional branch coverage ────────────────────────────────────────────────
 
-describe('TaxPage — additional branch coverage', () => {
+describe('TaxPage — row badges, inline editing edge cases, and save error handling', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseFiscalCurrentYearPv.mockReturnValue({ data: undefined, isLoading: false });
@@ -621,7 +621,7 @@ describe('TaxPage — additional branch coverage', () => {
     mockUseDeleteCarryForward.mockReturnValue({ mutate: vi.fn(), isPending: false });
   });
 
-  it('current year entry (tax_year=2026) renders "Année en cours" badge (line 132 true branch)', () => {
+  it('renders the "Année en cours" badge for an entry matching the current tax year', () => {
     // tax_year === CURRENT_YEAR (2026) → isCurrent(2026) = true → {current && ...} renders
     const currentEntry = { id: 10, portfolio_id: 1, tax_year: 2026, amount_eur: -2000 };
     mockUseFiscalCarryForwards.mockReturnValue({
@@ -630,10 +630,10 @@ describe('TaxPage — additional branch coverage', () => {
       isError: false,
     });
     render(<TaxPage />);
-    expect(screen.getByTestId('current-year-badge')).toBeTruthy();
+    expect(screen.getByTestId('current-year-badge')).toBeInTheDocument();
   });
 
-  it('editValue || "" uses empty string when editValue is 0 (line 173 true branch)', () => {
+  it('shows an empty amount input when editing an entry with a zero amount', () => {
     // entry.amount_eur=0 → editValue=Math.abs(0)=0 (falsy) → value={0 || ''}=''
     const zeroEntry = { id: 11, portfolio_id: 1, tax_year: 2022, amount_eur: 0 };
     mockUseFiscalCarryForwards.mockReturnValue({ data: [zeroEntry], isLoading: false, isError: false });
@@ -652,7 +652,7 @@ describe('TaxPage — additional branch coverage', () => {
     }
   });
 
-  it('onChange || 0 fallback when user types non-numeric in edit input (line 176 false branch)', () => {
+  it('falls back to zero when the inline edit input is cleared to a non-numeric value', () => {
     const activeEntry2 = { id: 12, portfolio_id: 1, tax_year: 2022, amount_eur: -3000 };
     mockUseFiscalCarryForwards.mockReturnValue({ data: [activeEntry2], isLoading: false, isError: false });
     const mockMutate = vi.fn();
@@ -666,11 +666,11 @@ describe('TaxPage — additional branch coverage', () => {
       // Type empty/non-numeric → parseFloat('') = NaN → || 0 → editValue = Math.abs(0) = 0
       fireEvent.change(editInput, { target: { value: '' } });
       // Math.abs(parseFloat('') || 0) = Math.abs(NaN || 0) = Math.abs(0) = 0
-      expect(screen.getByText('Fiscalité')).toBeTruthy();
+      expect(screen.getByText('Fiscalité')).toBeInTheDocument();
     }
   });
 
-  it('availableYears empty → taxYear falls back to 2025 (line 241 ?? branch)', () => {
+  it('shows the new-row form when adding an entry with no existing carry-forwards', () => {
     // When data is empty, availableYears=[] → availableYears[0] is undefined → ?? 2025
     mockUseFiscalCarryForwards.mockReturnValue({ data: [], isLoading: false, isError: false });
     mockUseCreateCarryForward.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
@@ -681,10 +681,10 @@ describe('TaxPage — additional branch coverage', () => {
     // With empty data, availableYears=[] → taxYear defaults to 2025
     // The select should show 2025 as the only/default option
     const newRow = screen.getByTestId('new-row');
-    expect(newRow).toBeTruthy();
+    expect(newRow).toBeInTheDocument();
   });
 
-  it('handleSave throws Error instance → shows err.message (line 259 true branch)', async () => {
+  it('shows the thrown error message when creating a carry-forward fails', async () => {
     const mockMutateAsync = vi.fn().mockRejectedValue(new Error('Duplicate entry'));
     mockUseCreateCarryForward.mockReturnValue({ mutateAsync: mockMutateAsync, isPending: false });
     mockUseFiscalCarryForwards.mockReturnValue({ data: [], isLoading: false, isError: false });
@@ -698,6 +698,6 @@ describe('TaxPage — additional branch coverage', () => {
     fireEvent.click(screen.getByText('Enregistrer'));
 
     // err instanceof Error → err.message = 'Duplicate entry' (true branch)
-    await rtlWaitFor2(() => expect(screen.getByText('Duplicate entry')).toBeTruthy());
+    await rtlWaitFor2(() => expect(screen.getByText('Duplicate entry')).toBeInTheDocument());
   });
 });

@@ -157,23 +157,23 @@ describe('GlobalConfigPage — RegionManager (Indicateurs macro)', () => {
 
   it('renders the macro indicators section with the region list and shared ticker fields', () => {
     render(<GlobalConfigPage />);
-    expect(screen.getByText(/Indicateurs macro/i)).toBeTruthy();
-    expect(screen.getByText('us')).toBeTruthy();
-    expect(screen.getByText('États-Unis')).toBeTruthy();
-    expect(screen.getByText('^SPXEW')).toBeTruthy();
-    expect(screen.getByText('S&P 500 Equal Weight')).toBeTruthy();
-    expect(screen.getByText('Obligations Trésor américain')).toBeTruthy();
-    expect(screen.getByLabelText('Ticker Pétrole')).toBeTruthy();
-    expect(screen.getByLabelText('Nom Pétrole')).toBeTruthy();
-    expect(screen.getByLabelText('Ticker Or')).toBeTruthy();
-    expect(screen.getByLabelText('Nom Or')).toBeTruthy();
-    expect(screen.getByLabelText('Durée de la moyenne mobile (années)')).toBeTruthy();
+    expect(screen.getByText(/Indicateurs macro/i)).toBeInTheDocument();
+    expect(screen.getByText('us')).toBeInTheDocument();
+    expect(screen.getByText('États-Unis')).toBeInTheDocument();
+    expect(screen.getByText('^SPXEW')).toBeInTheDocument();
+    expect(screen.getByText('S&P 500 Equal Weight')).toBeInTheDocument();
+    expect(screen.getByText('Obligations Trésor américain')).toBeInTheDocument();
+    expect(screen.getByLabelText('Ticker Pétrole')).toBeInTheDocument();
+    expect(screen.getByLabelText('Nom Pétrole')).toBeInTheDocument();
+    expect(screen.getByLabelText('Ticker Or')).toBeInTheDocument();
+    expect(screen.getByLabelText('Nom Or')).toBeInTheDocument();
+    expect(screen.getByLabelText('Durée de la moyenne mobile (années)')).toBeInTheDocument();
   });
 
   it('shows "Aucune région" when there are no regions', () => {
     mockUseMacroRegions.mockReturnValue({ data: [], refetch: vi.fn() });
     render(<GlobalConfigPage />);
-    expect(screen.getByText('Aucune région')).toBeTruthy();
+    expect(screen.getByText('Aucune région')).toBeInTheDocument();
   });
 
   it('saving without a code shows validation error', async () => {
@@ -183,7 +183,7 @@ describe('GlobalConfigPage — RegionManager (Indicateurs macro)', () => {
     await user.type(screen.getByLabelText('Nom'), 'Allemagne');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(/Le code est requis/i)).toBeTruthy();
+    expect(screen.getByText(/Le code est requis/i)).toBeInTheDocument();
   }, 10000);
 
   it('saving without a label shows validation error', async () => {
@@ -193,7 +193,7 @@ describe('GlobalConfigPage — RegionManager (Indicateurs macro)', () => {
     await user.type(screen.getByLabelText('Code'), 'de');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(/Le nom est requis/i)).toBeTruthy();
+    expect(screen.getByText(/Le nom est requis/i)).toBeInTheDocument();
   }, 10000);
 
   it('saving without an equity ticker shows validation error', async () => {
@@ -204,7 +204,7 @@ describe('GlobalConfigPage — RegionManager (Indicateurs macro)', () => {
     await user.type(screen.getByLabelText('Nom'), 'Allemagne');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(/Le ticker actions est requis/i)).toBeTruthy();
+    expect(screen.getByText(/Le ticker actions est requis/i)).toBeInTheDocument();
   }, 10000);
 
   it('saving without a bond ticker shows validation error', async () => {
@@ -216,7 +216,7 @@ describe('GlobalConfigPage — RegionManager (Indicateurs macro)', () => {
     await user.type(screen.getByLabelText('Ticker actions'), '^GDAXI');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(/Le ticker obligations est requis/i)).toBeTruthy();
+    expect(screen.getByText(/Le ticker obligations est requis/i)).toBeInTheDocument();
   }, 10000);
 
   it('saving without an equity label shows validation error', async () => {
@@ -229,7 +229,7 @@ describe('GlobalConfigPage — RegionManager (Indicateurs macro)', () => {
     await user.type(screen.getByLabelText('Ticker obligations'), 'BUND');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(/Le nom des actions est requis/i)).toBeTruthy();
+    expect(screen.getByText(/Le nom des actions est requis/i)).toBeInTheDocument();
   }, 10000);
 
   it('saving without a bond label shows validation error', async () => {
@@ -243,7 +243,7 @@ describe('GlobalConfigPage — RegionManager (Indicateurs macro)', () => {
     await user.type(screen.getByLabelText('Nom actions'), 'DAX 40');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(/Le nom des obligations est requis/i)).toBeTruthy();
+    expect(screen.getByText(/Le nom des obligations est requis/i)).toBeInTheDocument();
   }, 10000);
 
   it('can create a region with valid data', async () => {
@@ -288,7 +288,7 @@ describe('GlobalConfigPage — RegionManager (Indicateurs macro)', () => {
     await user.type(screen.getByLabelText('Nom obligations'), 'Bund 10 ans');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    await rtlWaitFor(() => expect(screen.getByText(/already exists/i)).toBeTruthy());
+    await rtlWaitFor(() => expect(screen.getByText(/already exists/i)).toBeInTheDocument());
   }, 10000);
 
   it('create region API error without detail uses fallback message', async () => {
@@ -305,14 +305,14 @@ describe('GlobalConfigPage — RegionManager (Indicateurs macro)', () => {
     await user.type(screen.getByLabelText('Nom obligations'), 'Bund 10 ans');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de l'enregistrement/i)).toBeTruthy());
+    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de l'enregistrement/i)).toBeInTheDocument());
   }, 10000);
 
   it('shows edit modal with the code locked when clicking edit for a region', async () => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByRole('button', { name: /Modifier us/i }));
-    expect(screen.getByText(/Modifier la région — us/i)).toBeTruthy();
+    expect(screen.getByText(/Modifier la région — us/i)).toBeInTheDocument();
     const codeInput = screen.getByLabelText('Code');
     expect((codeInput as HTMLInputElement).disabled).toBe(true);
     expect((codeInput as HTMLInputElement).value).toBe('us');
@@ -359,7 +359,7 @@ describe('GlobalConfigPage — RegionManager (Indicateurs macro)', () => {
     render(<GlobalConfigPage />);
     await user.click(screen.getByRole('button', { name: /Supprimer fr/i }));
     await user.click(screen.getByText('Supprimer'));
-    await rtlWaitFor(() => expect(screen.getByText(/Cannot delete the last remaining region/i)).toBeTruthy());
+    await rtlWaitFor(() => expect(screen.getByText(/Cannot delete the last remaining region/i)).toBeInTheDocument());
   }, 10000);
 
   it('delete error without detail shows fallback message', async () => {
@@ -369,6 +369,6 @@ describe('GlobalConfigPage — RegionManager (Indicateurs macro)', () => {
     render(<GlobalConfigPage />);
     await user.click(screen.getByRole('button', { name: /Supprimer fr/i }));
     await user.click(screen.getByText('Supprimer'));
-    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de la suppression/i)).toBeTruthy());
+    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de la suppression/i)).toBeInTheDocument());
   }, 10000);
 });

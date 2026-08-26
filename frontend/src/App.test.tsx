@@ -241,10 +241,10 @@ describe('App', () => {
 
   it('renders without crashing', () => {
     const { container } = render(<App />);
-    expect(container).toBeTruthy();
+    expect(container).toBeInTheDocument();
   });
 
-  it('AppVersion renders version span when useQuery returns version data (line 34)', () => {
+  it('AppVersion renders version span when useQuery returns version data', () => {
     // Make useQuery return version data for the app-version query key
     mockUseQuery.mockReturnValue({ data: { version: '0.4.0' }, isLoading: false, isError: false });
     render(<App />);
@@ -258,7 +258,7 @@ describe('App', () => {
     expect(document.body.textContent).toContain('Portfolio 1');
   });
 
-  it('FormSelect onChange navigates when value changes (line 101)', () => {
+  it('FormSelect onChange navigates when value changes', () => {
     render(<App />);
     // Fire the FormSelect onChange with a different portfolio ID
     if (capturedFormSelectOnChange) {
@@ -277,7 +277,7 @@ describe('App', () => {
     }
   });
 
-  it('Gérer les portefeuilles button navigates to /portfolios (line 111)', () => {
+  it('Gérer les portefeuilles button navigates to /portfolios', () => {
     render(<App />);
     if (capturedGererPortefeuilles) {
       capturedGererPortefeuilles();
@@ -285,7 +285,7 @@ describe('App', () => {
     }
   });
 
-  it('renders nav links for all sections (line 73 — AppNav)', () => {
+  it('AppNav renders nav links for all sections', () => {
     render(<App />);
     const body = document.body.textContent ?? '';
     expect(body).toContain('Dashboard');
@@ -315,7 +315,7 @@ describe('App', () => {
     render(<App />);
     const toggle = document.querySelector('[aria-label="Toggle sidebar"]') as HTMLButtonElement;
     const sidebar = document.querySelector('[data-testid="sidebar"]') as HTMLElement;
-    expect(toggle).toBeTruthy();
+    expect(toggle).toBeInTheDocument();
     // Starts open — also pushes the main content aside (issue #118 follow-up: PatternFly's
     // own CSS treats the sidebar as an off-canvas overlay below its xl breakpoint by default,
     // which covered the dashboard content with no way to interact with it).
@@ -379,8 +379,8 @@ describe('App', () => {
     shouldThrow = true;
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { getByText } = render(<App />);
-    expect(getByText('Une erreur est survenue')).toBeTruthy();
-    expect(getByText('Simulated crash for ErrorBoundary test')).toBeTruthy();
+    expect(getByText('Une erreur est survenue')).toBeInTheDocument();
+    expect(getByText('Simulated crash for ErrorBoundary test')).toBeInTheDocument();
     spy.mockRestore();
   });
 
@@ -389,7 +389,7 @@ describe('App', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { getByText } = render(<App />);
     // Error UI is shown
-    expect(getByText('Réessayer')).toBeTruthy();
+    expect(getByText('Réessayer')).toBeInTheDocument();
     // Stop throwing so next render succeeds
     shouldThrow = false;
     fireEvent.click(getByText('Réessayer'));
@@ -435,7 +435,7 @@ describe('App', () => {
     const { container } = render(<App />);
     // Note: because vi.doMock doesn't re-run the module factory in the same render cycle,
     // we at minimum verify the component renders without crashing.
-    expect(container).toBeTruthy();
+    expect(container).toBeInTheDocument();
     // The badge is visible if the module mock is applied; just verify container renders
     expect(document.body.textContent).toContain('Administration système');
   });
@@ -455,7 +455,7 @@ describe('App — PortfolioLayout branch coverage', () => {
     mockUseSearchParams.mockReturnValue([new URLSearchParams(), () => {}]);
   });
 
-  it('Back button (← Retour) onMouseEnter/onMouseLeave fire (lines 271-272)', () => {
+  it('Back button (← Retour) fires onMouseEnter/onMouseLeave and click handlers when no fromPortfolioId is set', () => {
     // GlobalLayout renders the "← Retour" button for /config and /system routes
     // Route mock renders ALL route elements, so GlobalLayout IS rendered
     render(<App />);
@@ -474,7 +474,7 @@ describe('App — PortfolioLayout branch coverage', () => {
     }
   });
 
-  it('fromPortfolioId present: back button navigates to portfolio (line 262-263 true branch)', () => {
+  it('Back button navigates to the origin portfolio when fromPortfolioId is present', () => {
     // useSearchParams returns URLSearchParams with 'from=1' → fromPortfolioId = '1'
     mockUseSearchParams.mockReturnValue([new URLSearchParams('from=1'), () => {}]);
     render(<App />);
@@ -490,7 +490,7 @@ describe('App — PortfolioLayout branch coverage', () => {
     }
   });
 
-  it('hasUpdate=true renders update badge (line 144 true branch)', () => {
+  it('renders the update badge when a GitHub update is available', () => {
     // Override useGitHubUpdateStatus to return update_available
     mockUseGitHubUpdateStatus.mockReturnValue({
       data: { status: 'update_available', current_version: '0.1.0', latest_version: '0.2.0', release_url: 'https://github.com', checked_at: null, error: null },
@@ -498,6 +498,6 @@ describe('App — PortfolioLayout branch coverage', () => {
     render(<App />);
     // hasUpdate = true → renders the red dot badge in AppNav
     const badge = document.body.querySelector('[data-testid="update-badge"]');
-    expect(badge).toBeTruthy();
+    expect(badge).toBeInTheDocument();
   });
 });

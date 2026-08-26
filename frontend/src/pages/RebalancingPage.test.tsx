@@ -120,54 +120,54 @@ describe('RebalancingPage', () => {
   it('shows spinner while loading', () => {
     mockUseDashboard.mockReturnValue({ data: undefined, isLoading: true, isError: false });
     render(<RebalancingPage />);
-    expect(screen.getByTestId('spinner')).toBeTruthy();
+    expect(screen.getByTestId('spinner')).toBeInTheDocument();
   });
 
   it('shows error when dashboard fails to load', () => {
     mockUseDashboard.mockReturnValue({ data: undefined, isLoading: false, isError: true });
     render(<RebalancingPage />);
-    expect(screen.getByText(/Erreur lors du chargement des données/i)).toBeTruthy();
+    expect(screen.getByText(/Erreur lors du chargement des données/i)).toBeInTheDocument();
   });
 
   it('shows error when dashboard data is null', () => {
     mockUseDashboard.mockReturnValue({ data: null, isLoading: false, isError: false });
     render(<RebalancingPage />);
-    expect(screen.getByText(/Erreur lors du chargement des données/i)).toBeTruthy();
+    expect(screen.getByText(/Erreur lors du chargement des données/i)).toBeInTheDocument();
   });
 
   it('renders page title and sync badge when loaded', () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     render(<RebalancingPage />);
-    expect(screen.getByText('Rééquilibrage')).toBeTruthy();
-    expect(screen.getByTestId('sync-badge')).toBeTruthy();
+    expect(screen.getByText('Rééquilibrage')).toBeInTheDocument();
+    expect(screen.getByTestId('sync-badge')).toBeInTheDocument();
   });
 
   it('renders simulator card with mode toggles', () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     render(<RebalancingPage />);
-    expect(screen.getByText(/Simulateur de rééquilibrage/i)).toBeTruthy();
-    expect(screen.getByTestId('toggle-Injection seule')).toBeTruthy();
-    expect(screen.getByTestId('toggle-Hybride')).toBeTruthy();
-    expect(screen.getByTestId('toggle-Rééquilibrage complet')).toBeTruthy();
+    expect(screen.getByText(/Simulateur de rééquilibrage/i)).toBeInTheDocument();
+    expect(screen.getByTestId('toggle-Injection seule')).toBeInTheDocument();
+    expect(screen.getByTestId('toggle-Hybride')).toBeInTheDocument();
+    expect(screen.getByTestId('toggle-Rééquilibrage complet')).toBeInTheDocument();
   });
 
   it('shows injection capital input and preset buttons by default (Injection seule mode)', () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     render(<RebalancingPage />);
-    expect(screen.getByText('Liquidités seules')).toBeTruthy();
-    expect(screen.getByText('+1k€')).toBeTruthy();
+    expect(screen.getByText('Liquidités seules')).toBeInTheDocument();
+    expect(screen.getByText('+1k€')).toBeInTheDocument();
   });
 
   it('shows Injection seule strategy description by default', () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     render(<RebalancingPage />);
-    expect(screen.getByText(/Proportionnel aux manques individuels/)).toBeTruthy();
+    expect(screen.getByText(/Proportionnel aux manques individuels/)).toBeInTheDocument();
   });
 
   it('shows placeholder when no rebal data yet', () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     render(<RebalancingPage />);
-    expect(screen.getByText(/Saisissez un montant/i)).toBeTruthy();
+    expect(screen.getByText(/Saisissez un montant/i)).toBeInTheDocument();
   });
 
   it('can switch to Hybride mode', async () => {
@@ -175,7 +175,7 @@ describe('RebalancingPage', () => {
     const user = userEvent.setup({ delay: null });
     render(<RebalancingPage />);
     await user.click(screen.getByTestId('toggle-Hybride'));
-    expect(screen.getByText(/Meilleur compromis/)).toBeTruthy();
+    expect(screen.getByText(/Meilleur compromis/)).toBeInTheDocument();
   });
 
   it('can switch to Rééquilibrage complet mode (no injection input visible)', async () => {
@@ -183,7 +183,7 @@ describe('RebalancingPage', () => {
     const user = userEvent.setup({ delay: null });
     render(<RebalancingPage />);
     await user.click(screen.getByTestId('toggle-Rééquilibrage complet'));
-    expect(screen.getByText(/Sans injection externe/)).toBeTruthy();
+    expect(screen.getByText(/Sans injection externe/)).toBeInTheDocument();
     // No injection input in hard mode
     expect(screen.queryByText('Liquidités seules')).toBeNull();
   });
@@ -194,8 +194,8 @@ describe('RebalancingPage', () => {
     render(<RebalancingPage />);
     await user.click(screen.getByText('+1k€'));
     // After debounce + fetch, pool names should appear in results
-    await waitFor(() => expect(screen.getByText('Asie')).toBeTruthy(), { timeout: 1500 });
-    expect(screen.getByText('Or')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('Asie')).toBeInTheDocument(), { timeout: 1500 });
+    expect(screen.getByText('Or')).toBeInTheDocument();
   });
 
   it('clicking preset +1k€ triggers fetch', async () => {
@@ -204,15 +204,15 @@ describe('RebalancingPage', () => {
     render(<RebalancingPage />);
     await user.click(screen.getByText('+1k€'));
     await waitFor(() => screen.getByText('Asie'), { timeout: 1500 });
-    expect(screen.getByText('Rééquilibrage')).toBeTruthy();
+    expect(screen.getByText('Rééquilibrage')).toBeInTheDocument();
   });
 
   it('shows commission inputs in frais de courtage section', () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     render(<RebalancingPage />);
-    expect(screen.getByText(/Frais de courtage/i)).toBeTruthy();
-    expect(screen.getByLabelText('Commission (%)')).toBeTruthy();
-    expect(screen.getByLabelText('Commission min (€/trade)')).toBeTruthy();
+    expect(screen.getByText(/Frais de courtage/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('Commission (%)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Commission min (€/trade)')).toBeInTheDocument();
   });
 
   it('shows 🟢 Acheter when a pool receives injection', async () => {
@@ -228,7 +228,7 @@ describe('RebalancingPage', () => {
     const user = userEvent.setup({ delay: null });
     render(<RebalancingPage />);
     await user.click(screen.getByText('+1k€'));
-    await waitFor(() => expect(screen.getByText(/Capital suffisant/)).toBeTruthy(), { timeout: 1500 });
+    await waitFor(() => expect(screen.getByText(/Capital suffisant/)).toBeInTheDocument(), { timeout: 1500 });
   });
 
   it('shows insufficiency banner when injection_total_needed exceeds budget', async () => {
@@ -248,7 +248,7 @@ describe('RebalancingPage', () => {
     const user = userEvent.setup({ delay: null });
     render(<RebalancingPage />);
     await user.click(screen.getByText('+1k€'));
-    await waitFor(() => expect(screen.getByText(/Capital insuffisant/)).toBeTruthy(), { timeout: 1500 });
+    await waitFor(() => expect(screen.getByText(/Capital insuffisant/)).toBeInTheDocument(), { timeout: 1500 });
   });
 
   it('shows the "impossible without selling" message when injection_total_needed is null', async () => {
@@ -268,7 +268,7 @@ describe('RebalancingPage', () => {
     const user = userEvent.setup({ delay: null });
     render(<RebalancingPage />);
     await user.click(screen.getByText('+1k€'));
-    await waitFor(() => expect(screen.getByText(/Impossible d'atteindre toutes les cibles/)).toBeTruthy(), { timeout: 1500 });
+    await waitFor(() => expect(screen.getByText(/Impossible d'atteindre toutes les cibles/)).toBeInTheDocument(), { timeout: 1500 });
   });
 
   it('names the blocking pool(s) when injection_blocking_pools is populated', async () => {
@@ -289,8 +289,8 @@ describe('RebalancingPage', () => {
     const user = userEvent.setup({ delay: null });
     render(<RebalancingPage />);
     await user.click(screen.getByText('+1k€'));
-    await waitFor(() => expect(screen.getByText(/Legacy/)).toBeTruthy(), { timeout: 1500 });
-    expect(screen.getByText(/242\.94/)).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/Legacy/)).toBeInTheDocument(), { timeout: 1500 });
+    expect(screen.getByText(/242\.94/)).toBeInTheDocument();
   });
 
   it('shows the total apport (liquidity + injection) in "Incluant liquidités à répartir"', async () => {
@@ -311,9 +311,9 @@ describe('RebalancingPage', () => {
     const user = userEvent.setup({ delay: null });
     render(<RebalancingPage />);
     await user.click(screen.getByText('+1k€'));
-    await waitFor(() => expect(screen.getByText(/Incluant liquidités à répartir/)).toBeTruthy(), { timeout: 1500 });
+    await waitFor(() => expect(screen.getByText(/Incluant liquidités à répartir/)).toBeInTheDocument(), { timeout: 1500 });
     // Must be the full total_apport (1039.61 = 39.61 liquidity + 1000 injected), not liquidity alone.
-    expect(screen.getByText(/1039\.61/)).toBeTruthy();
+    expect(screen.getByText(/1039\.61/)).toBeInTheDocument();
   });
 
   it('also shows "Incluant liquidités à répartir" with no external injection (same wording, not conditional)', async () => {
@@ -334,7 +334,7 @@ describe('RebalancingPage', () => {
     const user = userEvent.setup({ delay: null });
     render(<RebalancingPage />);
     await user.click(screen.getByText('Liquidités seules'));
-    await waitFor(() => expect(screen.getByText(/Incluant liquidités à répartir/)).toBeTruthy(), { timeout: 1500 });
+    await waitFor(() => expect(screen.getByText(/Incluant liquidités à répartir/)).toBeInTheDocument(), { timeout: 1500 });
   });
 
   it('shows the "switch mode" hint on its own line when injection_total_needed is null', async () => {
@@ -354,7 +354,7 @@ describe('RebalancingPage', () => {
     const user = userEvent.setup({ delay: null });
     render(<RebalancingPage />);
     await user.click(screen.getByText('+1k€'));
-    await waitFor(() => expect(screen.getByText('Passez en mode Hybride ou Rééquilibrage complet.')).toBeTruthy(), { timeout: 1500 });
+    await waitFor(() => expect(screen.getByText('Passez en mode Hybride ou Rééquilibrage complet.')).toBeInTheDocument(), { timeout: 1500 });
   });
 
   it('shows Hybride banner after switching mode and fetching', async () => {
@@ -376,7 +376,7 @@ describe('RebalancingPage', () => {
     await user.click(screen.getByText('+1k€'));
     await waitFor(() => expect(
       screen.getByText('Rééquilibrage complet — tous les pools atteignent leur cible.')
-    ).toBeTruthy(), { timeout: 1500 });
+    ).toBeInTheDocument(), { timeout: 1500 });
   });
 
   it('shows fees row when commission is set', async () => {
@@ -418,7 +418,7 @@ describe('RebalancingPage', () => {
 
     const minInput = screen.getByLabelText('Commission min (€/trade)');
     await user.type(minInput, '1');
-    expect(screen.getByText('Rééquilibrage')).toBeTruthy();
+    expect(screen.getByText('Rééquilibrage')).toBeInTheDocument();
   });
 
   it('Fix#1: overweight pool beyond danger threshold shows severity label, no tooltip', async () => {
@@ -437,7 +437,7 @@ describe('RebalancingPage', () => {
     const user = userEvent.setup({ delay: null });
     render(<RebalancingPage />);
     await user.click(screen.getByText('+1k€'));
-    await waitFor(() => expect(screen.getByText(/Déséquilibre significatif/)).toBeTruthy(), { timeout: 1500 });
+    await waitFor(() => expect(screen.getByText(/Déséquilibre significatif/)).toBeInTheDocument(), { timeout: 1500 });
     // Severity label alone, no direction — overweight pools aren't wrapped in the
     // capital-insufficient explanatory tooltip (that's only relevant to underweight ones).
     expect(screen.queryByTitle(/sous-pondéré/i)).toBeNull();
@@ -459,8 +459,8 @@ describe('RebalancingPage', () => {
     const user = userEvent.setup({ delay: null });
     render(<RebalancingPage />);
     await user.click(screen.getByText('+1k€'));
-    await waitFor(() => expect(screen.getByText(/Déséquilibre significatif/)).toBeTruthy(), { timeout: 1500 });
-    expect(screen.getByTitle(/sous-pondéré/i)).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/Déséquilibre significatif/)).toBeInTheDocument(), { timeout: 1500 });
+    expect(screen.getByTitle(/sous-pondéré/i)).toBeInTheDocument();
   });
 
   it('pool on target shows the on-target severity label', async () => {
@@ -479,10 +479,10 @@ describe('RebalancingPage', () => {
     const user = userEvent.setup({ delay: null });
     render(<RebalancingPage />);
     await user.click(screen.getByText('+1k€'));
-    await waitFor(() => expect(screen.getByText(/En cible/)).toBeTruthy(), { timeout: 1500 });
+    await waitFor(() => expect(screen.getByText(/En cible/)).toBeInTheDocument(), { timeout: 1500 });
   });
 
-  it('onChange on "Injection seule" toggle switches back from Hybride to contribution (line 103)', async () => {
+  it('switching from Hybride back to Injection seule sets the mode back to contribution', async () => {
     // Line 103: onChange={() => setRebalMode('contribution')} on ToggleGroupItem "Injection seule"
     // Switch to Hybride first, then switch back to Injection seule to fire line 103's onChange
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
@@ -491,14 +491,14 @@ describe('RebalancingPage', () => {
 
     // Switch to Hybride mode
     await user.click(screen.getByTestId('toggle-Hybride'));
-    expect(screen.getByText(/Meilleur compromis/)).toBeTruthy();
+    expect(screen.getByText(/Meilleur compromis/)).toBeInTheDocument();
 
     // Now switch back to Injection seule (line 103 fires)
     await user.click(screen.getByTestId('toggle-Injection seule'));
-    expect(screen.getByText(/Proportionnel aux manques individuels/)).toBeTruthy();
+    expect(screen.getByText(/Proportionnel aux manques individuels/)).toBeInTheDocument();
   });
 
-  it('NumberInput onChange on injection input fires handleInjectionChange (line 133)', async () => {
+  it('typing a new value into the injection amount NumberInput updates the injection amount', async () => {
     // Line 133: onChange={(e) => handleInjectionChange(Number(e.target.value) || 0)}
     // Fire change on the injection NumberInput's <input type="number">
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
@@ -508,11 +508,11 @@ describe('RebalancingPage', () => {
     const numberInputs = screen.getAllByRole('spinbutton');
     if (numberInputs.length > 0) {
       fireEvent.change(numberInputs[0], { target: { value: '2000' } });
-      expect(screen.getByText('Rééquilibrage')).toBeTruthy();
+      expect(screen.getByText('Rééquilibrage')).toBeInTheDocument();
     }
   });
 
-  it('inputProps.onFocus on injection NumberInput selects text (line 135 anonymous fn)', async () => {
+  it('focusing the injection amount NumberInput selects its existing text', async () => {
     // Line 135: inputProps={{ onFocus: (e) => e.currentTarget.select() }}
     // The NumberInput override passes inputProps.onFocus to the actual <input>
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
@@ -534,7 +534,7 @@ describe('RebalancingPage', () => {
     if (inputs.length > 0) {
       fireEvent.change(inputs[0], { target: { value: '500' } });
     }
-    expect(screen.getByText('Rééquilibrage')).toBeTruthy();
+    expect(screen.getByText('Rééquilibrage')).toBeInTheDocument();
   });
 
   it('🔴 Vendre shown when rebalance_amount is negative in hard mode', async () => {
@@ -563,7 +563,7 @@ describe('RebalancingPage', () => {
     }
     // Trigger via preset in non-hard mode is N/A; test via liquidity preset if visible,
     // or just verify the page renders without hard mode showing preset buttons
-    expect(screen.getByText('Rééquilibrage')).toBeTruthy();
+    expect(screen.getByText('Rééquilibrage')).toBeInTheDocument();
   });
 
   it('hard mode "après" % is computed against total_current, not total_after (leftover liquidity)', async () => {
@@ -592,7 +592,7 @@ describe('RebalancingPage', () => {
 
     // afterValue = 30000 + (-5000) = 25000. Against total_current (100000) → 25.0%
     // (the correct target). The bug divided by total_after (120000) → 20.8% instead.
-    await waitFor(() => expect(screen.getByText('25.0%')).toBeTruthy(), { timeout: 1500 });
+    await waitFor(() => expect(screen.getByText('25.0%')).toBeInTheDocument(), { timeout: 1500 });
     expect(screen.queryByText('20.8%')).toBeNull();
   });
 
@@ -620,12 +620,12 @@ describe('RebalancingPage', () => {
     const user = userEvent.setup({ delay: null });
     await user.click(screen.getByTestId('toggle-Rééquilibrage complet'));
 
-    await waitFor(() => expect(screen.getByText('0.0%')).toBeTruthy(), { timeout: 1500 });
+    await waitFor(() => expect(screen.getByText('0.0%')).toBeInTheDocument(), { timeout: 1500 });
   });
 
   // Line 68: handleCommissionChange called when rebalData is still null — if-false branch
   // We need the apiClient.post to never resolve so rebalData stays null during commission change
-  it('line 68: commission change before fetch resolves (rebalData=null) — if-false branch skips fetch', async () => {
+  it('changing the minimum commission while rebalData is still null does not trigger a re-fetch', async () => {
     const { default: apiClient } = await import('../api/client');
     // Never-resolving promise keeps rebalData=null during the commission input interaction
     vi.mocked(apiClient.post).mockImplementation(() => new Promise(() => {}));
@@ -638,11 +638,11 @@ describe('RebalancingPage', () => {
     // Commission min change calls handleCommissionChange → if (rebalData !== null) is FALSE
     const minInput = screen.getByLabelText('Commission min (€/trade)');
     await user.type(minInput, '1');
-    expect(screen.getByText('Rééquilibrage')).toBeTruthy();
+    expect(screen.getByText('Rééquilibrage')).toBeInTheDocument();
   });
 
   // Line 145: injection input onChange with non-numeric value — Number('') = 0 → 0 || 0 = 0 (|| 0 branch)
-  it('line 145: injection onChange exercises || 0 falsy branch', async () => {
+  it('clearing the injection amount input falls back to zero', async () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
     render(<RebalancingPage />);
@@ -655,18 +655,18 @@ describe('RebalancingPage', () => {
     await user.click(inputs[0]);
     await user.type(inputs[0], '500');
     await user.clear(inputs[0]);
-    expect(screen.getByText('Rééquilibrage')).toBeTruthy();
+    expect(screen.getByText('Rééquilibrage')).toBeInTheDocument();
   });
 
   // Line 148: dashboard?.liquidity_eur ?? 0 — ?? 0 fallback when liquidity_eur is undefined
-  it('line 148: dashboard?.liquidity_eur ?? 0 — fallback when liquidity_eur is undefined', () => {
+  it('displays zero available liquidity when the dashboard data has no liquidity_eur', () => {
     const dashNoLiquidity = { ...mockDashboard, liquidity_eur: undefined };
     mockUseDashboard.mockReturnValue({ data: dashNoLiquidity, isLoading: false, isError: false });
     render(<RebalancingPage />);
     // liquidity_eur=undefined → ?? 0 fires → formatEUR(0) = "0.00 €"
     const body = document.body.textContent ?? '';
     expect(body).toContain('0.00 €');
-    expect(screen.getByText('Rééquilibrage')).toBeTruthy();
+    expect(screen.getByText('Rééquilibrage')).toBeInTheDocument();
   });
 
   it('renders all pools with zero amounts (all already at target)', async () => {
@@ -693,13 +693,13 @@ describe('RebalancingPage', () => {
     const user = userEvent.setup({ delay: null });
     render(<RebalancingPage />);
     await user.click(screen.getByText('+1k€'));
-    await waitFor(() => expect(screen.getByText('Asie')).toBeTruthy(), { timeout: 1500 });
-    expect(screen.getByText('Or')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('Asie')).toBeInTheDocument(), { timeout: 1500 });
+    expect(screen.getByText('Or')).toBeInTheDocument();
   });
 
   // Line 166 (hard mode): {rebalMode === 'hard' && rebalLoading && ...} — TRUE-TRUE branch
   // Both rebalMode='hard' and rebalLoading=true must be true simultaneously
-  it('line 166 (hard mode loading): hard mode Calcul… spinner shown during fetch', async () => {
+  it('shows the "Calcul…" loading indicator in hard mode while the rebalancing fetch is pending', async () => {
     const { default: apiClient } = await import('../api/client');
     // Use a delayed promise so rebalLoading=true persists during assertion
     let resolvePost!: (v: any) => void;
@@ -727,7 +727,7 @@ describe('RebalancingPage', () => {
   });
 
   // Line 208: commission-min onChange → parseFloat(value) || 0 — falsy branch when value is ''
-  it('line 208: commission-min onChange exercises || 0 falsy branch', async () => {
+  it('clearing the minimum commission input falls back to zero', async () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
     render(<RebalancingPage />);
@@ -736,11 +736,11 @@ describe('RebalancingPage', () => {
     // Type '1' first (truthy → parseFloat('1') = 1), then clear → '' → parseFloat('') = NaN → || 0
     await user.type(minInput, '1');
     await user.clear(minInput);
-    expect(screen.getByText('Rééquilibrage')).toBeTruthy();
+    expect(screen.getByText('Rééquilibrage')).toBeInTheDocument();
   });
 
   // Lines 221-223: rebalData.pools ?? [], total_apport ?? 0, total_current ?? 0 — ?? fallbacks
-  it('lines 221-223: ?? fallbacks when rebalData fields are undefined/null', async () => {
+  it('renders without crashing when the rebalancing response omits pools, total_apport, or total_current', async () => {
     const { default: apiClient } = await import('../api/client');
     // Provide rebalData missing pools, total_apport, total_current → all ?? fallbacks fire
     vi.mocked(apiClient.post).mockResolvedValue({
@@ -754,11 +754,11 @@ describe('RebalancingPage', () => {
     render(<RebalancingPage />);
     await user.click(screen.getByText('+1k€'));
     // pools ?? [] → empty array → no pool rows; page should not crash
-    await waitFor(() => expect(screen.getByText('Rééquilibrage')).toBeTruthy(), { timeout: 1500 });
+    await waitFor(() => expect(screen.getByText('Rééquilibrage')).toBeInTheDocument(), { timeout: 1500 });
   });
 
   // Line 230: (p as any)[key] ?? 0 — ?? 0 fallback when pool field is undefined
-  it('line 230: pool field ?? 0 — ?? 0 fallback when injection_amount/hybrid_amount/rebalance_amount is undefined', async () => {
+  it('displays zero for a pool amount field missing from the rebalancing response', async () => {
     const { default: apiClient } = await import('../api/client');
     vi.mocked(apiClient.post).mockResolvedValue({
       data: {
@@ -774,8 +774,8 @@ describe('RebalancingPage', () => {
     const user = userEvent.setup({ delay: null });
     render(<RebalancingPage />);
     await user.click(screen.getByText('+1k€'));
-    await waitFor(() => expect(screen.getByText('Asie')).toBeTruthy(), { timeout: 1500 });
-    expect(screen.getByText('Rééquilibrage')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('Asie')).toBeInTheDocument(), { timeout: 1500 });
+    expect(screen.getByText('Rééquilibrage')).toBeInTheDocument();
   });
 
   it('handleInjectionChange debounce timer fires and re-fetches with the new injection amount (without unmounting)', async () => {
@@ -845,7 +845,7 @@ describe('RebalancingPage', () => {
     expect(vi.mocked(apiClient.post).mock.calls.length).toBe(postCallCountAtUnmount);
   });
 
-  it('hard mode with commission > 0 and undefined rebalance_fee/rebalance_net hits ?? 0 fallback (lines 278, 281)', async () => {
+  it('displays zero fee and net amounts in hard mode when a pool omits rebalance_fee/rebalance_net', async () => {
     // This test covers the two uncovered branches:
     //   line 278: (p.rebalance_fee ?? 0)   when rebalMode === 'hard' and showFees === true
     //   line 281: (p.rebalance_net ?? 0)   when rebalMode === 'hard' and showFees === true
@@ -894,7 +894,7 @@ describe('RebalancingPage', () => {
     // At this point lines 278 and 281 execute with rebalMode='hard' and showFees=true:
     //   fee = p.rebalance_fee ?? 0   (undefined ?? 0 = 0)
     //   net = p.rebalance_net ?? 0   (undefined ?? 0 = 0)
-    await waitFor(() => expect(screen.getByText('Or')).toBeTruthy(), { timeout: 1500 });
-    expect(screen.getByText('Rééquilibrage')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('Or')).toBeInTheDocument(), { timeout: 1500 });
+    expect(screen.getByText('Rééquilibrage')).toBeInTheDocument();
   });
 });

@@ -21,7 +21,7 @@ describe('useSortable', () => {
     expect(result.current.sorted[2].name).toBe('Zebra');
   });
 
-  it('toggle: clicking same column switches direction (lines 31-32 — same col branch)', () => {
+  it('toggle: clicking the same column again switches direction from asc to desc', () => {
     const { result } = renderHook(() =>
       useSortable({ data: DATA, defaultCol: 'name' })
     );
@@ -39,7 +39,7 @@ describe('useSortable', () => {
     expect(result.current.sorted[0].name).toBe('Zebra');
   });
 
-  it('toggle: clicking different column sets new column asc (lines 33-35 — new col branch)', () => {
+  it('toggle: clicking a different column switches to it, sorted ascending', () => {
     const { result } = renderHook(() =>
       useSortable({ data: DATA, defaultCol: 'name' })
     );

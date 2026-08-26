@@ -79,7 +79,7 @@ describe('PortfolioSelectPage — line 62: handleDelete early return', () => {
 
     // Open delete modal
     await user.click(screen.getByText('Supprimer'));
-    expect(screen.getByTestId('modal')).toBeTruthy();
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
 
     // Type a WRONG name — deleteConfirmName = 'WrongName' ≠ 'Portfolio 1' = deleteTarget.name
     const confirmInput = screen.getByRole('textbox', { name: /Confirmer le nom/i });
@@ -138,7 +138,7 @@ describe('PortfolioSelectPage — line 170: setRenameTarget updater (t => t ? {.
 
     await user.click(screen.getByText('Renommer'));
     const modal = screen.getByTestId('modal');
-    expect(modal).toBeTruthy();
+    expect(modal).toBeInTheDocument();
 
     // Find the name TextInput inside the rename modal
     const inputs = Array.from(modal.querySelectorAll('input[type="text"]'));
@@ -150,6 +150,6 @@ describe('PortfolioSelectPage — line 170: setRenameTarget updater (t => t ? {.
 
     // Verify the updated name reflects in the input value
     expect((inputs[0] as HTMLInputElement).value).toBe('Portfolio 1b');
-    expect(screen.getByText('PIE Manager')).toBeTruthy();
+    expect(screen.getByText('PIE Manager')).toBeInTheDocument();
   }, 10000);
 });

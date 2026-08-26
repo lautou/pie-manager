@@ -109,7 +109,7 @@ const mockData = {
 
 import CapitalGainsPage from './CapitalGainsPage';
 
-describe('CapitalGainsPage — sort switch coverage (lines 60-68, 195-200)', () => {
+describe('CapitalGainsPage — sorting the summary and history tables by every column', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseCapitalGains.mockReturnValue({ data: mockData, isLoading: false, isError: false });
@@ -117,90 +117,90 @@ describe('CapitalGainsPage — sort switch coverage (lines 60-68, 195-200)', () 
 
   // ── Summary table sort cases (lines 60-68) ──────────────────────────────────
 
-  it('sort by Ticker (col 0) — line 60', async () => {
+  it('sorts the summary table by Ticker', async () => {
     const user = userEvent.setup({ delay: null });
     render(<CapitalGainsPage />);
     const ths = Array.from(document.querySelectorAll('th[data-col-index]'));
     const col0 = ths.find(th => th.getAttribute('data-col-index') === '0');
-    expect(col0).toBeTruthy();
+    expect(col0).toBeInTheDocument();
     await user.click(col0 as HTMLElement);
-    expect(screen.getByText('Plus-values')).toBeTruthy();
+    expect(screen.getByText('Plus-values')).toBeInTheDocument();
   });
 
-  it('sort by CUMP (col 2) — line 61', async () => {
+  it('sorts the summary table by CUMP', async () => {
     const user = userEvent.setup({ delay: null });
     render(<CapitalGainsPage />);
     const ths = Array.from(document.querySelectorAll('th[data-col-index]'));
     const col2 = ths.find(th => th.getAttribute('data-col-index') === '2');
-    expect(col2).toBeTruthy();
+    expect(col2).toBeInTheDocument();
     await user.click(col2 as HTMLElement);
-    expect(screen.getByText('Plus-values')).toBeTruthy();
+    expect(screen.getByText('Plus-values')).toBeInTheDocument();
   });
 
-  it('sort by Valeur actuelle (col 3) — line 62', async () => {
+  it('sorts the summary table by Valeur actuelle', async () => {
     const user = userEvent.setup({ delay: null });
     render(<CapitalGainsPage />);
     const ths = Array.from(document.querySelectorAll('th[data-col-index]'));
     const col3 = ths.find(th => th.getAttribute('data-col-index') === '3');
-    expect(col3).toBeTruthy();
+    expect(col3).toBeInTheDocument();
     await user.click(col3 as HTMLElement);
-    expect(screen.getByText('Plus-values')).toBeTruthy();
+    expect(screen.getByText('Plus-values')).toBeInTheDocument();
   });
 
-  it('sort by Coût de revient (col 4) — line 63', async () => {
+  it('sorts the summary table by Coût de revient', async () => {
     const user = userEvent.setup({ delay: null });
     render(<CapitalGainsPage />);
     const ths = Array.from(document.querySelectorAll('th[data-col-index]'));
     const col4 = ths.find(th => th.getAttribute('data-col-index') === '4');
-    expect(col4).toBeTruthy();
+    expect(col4).toBeInTheDocument();
     await user.click(col4 as HTMLElement);
-    expect(screen.getByText('Plus-values')).toBeTruthy();
+    expect(screen.getByText('Plus-values')).toBeInTheDocument();
   });
 
-  it('sort by PV latente (col 5) — line 64', async () => {
+  it('sorts the summary table by PV latente', async () => {
     const user = userEvent.setup({ delay: null });
     render(<CapitalGainsPage />);
     const ths = Array.from(document.querySelectorAll('th[data-col-index]'));
     const col5 = ths.find(th => th.getAttribute('data-col-index') === '5');
-    expect(col5).toBeTruthy();
+    expect(col5).toBeInTheDocument();
     await user.click(col5 as HTMLElement);
-    expect(screen.getByText('Plus-values')).toBeTruthy();
+    expect(screen.getByText('Plus-values')).toBeInTheDocument();
   });
 
-  it('sort by PV latente % (col 6) — line 65', async () => {
+  it('sorts the summary table by PV latente %', async () => {
     const user = userEvent.setup({ delay: null });
     render(<CapitalGainsPage />);
     const ths = Array.from(document.querySelectorAll('th[data-col-index]'));
     const col6 = ths.find(th => th.getAttribute('data-col-index') === '6');
-    expect(col6).toBeTruthy();
+    expect(col6).toBeInTheDocument();
     await user.click(col6 as HTMLElement);
-    expect(screen.getByText('Plus-values')).toBeTruthy();
+    expect(screen.getByText('Plus-values')).toBeInTheDocument();
   });
 
-  it('sort by PV réalisée (col 7) — line 66', async () => {
+  it('sorts the summary table by PV réalisée', async () => {
     const user = userEvent.setup({ delay: null });
     render(<CapitalGainsPage />);
     const ths = Array.from(document.querySelectorAll('th[data-col-index]'));
     const col7 = ths.find(th => th.getAttribute('data-col-index') === '7');
-    expect(col7).toBeTruthy();
+    expect(col7).toBeInTheDocument();
     await user.click(col7 as HTMLElement);
-    expect(screen.getByText('Plus-values')).toBeTruthy();
+    expect(screen.getByText('Plus-values')).toBeInTheDocument();
   });
 
-  it('sort by PV nette (col 8) — line 67', async () => {
+  it('sorts the summary table by PV nette', async () => {
     const user = userEvent.setup({ delay: null });
     render(<CapitalGainsPage />);
     const ths = Array.from(document.querySelectorAll('th[data-col-index]'));
     const col8 = ths.find(th => th.getAttribute('data-col-index') === '8');
-    expect(col8).toBeTruthy();
+    expect(col8).toBeInTheDocument();
     await user.click(col8 as HTMLElement);
-    expect(screen.getByText('Plus-values')).toBeTruthy();
+    expect(screen.getByText('Plus-values')).toBeInTheDocument();
   });
 
   // ── History table sort cases (lines 195-200) ────────────────────────────────
   // EVENT_COLS column indices: date=0, ticker=1, nom=2, qty=3, cump=4, prix=5, pv=6
 
-  it('sort history by Ticker (col 1) — line 195', async () => {
+  it('sorts the history table by Ticker', async () => {
     const user = userEvent.setup({ delay: null });
     render(<CapitalGainsPage />);
     // History table Th elements have col-index 0-6; find index 1 (ticker)
@@ -212,50 +212,50 @@ describe('CapitalGainsPage — sort switch coverage (lines 60-68, 195-200)', () 
     if (allThIndex1.length > 0) {
       await user.click(allThIndex1[allThIndex1.length - 1]);
     }
-    expect(screen.getByText('Plus-values')).toBeTruthy();
+    expect(screen.getByText('Plus-values')).toBeInTheDocument();
   });
 
-  it('sort history by Qté vendue (col 3) — line 196', async () => {
+  it('sorts the history table by Qté vendue', async () => {
     const user = userEvent.setup({ delay: null });
     render(<CapitalGainsPage />);
     const allThIndex3 = Array.from(document.querySelectorAll('th[data-col-index="3"]'));
     if (allThIndex3.length > 0) {
       await user.click(allThIndex3[allThIndex3.length - 1]);
     }
-    expect(screen.getByText('Plus-values')).toBeTruthy();
+    expect(screen.getByText('Plus-values')).toBeInTheDocument();
   });
 
-  it('sort history by CUMP à la vente (col 4) — line 197', async () => {
+  it('sorts the history table by CUMP à la vente', async () => {
     const user = userEvent.setup({ delay: null });
     render(<CapitalGainsPage />);
     const allThIndex4 = Array.from(document.querySelectorAll('th[data-col-index="4"]'));
     if (allThIndex4.length > 0) {
       await user.click(allThIndex4[allThIndex4.length - 1]);
     }
-    expect(screen.getByText('Plus-values')).toBeTruthy();
+    expect(screen.getByText('Plus-values')).toBeInTheDocument();
   });
 
-  it('sort history by Prix de cession (col 5) — line 198', async () => {
+  it('sorts the history table by Prix de cession', async () => {
     const user = userEvent.setup({ delay: null });
     render(<CapitalGainsPage />);
     const allThIndex5 = Array.from(document.querySelectorAll('th[data-col-index="5"]'));
     if (allThIndex5.length > 0) {
       await user.click(allThIndex5[allThIndex5.length - 1]);
     }
-    expect(screen.getByText('Plus-values')).toBeTruthy();
+    expect(screen.getByText('Plus-values')).toBeInTheDocument();
   });
 
-  it('sort history by PV réalisée (col 6) — line 199', async () => {
+  it('sorts the history table by PV réalisée', async () => {
     const user = userEvent.setup({ delay: null });
     render(<CapitalGainsPage />);
     const allThIndex6 = Array.from(document.querySelectorAll('th[data-col-index="6"]'));
     if (allThIndex6.length > 0) {
       await user.click(allThIndex6[allThIndex6.length - 1]);
     }
-    expect(screen.getByText('Plus-values')).toBeTruthy();
+    expect(screen.getByText('Plus-values')).toBeInTheDocument();
   });
 
-  it('sort history by Date (col 0) — line 194 (also exercises desc direction)', async () => {
+  it('sorts the history table by Date in both ascending and descending direction', async () => {
     const user = userEvent.setup({ delay: null });
     render(<CapitalGainsPage />);
     const allThIndex0 = Array.from(document.querySelectorAll('th[data-col-index="0"]'));
@@ -264,10 +264,10 @@ describe('CapitalGainsPage — sort switch coverage (lines 60-68, 195-200)', () 
       await user.click(allThIndex0[allThIndex0.length - 1]);
       await user.click(allThIndex0[allThIndex0.length - 1]);
     }
-    expect(screen.getByText('Plus-values')).toBeTruthy();
+    expect(screen.getByText('Plus-values')).toBeInTheDocument();
   });
 
-  it('sort by PV latente % (col 6) with cost_basis_eur=0 covers pctB=0 fallback (line 60 false branch)', async () => {
+  it('sorts the summary table by PV latente % when a ticker has zero cost basis', async () => {
     // One ticker has cost_basis_eur=0 → pctB = 0 (false branch of !== 0 ? ... : 0)
     const dataWithZeroCost = {
       portfolio_id: 1,
@@ -296,6 +296,6 @@ describe('CapitalGainsPage — sort switch coverage (lines 60-68, 195-200)', () 
     // comparator uses pctA and pctB; pctB = b.cost_basis_eur !== 0 ? ... : 0
     const col6 = Array.from(document.querySelectorAll('th[data-col-index="6"]'))[0];
     if (col6) await user.click(col6 as HTMLElement);
-    expect(screen.getByText('Plus-values')).toBeTruthy();
+    expect(screen.getByText('Plus-values')).toBeInTheDocument();
   });
 });

@@ -166,7 +166,7 @@ describe('PoolPositionsTable — default sort branch coverage (line 110)', () =>
       }
     }
 
-    expect(screen.getByText('Positions actuelles')).toBeTruthy();
+    expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
   });
 
   // Line 98-99: pctPool sort case, poolTotal > 0 TRUE branch
@@ -181,7 +181,7 @@ describe('PoolPositionsTable — default sort branch coverage (line 110)', () =>
     if (col6) {
       await user.click(col6);
     }
-    expect(screen.getByText('Positions actuelles')).toBeTruthy();
+    expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
   });
 
   // Line 104: pvB = pvMap.get(b.ticker)?.unrealized_pv ?? 0 — ?? 0 fallback for b.ticker absent
@@ -197,7 +197,7 @@ describe('PoolPositionsTable — default sort branch coverage (line 110)', () =>
     if (col8) {
       await user.click(col8);
     }
-    expect(screen.getByText('Positions actuelles')).toBeTruthy();
+    expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
   });
 });
 
@@ -215,7 +215,7 @@ describe('HoldingsPage — additional branch coverage', () => {
     mockUseHoldings.mockReturnValue({ data: [posNoCurrency], isLoading: false, isError: false });
     render(<HoldingsPage />);
     // Should render without crash; currency defaults to 'EUR'
-    expect(screen.getByText('Positions actuelles')).toBeTruthy();
+    expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
   });
 
   // Line 179 (both branches): isStale && pos.last_price_date — TRUE path
@@ -229,7 +229,7 @@ describe('HoldingsPage — additional branch coverage', () => {
     // Tooltip renders as <div title="...">; date appears in DOM
     const body = document.body.textContent ?? '';
     expect(body).toContain('2024-01-01');
-    expect(screen.getByText('Positions actuelles')).toBeTruthy();
+    expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
   });
 
   // Line 268: syncStatus?.failed_tickers ?? [] — ?? [] fallback when syncStatus data is undefined
@@ -239,7 +239,7 @@ describe('HoldingsPage — additional branch coverage', () => {
     mockUseHoldings.mockReturnValue({ data: [posA], isLoading: false, isError: false });
     render(<HoldingsPage />);
     // Should render without crash — failedTickers defaults to empty Set
-    expect(screen.getByText('Positions actuelles')).toBeTruthy();
+    expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
   });
 
   // Lines 351, 366: dashboard.total_eur > 0 — FALSE branch (shows '–' instead of percentage)

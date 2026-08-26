@@ -113,7 +113,7 @@ const mockProduct = { ticker: 'AAPL', name: 'Apple', category: 'Actif', instrume
 
 import TransactionsPage from './TransactionsPage';
 
-describe('TransactionsPage — initFees function (line 146 map/sort callbacks)', () => {
+describe('TransactionsPage — initFees function (deriving fee amounts from linked Frais transactions)', () => {
   // initFees is called when editing tx has linked Frais transactions
   // linkedFrais = transactions.filter(tx => tx.linked_transaction_id === editingTx.id)
   const mainTx = {
@@ -151,7 +151,7 @@ describe('TransactionsPage — initFees function (line 146 map/sort callbacks)',
     mockUseDeleteTransaction.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
   });
 
-  it('editing a tx with linked Frais calls initFees (map + sort callbacks, line 146)', async () => {
+  it('editing a tx with linked Frais calls initFees to populate its fee amounts', async () => {
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
 
@@ -164,11 +164,11 @@ describe('TransactionsPage — initFees function (line 146 map/sort callbacks)',
       // map callback: f => Math.abs(f.total_amount_eur) is called for both (fn8)
       // sort callback: (a, b) => a - b is called (fn9)
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 });
 
-describe('TransactionsPage — isRevolutFX section (line 985)', () => {
+describe('TransactionsPage — isRevolutFX section (Revolut FX commission info panel)', () => {
   // isRevolutFX = true when selectedAccount.monthly_free_eur !== null AND form.ticker === 'JPYEUR=X'
   const fxAccount = { id: 1, portfolio_id: 1, name: 'Revolut', currency: 'EUR',
     monthly_free_eur: 1000, above_monthly_rate: 0.01, weekend_rate: null, portfolio_ids: [1] };
@@ -191,7 +191,7 @@ describe('TransactionsPage — isRevolutFX section (line 985)', () => {
     mockUseDeleteTransaction.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
   });
 
-  it('opening edit for JPYEUR=X tx with monthly_free_eur account renders isRevolutFX section (line 985)', async () => {
+  it('opening edit for JPYEUR=X tx with monthly_free_eur account renders the Revolut FX info panel', async () => {
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
 
@@ -204,10 +204,10 @@ describe('TransactionsPage — isRevolutFX section (line 985)', () => {
       // Line 985 should be covered (both branches covered across weekday/weekend runs)
     }
 
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('isRevolutFX weekday branch: mock isWeekendNewYork to return false (line 987)', async () => {
+  it('isRevolutFX section renders the weekday commission rate when isWeekendNewYork returns false', async () => {
     // Import and mock the commission module's isWeekendNewYork to force weekday
     const commissionModule = await import('../utils/commission');
     const isWeekendSpy = vi.spyOn(commissionModule, 'isWeekendNewYork').mockReturnValue(false);
@@ -220,11 +220,11 @@ describe('TransactionsPage — isRevolutFX section (line 985)', () => {
     if (editBtn) await user.click(editBtn);
 
     // line 987 (non-weekend) should be rendered
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
     isWeekendSpy.mockRestore();
   }, 10000);
 
-  it('isRevolutFX weekend branch: mock isWeekendNewYork to return true (line 986)', async () => {
+  it('isRevolutFX section renders the weekend commission rate when isWeekendNewYork returns true', async () => {
     const commissionModule = await import('../utils/commission');
     const isWeekendSpy = vi.spyOn(commissionModule, 'isWeekendNewYork').mockReturnValue(true);
 
@@ -236,12 +236,12 @@ describe('TransactionsPage — isRevolutFX section (line 985)', () => {
     if (editBtn) await user.click(editBtn);
 
     // line 986 (weekend) should be rendered
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
     isWeekendSpy.mockRestore();
   }, 10000);
 });
 
-describe('TransactionsPage — courtage/TTF section (lines 933-964)', () => {
+describe('TransactionsPage — courtage/TTF section', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
@@ -258,7 +258,7 @@ describe('TransactionsPage — courtage/TTF section (lines 933-964)', () => {
 
     await user.click(screen.getByText('Nouvelle transaction'));
     // Default type is Actif, so courtage section should appear
-    expect(screen.getByText(/Courtage et TTF créés automatiquement/i)).toBeTruthy();
+    expect(screen.getByText(/Courtage et TTF créés automatiquement/i)).toBeInTheDocument();
   }, 10000);
 
   it('shows courtage and TTF inputs with ids', async () => {
@@ -266,8 +266,8 @@ describe('TransactionsPage — courtage/TTF section (lines 933-964)', () => {
     render(<TransactionsPage />);
 
     await user.click(screen.getByText('Nouvelle transaction'));
-    expect(document.getElementById('tx-courtage')).toBeTruthy();
-    expect(document.getElementById('tx-ttf')).toBeTruthy();
+    expect(document.getElementById('tx-courtage')).toBeInTheDocument();
+    expect(document.getElementById('tx-ttf')).toBeInTheDocument();
   }, 10000);
 
   it('courtage onChange updates form', async () => {
@@ -299,7 +299,7 @@ describe('TransactionsPage — courtage/TTF section (lines 933-964)', () => {
     }
   }, 10000);
 
-  it('TTF onChange updates form (line 947)', async () => {
+  it('TTF onChange updates the form value', async () => {
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
 
@@ -313,7 +313,7 @@ describe('TransactionsPage — courtage/TTF section (lines 933-964)', () => {
     }
   }, 10000);
 
-  it('TTF onFocus calls select (line 946)', () => {
+  it('TTF onFocus selects the existing input value', () => {
     render(<TransactionsPage />);
     // Render without modal — courtage section not visible in list view
     // Need to open modal first
@@ -332,7 +332,7 @@ describe('TransactionsPage — courtage/TTF section (lines 933-964)', () => {
 
     await user.click(screen.getByText('Nouvelle transaction'));
     // Coût total should be visible
-    expect(screen.getByText(/Coût total/i)).toBeTruthy();
+    expect(screen.getByText(/Coût total/i)).toBeInTheDocument();
   }, 10000);
 
   it('shows isRevolutFX info when account has monthly_free_eur and ticker is JPYEUR=X', async () => {
@@ -362,7 +362,7 @@ describe('TransactionsPage — courtage/TTF section (lines 933-964)', () => {
       // isRevolutFX = true: should show the FX info line
     }
     // Just verify the page still renders without crashing
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 });
 

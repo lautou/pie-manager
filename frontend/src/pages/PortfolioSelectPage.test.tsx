@@ -64,31 +64,31 @@ describe('PortfolioSelectPage', () => {
   it('shows spinner when loading', () => {
     mockUsePortfolios.mockReturnValue({ data: undefined, isLoading: true, isError: false });
     render(<PortfolioSelectPage />);
-    expect(screen.getByTestId('spinner')).toBeTruthy();
+    expect(screen.getByTestId('spinner')).toBeInTheDocument();
   });
 
   it('shows error message when isError', () => {
     mockUsePortfolios.mockReturnValue({ data: undefined, isLoading: false, isError: true });
     render(<PortfolioSelectPage />);
-    expect(screen.getByText(/Erreur lors du chargement/i)).toBeTruthy();
+    expect(screen.getByText(/Erreur lors du chargement/i)).toBeInTheDocument();
   });
 
   it('shows empty state when no portfolios', () => {
     mockUsePortfolios.mockReturnValue({ data: [], isLoading: false, isError: false });
     render(<PortfolioSelectPage />);
-    expect(screen.getByText(/Aucun portefeuille/i)).toBeTruthy();
+    expect(screen.getByText(/Aucun portefeuille/i)).toBeInTheDocument();
   });
 
   it('renders portfolio list', () => {
     mockUsePortfolios.mockReturnValue({ data: [mockPortfolio], isLoading: false, isError: false });
     render(<PortfolioSelectPage />);
-    expect(screen.getByText('Portfolio 1')).toBeTruthy();
+    expect(screen.getByText('Portfolio 1')).toBeInTheDocument();
   });
 
   it('renders portfolio without date', () => {
     mockUsePortfolios.mockReturnValue({ data: [mockPortfolioNoDate], isLoading: false, isError: false });
     render(<PortfolioSelectPage />);
-    expect(screen.getByText('Portfolio 2')).toBeTruthy();
+    expect(screen.getByText('Portfolio 2')).toBeInTheDocument();
   });
 
   it('navigates to dashboard on portfolio click', async () => {
@@ -124,7 +124,7 @@ describe('PortfolioSelectPage', () => {
     render(<PortfolioSelectPage />);
 
     await user.click(screen.getByText('Créer un portefeuille'));
-    expect(screen.getByTestId('modal')).toBeTruthy();
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
   });
 
   it('can open create modal from portfolio list', async () => {
@@ -133,7 +133,7 @@ describe('PortfolioSelectPage', () => {
     render(<PortfolioSelectPage />);
 
     await user.click(screen.getByText('Nouveau portefeuille'));
-    expect(screen.getByTestId('modal')).toBeTruthy();
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
   });
 
   it('can close create modal', async () => {
@@ -166,7 +166,7 @@ describe('PortfolioSelectPage', () => {
     render(<PortfolioSelectPage />);
 
     await user.click(screen.getByText('Renommer'));
-    expect(screen.getByTestId('modal')).toBeTruthy();
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
   });
 
   it('can rename portfolio', async () => {
@@ -181,7 +181,7 @@ describe('PortfolioSelectPage', () => {
 
     // Modal should open
     const modal = screen.getByTestId('modal');
-    expect(modal).toBeTruthy();
+    expect(modal).toBeInTheDocument();
 
     // After opening modal, there are now multiple "Renommer" buttons —
     // the modal action button (inside actions) is also labeled "Renommer"
@@ -198,7 +198,7 @@ describe('PortfolioSelectPage', () => {
     render(<PortfolioSelectPage />);
 
     await user.click(screen.getByText('Supprimer'));
-    expect(screen.getByTestId('modal')).toBeTruthy();
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
   });
 
   it('delete button is disabled until name confirmed', async () => {
@@ -240,49 +240,49 @@ describe('PortfolioSelectPage', () => {
   it('shows portfolio creation date', () => {
     mockUsePortfolios.mockReturnValue({ data: [mockPortfolio], isLoading: false, isError: false });
     render(<PortfolioSelectPage />);
-    expect(screen.getByText(/Créé le/i)).toBeTruthy();
+    expect(screen.getByText(/Créé le/i)).toBeInTheDocument();
   });
 
-  it('can cancel create modal with cancel button (line 154)', async () => {
+  it('can cancel create modal by clicking the Annuler button', async () => {
     mockUsePortfolios.mockReturnValue({ data: [], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
     render(<PortfolioSelectPage />);
 
     await user.click(screen.getByText('Créer un portefeuille'));
-    expect(screen.getByTestId('modal')).toBeTruthy();
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
     // Find and click the "Annuler" button inside the modal
     const annulerBtns = screen.getAllByText('Annuler');
     await user.click(annulerBtns[0]);
     expect(screen.queryByTestId('modal')).toBeNull();
   });
 
-  it('can cancel rename modal with cancel button (line 167)', async () => {
+  it('can cancel rename modal by clicking the Annuler button', async () => {
     mockUsePortfolios.mockReturnValue({ data: [mockPortfolio], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
     render(<PortfolioSelectPage />);
 
     await user.click(screen.getByText('Renommer'));
-    expect(screen.getByTestId('modal')).toBeTruthy();
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
 
     const annulerBtns = screen.getAllByText('Annuler');
     await user.click(annulerBtns[0]);
     expect(screen.queryByTestId('modal')).toBeNull();
   });
 
-  it('can cancel delete modal with cancel button (line 187)', async () => {
+  it('can cancel delete modal by clicking the Annuler button', async () => {
     mockUsePortfolios.mockReturnValue({ data: [mockPortfolio], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
     render(<PortfolioSelectPage />);
 
     await user.click(screen.getByText('Supprimer'));
-    expect(screen.getByTestId('modal')).toBeTruthy();
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
 
     const annulerBtns = screen.getAllByText('Annuler');
     await user.click(annulerBtns[0]);
     expect(screen.queryByTestId('modal')).toBeNull();
   });
 
-  it('prevent paste in delete confirmation input (line 202)', async () => {
+  it('prevents pasting into the delete confirmation input', async () => {
     mockUsePortfolios.mockReturnValue({ data: [mockPortfolio], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
     render(<PortfolioSelectPage />);
@@ -294,7 +294,7 @@ describe('PortfolioSelectPage', () => {
     const pasteEvent = new Event('paste', { bubbles: true });
     Object.defineProperty(pasteEvent, 'preventDefault', { value: vi.fn() });
     confirmInput.dispatchEvent(pasteEvent);
-    expect(screen.getByTestId('modal')).toBeTruthy();
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
   });
 
   it('pressing Enter in create input calls handleCreate', async () => {
@@ -309,25 +309,25 @@ describe('PortfolioSelectPage', () => {
     expect(mockCreatePortfolio).toHaveBeenCalledWith({ name: 'Test Portfolio' });
   });
 
-  it('closing rename modal via Close button calls onClose (line 164)', async () => {
+  it('closing rename modal via Close button clears the rename target and error', async () => {
     mockUsePortfolios.mockReturnValue({ data: [mockPortfolio], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
     render(<PortfolioSelectPage />);
 
     await user.click(screen.getByText('Renommer'));
-    expect(screen.getByTestId('modal')).toBeTruthy();
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
     // Click the Close button which triggers onClose = () => { setRenameTarget(null); setError(''); }
     await user.click(screen.getByText('Close'));
     expect(screen.queryByTestId('modal')).toBeNull();
   }, 10000);
 
-  it('closing delete modal via Close button calls onClose (line 179)', async () => {
+  it('closing delete modal via Close button clears the delete target and confirmation name', async () => {
     mockUsePortfolios.mockReturnValue({ data: [mockPortfolio], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
     render(<PortfolioSelectPage />);
 
     await user.click(screen.getByText('Supprimer'));
-    expect(screen.getByTestId('modal')).toBeTruthy();
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
     // Click the Close button which triggers onClose = () => { setDeleteTarget(null); setDeleteConfirmName(''); }
     await user.click(screen.getByText('Close'));
     expect(screen.queryByTestId('modal')).toBeNull();
@@ -341,7 +341,7 @@ describe('PortfolioSelectPage', () => {
     await user.click(screen.getByText('Renommer'));
     // The modal should be visible; click the rename button inside to test rename
     const modal = screen.getByTestId('modal');
-    expect(modal).toBeTruthy();
+    expect(modal).toBeInTheDocument();
     // Click the primary "Renommer" button inside the modal actions
     const allRenameBtns = screen.getAllByText('Renommer');
     await user.click(allRenameBtns[allRenameBtns.length - 1]);
@@ -350,7 +350,7 @@ describe('PortfolioSelectPage', () => {
 });
 
 // Coverage-boosting tests for PortfolioSelectPage uncovered branches
-describe('PortfolioSelectPage — coverage for uncovered branches', () => {
+describe('PortfolioSelectPage — error handling and edge cases for create/rename/delete', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCreatePortfolio.mockResolvedValue({});
@@ -358,7 +358,7 @@ describe('PortfolioSelectPage — coverage for uncovered branches', () => {
     mockDeletePortfolio.mockResolvedValue({});
   });
 
-  it('handleCreate: API error shows error message (line 46)', async () => {
+  it('handleCreate: shows the API error detail message when creation fails', async () => {
     mockCreatePortfolio.mockRejectedValueOnce({
       response: { data: { detail: 'Portfolio already exists' } },
     });
@@ -373,10 +373,10 @@ describe('PortfolioSelectPage — coverage for uncovered branches', () => {
     await user.click(createBtns[0]);
 
     // Error message should appear
-    expect(screen.getByText(/Portfolio already exists/i)).toBeTruthy();
+    expect(screen.getByText(/Portfolio already exists/i)).toBeInTheDocument();
   }, 10000);
 
-  it('handleCreate: API error without detail falls back to "Erreur" (line 46 fallback)', async () => {
+  it('handleCreate: falls back to a generic "Erreur" message when the API error has no detail', async () => {
     mockCreatePortfolio.mockRejectedValueOnce(new Error('Network error'));
     mockUsePortfolios.mockReturnValue({ data: [], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
@@ -388,10 +388,10 @@ describe('PortfolioSelectPage — coverage for uncovered branches', () => {
     const createBtns = screen.getAllByText('Créer');
     await user.click(createBtns[0]);
 
-    expect(screen.getByText(/Erreur/i)).toBeTruthy();
+    expect(screen.getByText(/Erreur/i)).toBeInTheDocument();
   }, 10000);
 
-  it('handleRename: API error shows error message (line 57)', async () => {
+  it('handleRename: shows the API error detail message when rename fails', async () => {
     mockRenamePortfolio.mockRejectedValueOnce({
       response: { data: { detail: 'Rename failed' } },
     });
@@ -403,7 +403,7 @@ describe('PortfolioSelectPage — coverage for uncovered branches', () => {
     const allRenameBtns = screen.getAllByText('Renommer');
     await user.click(allRenameBtns[allRenameBtns.length - 1]);
 
-    expect(screen.getByText(/Rename failed/i)).toBeTruthy();
+    expect(screen.getByText(/Rename failed/i)).toBeInTheDocument();
   }, 10000);
 
   it('handleRename: called with empty name does nothing (early return)', async () => {
@@ -424,7 +424,7 @@ describe('PortfolioSelectPage — coverage for uncovered branches', () => {
     expect(mockRenamePortfolio).not.toHaveBeenCalled();
   }, 10000);
 
-  it('handleDelete: does nothing when deleteConfirmName does not match (line 62 early return)', async () => {
+  it('handleDelete: delete button stays disabled and no deletion occurs when deleteConfirmName does not match', async () => {
     mockUsePortfolios.mockReturnValue({ data: [mockPortfolio], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
     render(<PortfolioSelectPage />);
@@ -440,7 +440,7 @@ describe('PortfolioSelectPage — coverage for uncovered branches', () => {
     expect(mockDeletePortfolio).not.toHaveBeenCalled();
   }, 10000);
 
-  it('fmtDate with null returns empty string (line 18-20)', () => {
+  it('does not render a creation date for a portfolio with a null created_at', () => {
     // Portfolio with null created_at should not show date
     mockUsePortfolios.mockReturnValue({ data: [mockPortfolioNoDate], isLoading: false, isError: false });
     render(<PortfolioSelectPage />);
@@ -478,7 +478,7 @@ describe('PortfolioSelectPage — coverage for uncovered branches', () => {
     expect(mockRenamePortfolio).toHaveBeenCalled();
   }, 10000);
 
-  it('handleRename: API error without detail falls back to "Erreur" (line 57 ?? fallback)', async () => {
+  it('handleRename: falls back to a generic "Erreur" message when the API error has no detail', async () => {
     // Throw an error without response.data.detail — triggers ?? 'Erreur' branch
     mockRenamePortfolio.mockRejectedValueOnce(new Error('Generic network error'));
     mockUsePortfolios.mockReturnValue({ data: [mockPortfolio], isLoading: false, isError: false });
@@ -490,10 +490,10 @@ describe('PortfolioSelectPage — coverage for uncovered branches', () => {
     await user.click(allRenameBtns[allRenameBtns.length - 1]);
 
     // The fallback 'Erreur' should show
-    expect(screen.getByText(/Erreur/i)).toBeTruthy();
+    expect(screen.getByText(/Erreur/i)).toBeInTheDocument();
   }, 10000);
 
-  it('handleDelete early return when deleteConfirmName does not match (line 62 return statement)', async () => {
+  it('handleDelete: guard clause blocks deletion when deleteConfirmName mismatches, even if the disabled check is bypassed', async () => {
     // Tests the early return in handleDelete: `if (!deleteTarget || deleteConfirmName !== deleteTarget.name) return;`
     // We bypass the disabled button by calling the button's onClick prop directly
     mockUsePortfolios.mockReturnValue({ data: [mockPortfolio], isLoading: false, isError: false });
@@ -522,7 +522,7 @@ describe('PortfolioSelectPage — coverage for uncovered branches', () => {
     expect(mockDeletePortfolio).not.toHaveBeenCalled();
   }, 10000);
 
-  it('fmtDate: called with null via portfolio with created_at explicitly set (line 19 early return)', () => {
+  it('does not render a creation date for a portfolio with an empty-string created_at', () => {
     // fmtDate(null) is the only way to trigger line 19's early return
     // The JSX guard `portfolio.created_at && fmtDate(...)` prevents null from reaching fmtDate
     // The closest we can get is a portfolio with a falsy created_at that still calls fmtDate
@@ -538,7 +538,7 @@ describe('PortfolioSelectPage — coverage for uncovered branches', () => {
     expect(body).toContain('TestPort');
   });
 
-  it('rename input onChange with null renameTarget returns null (line 170 false branch)', async () => {
+  it('typing in the rename input updates the rename target name without closing the modal', async () => {
     // This exercises the `t ? { ...t, name: v } : t` updater when t could be null.
     // In practice, the modal's TextInput only renders when renameTarget !== null,
     // so the false branch is unreachable in normal use. We cover it by rendering
@@ -557,7 +557,7 @@ describe('PortfolioSelectPage — coverage for uncovered branches', () => {
       await user.type(inputs[0] as HTMLElement, 'New Name');
     }
     // The rename button should now be clickable with the new name
-    expect(modal).toBeTruthy();
+    expect(modal).toBeInTheDocument();
   }, 10000);
 
   // ── Test: Administration système button navigates to /system (line 155) ──────

@@ -58,7 +58,7 @@ describe('SnapshotsTable', () => {
         onRowClick={vi.fn()}
       />,
     );
-    expect(screen.getByText('Aucun snapshot disponible.')).toBeTruthy();
+    expect(screen.getByText('Aucun snapshot disponible.')).toBeInTheDocument();
   });
 
   it('shows snapshot count in the card title', () => {
@@ -71,7 +71,7 @@ describe('SnapshotsTable', () => {
         onRowClick={vi.fn()}
       />,
     );
-    expect(screen.getByText('Snapshots journaliers (3)')).toBeTruthy();
+    expect(screen.getByText('Snapshots journaliers (3)')).toBeInTheDocument();
   });
 
   // ── memoized reversal ────────────────────────────────────────────────────────
@@ -201,7 +201,7 @@ describe('SnapshotsTable', () => {
     await user.click(screen.getByText('PerPage'));
     // setSnapPage(1) must be called to reset to first page
     expect(setSnapPage).toHaveBeenCalledWith(1);
-    expect(screen.getByTestId('pagination')).toBeTruthy();
+    expect(screen.getByTestId('pagination')).toBeInTheDocument();
   });
 
   // ── pagination props ─────────────────────────────────────────────────────────

@@ -208,10 +208,10 @@ describe('PoolPositionsTable sorting — additional coverage (lines 92, 110)', (
     const qtyHeader = screen.queryByTestId('sort-col-2');
     if (qtyHeader) {
       await user.click(qtyHeader);
-      expect(screen.getByText('Positions actuelles')).toBeTruthy();
+      expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
     } else {
       // Column 2 may not have a sort handler — verify page is stable
-      expect(screen.getByText('Positions actuelles')).toBeTruthy();
+      expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
     }
   });
 
@@ -222,9 +222,9 @@ describe('PoolPositionsTable sorting — additional coverage (lines 92, 110)', (
     const priceHeader = screen.queryByTestId('sort-col-3');
     if (priceHeader) {
       await user.click(priceHeader);
-      expect(screen.getByText('Positions actuelles')).toBeTruthy();
+      expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
     } else {
-      expect(screen.getByText('Positions actuelles')).toBeTruthy();
+      expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
     }
   });
 
@@ -235,9 +235,9 @@ describe('PoolPositionsTable sorting — additional coverage (lines 92, 110)', (
     const nativeHeader = screen.queryByTestId('sort-col-5');
     if (nativeHeader) {
       await user.click(nativeHeader);
-      expect(screen.getByText('Positions actuelles')).toBeTruthy();
+      expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
     } else {
-      expect(screen.getByText('Positions actuelles')).toBeTruthy();
+      expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
     }
   });
 
@@ -248,9 +248,9 @@ describe('PoolPositionsTable sorting — additional coverage (lines 92, 110)', (
     const sourceHeader = screen.queryByTestId('sort-col-7');
     if (sourceHeader) {
       await user.click(sourceHeader);
-      expect(screen.getByText('Positions actuelles')).toBeTruthy();
+      expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
     } else {
-      expect(screen.getByText('Positions actuelles')).toBeTruthy();
+      expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
     }
   });
 
@@ -272,6 +272,6 @@ describe('PoolPositionsTable sorting — additional coverage (lines 92, 110)', (
     const tickers = renderedTickers();
     expect(tickers).toContain('AAPL');
     expect(tickers).toContain('TSLA');
-    expect(screen.getByText('Positions actuelles')).toBeTruthy();
+    expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
   });
 });

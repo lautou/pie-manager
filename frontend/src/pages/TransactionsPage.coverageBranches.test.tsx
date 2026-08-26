@@ -149,7 +149,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     expect(dashCells.length).toBeGreaterThan(0);
   });
 
-  it('editing a transaction with operation Attribution initializes operationType to grant (line 188)', async () => {
+  it('editing an Attribution transaction initializes operationType to grant', async () => {
     const grantTx = { ...mockTransaction, operation: 'Attribution' };
     mockUseTransactions.mockReturnValue({ data: [grantTx], isLoading: false, isError: false });
 
@@ -167,7 +167,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     }
   }, 10000);
 
-  it('transaction with balance_eur shows EUR balance (line 644 branch)', () => {
+  it('shows the EUR balance for an end-of-day EUR transaction with balance_eur set', () => {
     // endOfDayCurrencyIds includes this tx, currency is EUR, balance_eur is set
     const eurTxWithBalance = {
       ...mockTransaction,
@@ -180,7 +180,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     mockUseTransactions.mockReturnValue({ data: [eurTxWithBalance], isLoading: false, isError: false });
     render(<TransactionsPage />);
     // balance_eur should be shown (formatted)
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   });
 
   it('transaction that is NOT endOfDayId shows — in balance columns', () => {
@@ -189,7 +189,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     const tx2 = { ...mockTransaction, id: 1, currency: 'USD', balance_currency: 900, balance_eur: null };
     mockUseTransactions.mockReturnValue({ data: [tx1, tx2], isLoading: false, isError: false });
     render(<TransactionsPage />);
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   });
 
   it('transaction with balance_currency and endOfDayId shows formatted balance', () => {
@@ -205,10 +205,10 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     mockUseTransactions.mockReturnValue({ data: [txWithBalance], isLoading: false, isError: false });
     render(<TransactionsPage />);
     // The balance USD column should show formatted value
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   });
 
-  it('perPageSelect changes page size (line 677 onPerPageSelect)', async () => {
+  it('renders the pagination control when transactions are present', async () => {
     const { Pagination: MockPagination } = await import('@patternfly/react-core');
     // Our mock Pagination doesn't expose perPageSelect; test via Pagination mock update
     // Override Pagination mock to trigger onPerPageSelect
@@ -222,7 +222,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     render(<TransactionsPage />);
 
     // Can't fire perPageSelect with current mock, but page renders correctly
-    expect(screen.getByTestId('pagination')).toBeTruthy();
+    expect(screen.getByTestId('pagination')).toBeInTheDocument();
   }, 10000);
 
   it('handleSubmit: create mutation error shows error alert', async () => {
@@ -246,7 +246,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
         await user.click(modalAddBtn as HTMLElement);
       }
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
   it('handleSubmit: update mutation succeeds and closes modal', async () => {
@@ -269,7 +269,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
       if (saveBtn) {
         await user.click(saveBtn);
       }
-      expect(screen.getByText('Transactions')).toBeTruthy();
+      expect(screen.getByText('Transactions')).toBeInTheDocument();
     }
   }, 10000);
 
@@ -300,7 +300,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     await user.selectOptions(typeSelect, 'Dépôt/Retrait');
     // Ticker dropdown should be gone, locked label shows instead
     expect(screen.queryByRole('combobox', { name: 'Ticker' })).toBeNull();
-    expect(screen.getByText(/LIQUIDITE\.EURO/)).toBeTruthy();
+    expect(screen.getByText(/LIQUIDITE\.EURO/)).toBeInTheDocument();
   }, 10000);
 
   it('handleTickerChange: selecting non-EUR currency product sets exchange_rate from prev', async () => {
@@ -312,7 +312,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     await user.click(screen.getByText('Nouvelle transaction'));
     const tickerSelect = screen.getByRole('combobox', { name: 'Ticker' });
     await user.selectOptions(tickerSelect, 'AAPL');
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
   it('handleTickerChange: forex ticker (JPYEUR=X) sets currency to the foreign currency, not product.currency', async () => {
@@ -345,7 +345,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     const currencyInput = screen.getByPlaceholderText('EUR');
     await user.clear(currencyInput);
     await user.type(currencyInput, 'EUR');
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
   it('exchange_rate NumberInput minus/plus when isEurCurrency (disabled) — no state change', async () => {
@@ -370,19 +370,19 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     if (plusBtns.length > 0) {
       await user.click(plusBtns[0]); // disabled click — no-op
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('perPageSelect changes page size (line 677)', async () => {
+  it('clicking the per-page selector updates the page size', async () => {
     mockUseTransactions.mockReturnValue({ data: [mockTransaction], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
 
     await user.click(screen.getByText('Per Page 20'));
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('handleFilterChange setDateTo called when date-to picker changes (line 478)', () => {
+  it('changing the date-to filter picker updates the date range filter', () => {
     mockUseTransactions.mockReturnValue({ data: [mockTransaction], isLoading: false, isError: false });
     render(<TransactionsPage />);
 
@@ -395,10 +395,10 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
       // Try with the second occurrence
       fireEvent.change(dateToInputs[0], { target: { value: '2024-06-01' } });
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   });
 
-  it('handleDeleteClick: confirm in modal deletes (line 447)', async () => {
+  it('confirming the delete modal calls the delete mutation with the transaction id', async () => {
     const mockDelete = vi.fn().mockResolvedValue(undefined);
     mockUseDeleteTransaction.mockReturnValue({ mutateAsync: mockDelete, isPending: false });
     mockUseTransactions.mockReturnValue({ data: [mockTransaction], isLoading: false, isError: false });
@@ -414,7 +414,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     }
   }, 10000);
 
-  it('unit_price onChange when not isCash calls setField (line 354)', async () => {
+  it('unit_price onChange updates the field via the NumberInput when the ticker is not Cash', async () => {
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
@@ -431,10 +431,10 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
       const unitPriceInput = numberInputs[2];
       fireEvent.change(unitPriceInput, { target: { value: '175.50' } });
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('unit_price onChange when isCash does not call setField (line 988 skip branch)', async () => {
+  it('unit_price onChange is a no-op when the ticker is a Cash instrument', async () => {
     const cashProduct = { ticker: 'JPYEUR=X', name: 'Yen/Euro', category: 'Actif', instrument_type: 'Cash', currency: 'EUR' };
     mockUseAccounts.mockReturnValue({ data: [mockAccount] });
     mockUseProducts.mockReturnValue({ data: [cashProduct] });
@@ -467,7 +467,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     expect(modal.textContent).toContain('📉 Achat');
   }, 10000);
 
-  it('modal date picker onChange updates date field (lines 233)', async () => {
+  it('changing the modal date picker updates the date field', async () => {
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
@@ -479,10 +479,10 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     if (datePicker) {
       fireEvent.change(datePicker, { target: { value: '2024-06-15' } });
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('modal account select onChange updates account_id field (lines 242)', async () => {
+  it('changing the modal account select updates the account_id field', async () => {
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
@@ -494,10 +494,10 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     if (accountSelects.length > 0) {
       await user.selectOptions(accountSelects[0] as HTMLSelectElement, '1');
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('exchange_rate +/- and onChange when NOT EUR currency (lines 306-310)', async () => {
+  it('exchange_rate +/- buttons and onChange work when the currency is not EUR', async () => {
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
@@ -523,10 +523,10 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     if (numberInputs.length >= 1) {
       fireEvent.change(numberInputs[0], { target: { value: '1.15' } });
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('quantity +/- and onChange (lines 334-336)', async () => {
+  it('quantity +/- buttons and onChange update the quantity field', async () => {
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
@@ -547,10 +547,10 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     if (numberInputs.length >= 2) {
       fireEvent.change(numberInputs[1], { target: { value: '-5' } });
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('unit_price +/- when NOT isCash (lines 350-351)', async () => {
+  it('unit_price +/- buttons work when the ticker is not a Cash instrument', async () => {
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
@@ -570,7 +570,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     if (plusBtns.length >= 3 && !(plusBtns[2] as HTMLButtonElement).disabled) {
       await user.click(plusBtns[2]); // unit_price plus
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
   it('shows different Quantité text when type is Frais', async () => {
@@ -588,7 +588,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     expect(modal.textContent).toContain('Forfait');
   }, 10000);
 
-  it('exchange_rate onChange with non-EUR currency executes line 310 (setField branch)', async () => {
+  it('exchange_rate onChange calls setField when the currency is not EUR', async () => {
     // Explicitly tests: if (!isEurCurrency) { setField('exchange_rate', ...) }  [line 310]
     // When currency is not EUR, the setField call executes.
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
@@ -611,10 +611,10 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     if (numberInputs.length >= 1) {
       fireEvent.change(numberInputs[0], { target: { value: '1.12' } });
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('quantity onChange executes line 336 (setField quantity)', async () => {
+  it('quantity onChange calls setField with the parsed quantity value', async () => {
     // Tests: onChange={(e) => setField('quantity', parseFloat(...) || 0)}  [line 336]
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
 
@@ -629,10 +629,10 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     if (numberInputs.length >= 2) {
       fireEvent.change(numberInputs[1], { target: { value: '-5' } });
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('unit_price onChange with isCash=false executes lines 353-354 (setField branch)', async () => {
+  it('unit_price onChange updates the field via the raw input when the ticker is not Cash', async () => {
     // Tests: if (!isCash) { setField('unit_price', ...) }  [lines 353-354]
     // When ticker is not Cash category, isCash=false, so setField runs
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
@@ -654,10 +654,10 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     if (numberInputs.length >= 3) {
       fireEvent.change(numberInputs[2], { target: { value: '175.50' } });
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('inputProps.onFocus on exchange_rate NumberInput calls select (line 376 context)', async () => {
+  it('focusing the exchange_rate NumberInput selects its content', async () => {
     // Lines 376-394: exchange_rate NumberInput inputProps.onFocus fires when the input is focused
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
@@ -674,7 +674,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     }
   }, 10000);
 
-  it('inputProps.onFocus on quantity NumberInput calls select (line 462 context)', async () => {
+  it('focusing the quantity NumberInput selects its content', async () => {
     // Line 462: quantity NumberInput inputProps.onFocus for non-cash path
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
@@ -695,7 +695,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     }
   }, 10000);
 
-  it('inputProps.onFocus on unit_price NumberInput calls select (line 489 context)', async () => {
+  it('focusing the unit_price NumberInput selects its content', async () => {
     // Line 489: unit_price NumberInput inputProps.onFocus
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
@@ -715,7 +715,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     }
   }, 10000);
 
-  it('linked_transaction_id TextInput onChange fires setField (line 508)', async () => {
+  it('typing in the linked transaction id field updates linked_transaction_id', async () => {
     // Line 508: onChange={(_evt, value) => setField('linked_transaction_id', ...)}
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
@@ -729,11 +729,11 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
       fireEvent.change(linkedInput, { target: { value: '42' } });
       // After change, the "Retirer le lien" button should appear
       // linked_transaction_id is now 42 (parseInt('42', 10))
-      expect(screen.getByText('Transactions')).toBeTruthy();
+      expect(screen.getByText('Transactions')).toBeInTheDocument();
     }
   }, 10000);
 
-  it('linked_transaction_id empty value sets to null (line 508 empty branch)', async () => {
+  it('clearing the linked transaction id field sets linked_transaction_id to null', async () => {
     // When value === '' → setField('linked_transaction_id', null)
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
@@ -746,11 +746,11 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
       // First set a value, then clear it
       fireEvent.change(linkedInput, { target: { value: '10' } });
       fireEvent.change(linkedInput, { target: { value: '' } });
-      expect(screen.getByText('Transactions')).toBeTruthy();
+      expect(screen.getByText('Transactions')).toBeInTheDocument();
     }
   }, 10000);
 
-  it('Retirer le lien button clears linked_transaction_id (line 516)', async () => {
+  it('clicking "Retirer le lien" clears the linked_transaction_id field', async () => {
     // Line 516: onClick={() => setField('linked_transaction_id', null)}
     // Button appears when linked_transaction_id !== null
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
@@ -771,7 +771,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
         expect(screen.queryByText('Retirer le lien')).toBeNull();
       }
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
   it('Dépôt/Retrait type: toggle buttons Dépôt/Retrait and amount input work', async () => {
@@ -798,7 +798,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     if (numberInputs.length >= 1) {
       fireEvent.change(numberInputs[0], { target: { value: '500' } });
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
   it('Dépôt/Retrait type: changing the date field updates form.date', async () => {
@@ -812,7 +812,7 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     await user.selectOptions(typeSelect, 'Dépôt/Retrait');
 
     const dateInput = container.querySelector('#tx-depot-date') as HTMLInputElement;
-    expect(dateInput).toBeTruthy();
+    expect(dateInput).toBeInTheDocument();
     fireEvent.change(dateInput, { target: { value: '2024-06-15' } });
     expect(dateInput.value).toBe('2024-06-15');
   }, 10000);
@@ -835,10 +835,10 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
       fireEvent.focus(montantInput);
       expect(selectSpy).toHaveBeenCalled();
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('Frais forfait: clicking 💶 Forfait button fires onClick (line 387)', async () => {
+  it('clicking the Forfait toggle sets forfait mode and resets quantity to 1', async () => {
     // Line 387: onClick={() => { setForfait(true); setField('quantity', 1); }}
     // This requires form.type === 'Frais' and then clicking the Forfait button
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
@@ -860,10 +860,10 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     if (forfaitBtn) {
       await user.click(forfaitBtn); // line 387: setForfait(true) + setField('quantity', 1)
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('Frais par unité: clicking ✖️ Par unité button fires onClick (line 394)', async () => {
+  it('clicking the Par unité toggle switches off forfait mode', async () => {
     // Line 394: onClick={() => setForfait(false)}
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
@@ -878,11 +878,11 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     if (parUniteBtn) {
       await user.click(parUniteBtn);
       // After clicking, the quantity field should show (forfait=false → form.type=Frais && !forfait → shown)
-      expect(screen.getByText('Transactions')).toBeTruthy();
+      expect(screen.getByText('Transactions')).toBeInTheDocument();
     }
   }, 10000);
 
-  it('transaction row with unknown currency uses fallback background (line 603 ?? branch)', () => {
+  it('transaction row with an unrecognized currency falls back to the default row background', () => {
     // A currency not in CURRENCY_BG triggers the ?? '#f9f9f9' fallback
     const txUnknownCurrency = {
       ...mockTransaction,
@@ -893,9 +893,9 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     mockUseTransactions.mockReturnValue({ data: [txUnknownCurrency], isLoading: false, isError: false });
     render(<TransactionsPage />);
     // Should render without crash — AAPL ticker still appears
-    expect(screen.getByText('AAPL')).toBeTruthy();
+    expect(screen.getByText('AAPL')).toBeInTheDocument();
     // account_id 99 is not in accountMap → shows raw account_id (line 607 ?? branch)
-    expect(screen.getByText('99')).toBeTruthy();
+    expect(screen.getByText('99')).toBeInTheDocument();
   });
 
   it('handleSubmit: Dépôt/Retrait Retrait sends negative quantity', async () => {
@@ -922,10 +922,10 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     if (modalSubmitBtn) await user.click(modalSubmitBtn as HTMLElement);
 
     // The page should not crash and the Transactions header stays visible
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('handleSubmit: Frais forfait submits with quantity -1 (line 219 True path)', async () => {
+  it('submitting a Frais forfait transaction normalizes quantity to -1', async () => {
     // Line 219: form.type === 'Frais' && forfait === true → normalizedQty = -1
     // This covers the True branch of `forfait ? -1` in the ternary
     const mockCreate = vi.fn().mockResolvedValue({ id: 101, portfolio_id: 1 });
@@ -957,6 +957,6 @@ describe('TransactionsPage — coverage for uncovered branches', () => {
     }
 
     // Page should not crash
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 });

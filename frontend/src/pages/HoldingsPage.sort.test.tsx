@@ -249,7 +249,7 @@ describe('PoolPositionsTable sorting — branch coverage', () => {
     setup([positionAAP], capitalGainsWithZero);
     render(<HoldingsPage />);
     // pvColor(0) returns 'var(--pf-t--global--text--color--subtle)' — verify render doesn't crash
-    expect(screen.getByText('Positions actuelles')).toBeTruthy();
+    expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
     // The "0.00 €" PV value should be present and not red or green
     const body = document.body.textContent ?? '';
     expect(body).toContain('0.00 €');
@@ -316,7 +316,7 @@ describe('PoolPositionsTable sorting — branch coverage', () => {
     await user.click(pvHeader); // → asc; TSLA gets pvA=0, AAPL=100 → TSLA first
 
     // Should not crash
-    expect(screen.getByText('Positions actuelles')).toBeTruthy();
+    expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
     const tickers = renderedTickers();
     // TSLA (0) < AAPL (100) when asc
     expect(tickers.indexOf('TSLA')).toBeLessThan(tickers.indexOf('AAPL'));
@@ -335,7 +335,7 @@ describe('PoolPositionsTable sorting — branch coverage', () => {
     await user.click(pctHeader); // → asc; poolTotal=0 → pctA=pctB=0
 
     // Should not crash; both get pct=0
-    expect(screen.getByText('Positions actuelles')).toBeTruthy();
+    expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
   });
 
   it('sort by % pool (col 6) when poolTotal > 0 — lines 98-99 true branch', async () => {
@@ -362,7 +362,7 @@ describe('PoolPositionsTable sorting — branch coverage', () => {
     await user.click(pvHeader); // → asc; pvA=0, pvB=0 → no reorder
 
     // Should not crash; both get pv=0
-    expect(screen.getByText('Positions actuelles')).toBeTruthy();
+    expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
   });
 
   it('sort by PV latente % (col 9) when cost_basis_eur === 0 — ternary false path', async () => {
@@ -380,7 +380,7 @@ describe('PoolPositionsTable sorting — branch coverage', () => {
     await user.click(pvPctHeader); // → asc; cost_basis=0 → pctA=pctB=0
 
     // Should not crash
-    expect(screen.getByText('Positions actuelles')).toBeTruthy();
+    expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
   });
 
   it('sort by PV latente % (col 9) when pvMap has no entry for ticker — short-circuit false path', async () => {
@@ -392,7 +392,7 @@ describe('PoolPositionsTable sorting — branch coverage', () => {
     await user.click(pvPctHeader); // → asc; dA=undefined → pctA=0, dB=undefined → pctB=0
 
     // Should not crash
-    expect(screen.getByText('Positions actuelles')).toBeTruthy();
+    expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
   });
 
   it('sort by PV latente % (col 9) ASC — TSLA (-20%) before AAPL (7.1%)', async () => {

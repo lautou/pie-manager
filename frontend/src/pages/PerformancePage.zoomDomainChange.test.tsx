@@ -156,7 +156,7 @@ const mockDailySnapshots = [
 
 
 
-describe('PerformancePage — coverage for uncovered branches', () => {
+describe('PerformancePage — zoom domain change callbacks and related chart/pool interactions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedZoomCallbacks.length = 0;
@@ -176,7 +176,7 @@ describe('PerformancePage — coverage for uncovered branches', () => {
   });
 
   // --- Covers lines 797-802: pool sort with two named pools (both go to totA/totB branch) ---
-  it('modal positions: two named pools are sorted by total_eur descending (lines 800-802)', async () => {
+  it('modal positions: two named pools are sorted by total_eur descending', async () => {
     mockUseDailySnapshots.mockReturnValue({ data: mockDailySnapshots, isLoading: false });
     mockUseMonthlySnapshots.mockReturnValue({ data: [], isLoading: false });
     mockUseTWRR.mockReturnValue({ data: mockTWRR, isLoading: false });
@@ -198,15 +198,15 @@ describe('PerformancePage — coverage for uncovered branches', () => {
     if (snapRow) {
       await user.click(snapRow);
       const modal = screen.getByTestId('modal');
-      expect(modal).toBeTruthy();
+      expect(modal).toBeInTheDocument();
       // Both tickers should show
-      expect(screen.getByText('O001')).toBeTruthy();
-      expect(screen.getByText('A001')).toBeTruthy();
+      expect(screen.getByText('O001')).toBeInTheDocument();
+      expect(screen.getByText('A001')).toBeInTheDocument();
     }
   });
 
   // --- Covers line 95: soloToggle "add" branch + lines 479/504: reset button clicks ---
-  it('soloToggle add branch + pool/position reset buttons (lines 95, 479, 493, 504)', async () => {
+  it('selecting additional pools or positions adds them to the visible set, and the reset button clears the filter', async () => {
     const recentDate1 = new Date(); recentDate1.setMonth(recentDate1.getMonth() - 6);
     const recentDate2 = new Date(); recentDate2.setMonth(recentDate2.getMonth() - 1);
     const d1 = recentDate1.toISOString().slice(0, 10);
@@ -257,7 +257,7 @@ describe('PerformancePage — coverage for uncovered branches', () => {
       await user.click(resetBtn); // → setVisiblePools(null) — line 479
     }
 
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
 
     // Now switch to positions view and repeat for position buttons
     await user.click(screen.getByTestId('toggle-Positions'));
@@ -282,11 +282,11 @@ describe('PerformancePage — coverage for uncovered branches', () => {
       await user.click(posResetBtn); // → setVisiblePositions(null) — line 504
     }
 
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   // --- Covers line 409: Total toggle button onChange ---
-  it('clicking Total toggle from another view sets indexView to total (line 409)', async () => {
+  it('clicking Total toggle from another view sets indexView back to total', async () => {
     mockUseDailySnapshots.mockReturnValue({ data: mockDailySnapshots, isLoading: false });
     mockUseMonthlySnapshots.mockReturnValue({ data: [], isLoading: false });
     mockUseTWRR.mockReturnValue({ data: mockTWRR, isLoading: false });
@@ -298,11 +298,11 @@ describe('PerformancePage — coverage for uncovered branches', () => {
     await user.click(screen.getByTestId('toggle-Offensif / Défensif'));
     // Now click Total — triggers onChange at line 409
     await user.click(screen.getByTestId('toggle-Total'));
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   // --- Covers line 518: onMouseLeave on index div when brush is active ---
-  it('mouseLeave on index chart div when brush is active clears brush (line 518)', () => {
+  it('mouseLeave on index chart div clears the brush when it is active', () => {
     mockUseDailySnapshots.mockReturnValue({ data: mockDailySnapshots, isLoading: false });
     mockUseMonthlySnapshots.mockReturnValue({ data: [], isLoading: false });
     mockUseTWRR.mockReturnValue({ data: mockTWRR, isLoading: false });
@@ -317,11 +317,11 @@ describe('PerformancePage — coverage for uncovered branches', () => {
       // MouseLeave while brush is active → triggers line 518 → setBrush(null)
       fireEvent.mouseLeave(indexDiv);
     }
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   // --- Covers lines 130-131: endBrush early exit when brush not active ---
-  it('mouseUp on index div without prior mouseDown (brush not active) — line 130-131', () => {
+  it('mouseUp on index div without a prior mouseDown is a no-op when the brush is not active', () => {
     mockUseDailySnapshots.mockReturnValue({ data: mockDailySnapshots, isLoading: false });
     mockUseMonthlySnapshots.mockReturnValue({ data: [], isLoading: false });
     mockUseTWRR.mockReturnValue({ data: mockTWRR, isLoading: false });
@@ -333,11 +333,11 @@ describe('PerformancePage — coverage for uncovered branches', () => {
       // MouseUp without mouseDown — brush is null → endBrush early returns (lines 130-131)
       fireEvent.mouseUp(chartDivs[0] as HTMLElement);
     }
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   // --- Covers lines 335-336: clampZoom when diff < minMs ---
-  it('zoom domain with very small range triggers clampZoom (lines 335-336)', () => {
+  it('zoom domain with a very small range gets clamped to the minimum zoom window', () => {
     mockUseDailySnapshots.mockReturnValue({ data: mockDailySnapshots, isLoading: false });
     mockUseMonthlySnapshots.mockReturnValue({ data: [], isLoading: false });
     mockUseTWRR.mockReturnValue({ data: mockTWRR, isLoading: false });
@@ -360,12 +360,12 @@ describe('PerformancePage — coverage for uncovered branches', () => {
       fireEvent.mouseMove(indexDiv, { clientX: 310, clientY: 50 });
       fireEvent.mouseUp(indexDiv);
     }
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
     vi.restoreAllMocks();
   });
 
   // --- Covers lines 148-149: allData.length < 2 in endBrush when no zoom ---
-  it('endBrush with no zoom domain and < 2 data points returns early (line 148)', () => {
+  it('endBrush with no zoom domain and fewer than 2 data points returns early without setting a zoom', () => {
     // Use MAX scale so zoomIndex is undefined, and provide EMPTY TWRR so allData is empty
     mockUseDailySnapshots.mockReturnValue({
       data: [{ id: 1, portfolio_id: 1, date: '2024-01-01', total_eur: 10000, offensive_eur: 5000, defensive_eur: 5000 }],
@@ -395,12 +395,12 @@ describe('PerformancePage — coverage for uncovered branches', () => {
       fireEvent.mouseMove(chartDivs[0] as HTMLElement, { clientX: 500, clientY: 50 });
       fireEvent.mouseUp(chartDivs[0] as HTMLElement);
     }
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
     vi.restoreAllMocks();
   });
 
   // --- Covers lines 149-150: allData.length >= 2 with no zoom (MAX scale with data) ---
-  it('endBrush with MAX scale and 2+ data points uses allData range (lines 149-150)', () => {
+  it('endBrush with MAX scale and 2+ data points zooms to the full allData range', () => {
     mockUseDailySnapshots.mockReturnValue({ data: mockDailySnapshots, isLoading: false });
     mockUseMonthlySnapshots.mockReturnValue({ data: [], isLoading: false });
     // TWRR total with 2+ points so allData has length >= 2
@@ -428,12 +428,12 @@ describe('PerformancePage — coverage for uncovered branches', () => {
       fireEvent.mouseMove(chartDivs[0] as HTMLElement, { clientX: 500, clientY: 50 });
       fireEvent.mouseUp(chartDivs[0] as HTMLElement);
     }
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
     vi.restoreAllMocks();
   });
 
   // --- Covers line 546: onZoomDomainChange for indexView=total chart ---
-  it('onZoomDomainChange callback on total index chart updates zoomIndex (line 546)', async () => {
+  it('onZoomDomainChange callback on total index chart updates zoomIndex', async () => {
     const recentDate1 = new Date(); recentDate1.setMonth(recentDate1.getMonth() - 6);
     const recentDate2 = new Date(); recentDate2.setMonth(recentDate2.getMonth() - 1);
     const d1 = recentDate1.toISOString().slice(0, 10);
@@ -456,11 +456,11 @@ describe('PerformancePage — coverage for uncovered branches', () => {
     await act(async () => {
       capturedZoomCallbacks[0]({ x: [start, end] });
     });
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   // --- Covers line 569: onZoomDomainChange for indexView=strategie chart ---
-  it('onZoomDomainChange callback on strategie index chart updates zoomIndex (line 569)', async () => {
+  it('onZoomDomainChange callback on strategie index chart updates zoomIndex', async () => {
     const recentDate1 = new Date(); recentDate1.setMonth(recentDate1.getMonth() - 6);
     const recentDate2 = new Date(); recentDate2.setMonth(recentDate2.getMonth() - 1);
     const d1 = recentDate1.toISOString().slice(0, 10);
@@ -492,11 +492,11 @@ describe('PerformancePage — coverage for uncovered branches', () => {
     await act(async () => {
       cb({ x: [start, end] });
     });
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   // --- Covers line 593: onZoomDomainChange for indexView=pools chart ---
-  it('onZoomDomainChange callback on pools index chart updates zoomIndex (line 593)', async () => {
+  it('onZoomDomainChange callback on pools index chart updates zoomIndex', async () => {
     const recentDate1 = new Date(); recentDate1.setMonth(recentDate1.getMonth() - 6);
     const recentDate2 = new Date(); recentDate2.setMonth(recentDate2.getMonth() - 1);
     const d1 = recentDate1.toISOString().slice(0, 10);
@@ -528,11 +528,11 @@ describe('PerformancePage — coverage for uncovered branches', () => {
     await act(async () => {
       cb({ x: [start, end] });
     });
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   // --- Covers line 623: onZoomDomainChange for indexView=positions chart ---
-  it('onZoomDomainChange callback on positions index chart updates zoomIndex (line 623)', async () => {
+  it('onZoomDomainChange callback on positions index chart updates zoomIndex', async () => {
     const recentDate1 = new Date(); recentDate1.setMonth(recentDate1.getMonth() - 6);
     const recentDate2 = new Date(); recentDate2.setMonth(recentDate2.getMonth() - 1);
     const d1 = recentDate1.toISOString().slice(0, 10);
@@ -563,11 +563,11 @@ describe('PerformancePage — coverage for uncovered branches', () => {
     await act(async () => {
       cb({ x: [start, end] });
     });
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   // --- Covers line 706: onZoomDomainChange for patrimoine chart ---
-  it('onZoomDomainChange callback on patrimoine chart updates zoomPatrimoine (line 706)', async () => {
+  it('onZoomDomainChange callback on patrimoine chart updates zoomPatrimoine', async () => {
     const recentDate1 = new Date(); recentDate1.setMonth(recentDate1.getMonth() - 6);
     const recentDate2 = new Date(); recentDate2.setMonth(recentDate2.getMonth() - 1);
     const d1 = recentDate1.toISOString().slice(0, 10);
@@ -592,7 +592,7 @@ describe('PerformancePage — coverage for uncovered branches', () => {
     await act(async () => {
       cb({ x: [start, end] });
     });
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   // --- Covers FALSE branch of `if (!brush?.active)` in all 5 onZoomDomainChange callbacks ---
@@ -600,7 +600,7 @@ describe('PerformancePage — coverage for uncovered branches', () => {
   // We trigger mouseDown (to set brush.active=true), then call the callback captured AFTER
   // the re-render (so it closes over brush.active=true) — this covers the [1] false branch.
 
-  it('onZoomDomainChange total chart: false branch when brush is active (line 546)', async () => {
+  it('onZoomDomainChange on total chart skips updating zoomIndex while the brush is active', async () => {
     const recentDate1 = new Date(); recentDate1.setMonth(recentDate1.getMonth() - 6);
     const recentDate2 = new Date(); recentDate2.setMonth(recentDate2.getMonth() - 1);
     const d1 = recentDate1.toISOString().slice(0, 10);
@@ -629,10 +629,10 @@ describe('PerformancePage — coverage for uncovered branches', () => {
     await act(async () => {
       cb({ x: [start, end] });
     });
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
-  it('onZoomDomainChange strategie chart: false branch when brush is active (line 569)', async () => {
+  it('onZoomDomainChange on strategie chart skips updating zoomIndex while the brush is active', async () => {
     const recentDate1 = new Date(); recentDate1.setMonth(recentDate1.getMonth() - 6);
     const recentDate2 = new Date(); recentDate2.setMonth(recentDate2.getMonth() - 1);
     const d1 = recentDate1.toISOString().slice(0, 10);
@@ -661,10 +661,10 @@ describe('PerformancePage — coverage for uncovered branches', () => {
     await act(async () => {
       cb({ x: [new Date(d1), new Date(d2)] });
     });
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
-  it('onZoomDomainChange pools chart: false branch when brush is active (line 593)', async () => {
+  it('onZoomDomainChange on pools chart skips updating zoomIndex while the brush is active', async () => {
     const recentDate1 = new Date(); recentDate1.setMonth(recentDate1.getMonth() - 6);
     const recentDate2 = new Date(); recentDate2.setMonth(recentDate2.getMonth() - 1);
     const d1 = recentDate1.toISOString().slice(0, 10);
@@ -692,7 +692,7 @@ describe('PerformancePage — coverage for uncovered branches', () => {
     await act(async () => {
       cb({ x: [new Date(d1), new Date(d2)] });
     });
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
 });

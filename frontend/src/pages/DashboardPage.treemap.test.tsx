@@ -141,7 +141,7 @@ describe('DashboardPage — TreemapContent with real recharts', () => {
     });
 
     render(<DashboardPage />);
-    expect(screen.getByText('Dashboard')).toBeTruthy();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
   });
 
   it('renders with real Treemap and covers TreemapContent (depth=1 pool node)', () => {
@@ -155,7 +155,7 @@ describe('DashboardPage — TreemapContent with real recharts', () => {
 
     render(<DashboardPage />);
     // Page renders without crashing — covers TreemapContent paths
-    expect(screen.getByText('Dashboard')).toBeTruthy();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
   });
 
   it('renders with real Treemap for Energie pool (unknown pool color — uses fallback)', () => {
@@ -173,7 +173,7 @@ describe('DashboardPage — TreemapContent with real recharts', () => {
     });
 
     render(<DashboardPage />);
-    expect(screen.getByText('Dashboard')).toBeTruthy();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
   });
 
   it('renders with pool with no positions — uses fallback child node in treemap', () => {
@@ -187,7 +187,7 @@ describe('DashboardPage — TreemapContent with real recharts', () => {
     mockUseHoldings.mockReturnValue({ data: [] }); // No positions — fallback child used
 
     render(<DashboardPage />);
-    expect(screen.getByText('Dashboard')).toBeTruthy();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
   });
 
   it('renders with unknown pool name for POOL_LIGHT fallback coverage', () => {
@@ -205,6 +205,6 @@ describe('DashboardPage — TreemapContent with real recharts', () => {
     });
 
     render(<DashboardPage />);
-    expect(screen.getByText('Dashboard')).toBeTruthy();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
   });
 });

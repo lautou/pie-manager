@@ -2,6 +2,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import '@testing-library/jest-dom';
 import { pfCoreStubs } from '../../tests/utils/patternfly-mocks';
 
 vi.mock('@patternfly/react-core', () => ({
@@ -44,11 +45,11 @@ describe('ConfirmModal', () => {
         onCancel={vi.fn()}
       />
     );
-    expect(screen.getByTestId('modal')).toBeTruthy();
-    expect(screen.getByText(/Supprimer cet élément/)).toBeTruthy();
-    expect(screen.getByText('Cette action est définitive.')).toBeTruthy();
-    expect(screen.getByText('Supprimer')).toBeTruthy();
-    expect(screen.getByText('Annuler')).toBeTruthy();
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
+    expect(screen.getByText(/Supprimer cet élément/)).toBeInTheDocument();
+    expect(screen.getByText('Cette action est définitive.')).toBeInTheDocument();
+    expect(screen.getByText('Supprimer')).toBeInTheDocument();
+    expect(screen.getByText('Annuler')).toBeInTheDocument();
   });
 
   it('renders one paragraph per array entry when message is a string[]', () => {
@@ -61,8 +62,8 @@ describe('ConfirmModal', () => {
         onCancel={vi.fn()}
       />
     );
-    expect(screen.getByText('Première ligne.')).toBeTruthy();
-    expect(screen.getByText('Deuxième ligne.')).toBeTruthy();
+    expect(screen.getByText('Première ligne.')).toBeInTheDocument();
+    expect(screen.getByText('Deuxième ligne.')).toBeInTheDocument();
   });
 
   it('calls onConfirm when the confirm button is clicked', async () => {
@@ -126,8 +127,8 @@ describe('ConfirmModal', () => {
         onCancel={vi.fn()}
       />
     );
-    expect(screen.getByText('Continuer')).toBeTruthy();
-    expect(screen.getByText('Retour')).toBeTruthy();
+    expect(screen.getByText('Continuer')).toBeInTheDocument();
+    expect(screen.getByText('Retour')).toBeInTheDocument();
   });
 
   it('disables both buttons and shows loading state on the confirm button when isLoading is true', () => {

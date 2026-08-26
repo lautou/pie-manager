@@ -155,7 +155,7 @@ describe('AccountsSummaryPage — default sort branch coverage (lines 109, 245)'
     await user.click(ths[0]);
 
     // Page renders correctly with default sort (stable, return 0 = equal)
-    expect(screen.getByText('Comptes')).toBeTruthy();
+    expect(screen.getByText('Comptes')).toBeInTheDocument();
   });
 
   it('line 245: acc position sort default — clicking any acc Th fires onSort with invalid index 99', async () => {
@@ -175,6 +175,6 @@ describe('AccountsSummaryPage — default sort branch coverage (lines 109, 245)'
       await user.click(th);
     }
 
-    expect(screen.getByText('Comptes')).toBeTruthy();
+    expect(screen.getByText('Comptes')).toBeInTheDocument();
   });
 });

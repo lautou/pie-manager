@@ -84,10 +84,10 @@ describe('AdminPage — handleAddTicker success path (lines 340 col 58, col 77)'
     // Step 1: Select pool → selectedPool is set
     const asieCell = screen.getAllByText('Asie')[0];
     const row = asieCell.closest('tr');
-    expect(row).toBeTruthy();
+    expect(row).toBeInTheDocument();
     if (!row) return;
     await user.click(row);
-    expect(screen.getByText(/Actifs du pool/i)).toBeTruthy();
+    expect(screen.getByText(/Actifs du pool/i)).toBeInTheDocument();
 
     // Step 2: Type in search to show available products
     const searchInput = screen.getByPlaceholderText(/Rechercher un actif/i);
@@ -109,7 +109,7 @@ describe('AdminPage — handleAddTicker success path (lines 340 col 58, col 77)'
     }
 
     await waitFor(() => {
-      expect(screen.getByText('Paramètres')).toBeTruthy();
+      expect(screen.getByText('Paramètres')).toBeInTheDocument();
     });
   }, 10000);
 
@@ -125,7 +125,7 @@ describe('AdminPage — handleAddTicker success path (lines 340 col 58, col 77)'
     const poolRow = asieCell.closest('tr');
     if (!poolRow) return;
     await user.click(poolRow);
-    expect(screen.getByText(/Actifs du pool/i)).toBeTruthy();
+    expect(screen.getByText(/Actifs du pool/i)).toBeInTheDocument();
 
     // Type in search to show results
     const searchInput = screen.getByPlaceholderText(/Rechercher un actif/i);
@@ -146,7 +146,7 @@ describe('AdminPage — handleAddTicker success path (lines 340 col 58, col 77)'
     if (resultDiv) fireEvent.click(resultDiv as HTMLElement);
 
     // Let React process updates
-    await waitForRtl(() => expect(screen.getByText('Paramètres')).toBeTruthy());
+    await waitForRtl(() => expect(screen.getByText('Paramètres')).toBeInTheDocument());
   }, 10000);
 
   it('line 346: handleRemoveTicker success path — selectedPool set, removeTickerFromPool resolves', async () => {
@@ -174,10 +174,10 @@ describe('AdminPage — handleAddTicker success path (lines 340 col 58, col 77)'
       await user.click(xBtns[0]);
       const { waitFor } = await import('@testing-library/react');
       await waitFor(() => {
-        expect(screen.getByText('Paramètres')).toBeTruthy();
+        expect(screen.getByText('Paramètres')).toBeInTheDocument();
       });
     } else {
-      expect(screen.getByText('Paramètres')).toBeTruthy();
+      expect(screen.getByText('Paramètres')).toBeInTheDocument();
     }
   }, 10000);
 });
@@ -198,11 +198,11 @@ describe('AdminPage — PoolManager coverage complement', () => {
 
   it('renders without crashing and shows Pools title', () => {
     render(<AdminPage />);
-    expect(screen.getByText('Paramètres')).toBeTruthy();
+    expect(screen.getByText('Paramètres')).toBeInTheDocument();
   });
 
   it('shows pool management card', () => {
     render(<AdminPage />);
-    expect(screen.getByText(/Gestion des pools/i)).toBeTruthy();
+    expect(screen.getByText(/Gestion des pools/i)).toBeInTheDocument();
   });
 });

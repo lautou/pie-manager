@@ -100,17 +100,17 @@ describe('PatrimoineChart', () => {
 
   it('renders patrimoine chart when data is available', () => {
     render(<PatrimoineChart {...defaultProps} />);
-    expect(screen.getByText(/Évolution du patrimoine/i)).toBeTruthy();
+    expect(screen.getByText(/Évolution du patrimoine/i)).toBeInTheDocument();
   });
 
   it('renders "Aucune donnée disponible." when patrimoineData is empty', () => {
     render(<PatrimoineChart {...defaultProps} patrimoineData={[]} />);
-    expect(screen.getByText('Aucune donnée disponible.')).toBeTruthy();
+    expect(screen.getByText('Aucune donnée disponible.')).toBeInTheDocument();
   });
 
   it('shows reset zoom button when isManuallyZoomed is true', () => {
     render(<PatrimoineChart {...defaultProps} isManuallyZoomed={true} />);
-    expect(screen.getByText(/↺ Réinitialiser zoom/i)).toBeTruthy();
+    expect(screen.getByText(/↺ Réinitialiser zoom/i)).toBeInTheDocument();
   });
 
   it('does not show reset zoom button when isManuallyZoomed is false', () => {
@@ -136,7 +136,7 @@ describe('PatrimoineChart', () => {
     fireEvent.mouseMove(chartDiv, { clientX: 200, clientY: 50 });
   });
 
-  it('mouseUp with no active brush → endBrush early return (lines 62-63)', () => {
+  it('mouseUp with no active brush clears the brush state and returns early', () => {
     // brush is null → !brush?.active is true → setBrush(null); return
     const setBrush = vi.fn();
     render(<PatrimoineChart {...defaultProps} brush={null} setBrush={setBrush} />);
@@ -145,7 +145,7 @@ describe('PatrimoineChart', () => {
     expect(setBrush).toHaveBeenCalledWith(null);
   });
 
-  it('mouseUp with small drag (< 5px) → endBrush early return (line 62-63)', () => {
+  it('mouseUp with a drag smaller than 5px clears the brush state without zooming', () => {
     const setBrush = vi.fn();
     const activeBrush: BrushState = { startX: 100, endX: 103, active: true, chartId: 'patrimoine' };
     render(<PatrimoineChart {...defaultProps} brush={activeBrush} setBrush={setBrush} />);
@@ -154,7 +154,7 @@ describe('PatrimoineChart', () => {
     expect(setBrush).toHaveBeenCalledWith(null);
   });
 
-  it('mouseUp with large drag and no zoom → uses allData range (lines 77-80)', () => {
+  it('mouseUp with a large drag and no active zoom computes the new zoom from the full data range', () => {
     const setBrush = vi.fn();
     const setZoomPatrimoine = vi.fn();
     const setIsManuallyZoomed = vi.fn();
@@ -168,7 +168,7 @@ describe('PatrimoineChart', () => {
     expect(setIsManuallyZoomed).toHaveBeenCalledWith(true);
   });
 
-  it('mouseUp with large drag and no zoom, < 2 data points → early return (line 78)', () => {
+  it('mouseUp with a large drag returns early when fewer than 2 data points are available', () => {
     const setBrush = vi.fn();
     const setZoomPatrimoine = vi.fn();
     const activeBrush: BrushState = { startX: 100, endX: 600, active: true, chartId: 'patrimoine' };
@@ -322,7 +322,7 @@ describe('PatrimoineChart', () => {
     }
   });
 
-  it('endBrush: plotW <= 0 → setBrush(null) early return (line 70)', () => {
+  it('endBrush clears the brush state early when the plot width is zero or negative', () => {
     const setBrush = vi.fn();
     const setZoomPatrimoine = vi.fn();
     const activeBrush: BrushState = { startX: 100, endX: 600, active: true, chartId: 'patrimoine' };
@@ -353,8 +353,8 @@ describe('PatrimoineChart', () => {
     const chartDiv = document.querySelector('[style*="user-select: none"]') as HTMLElement;
     // clientX=300, CHART_PADDING_LEFT=50, rect.width=800, plotW=740, relX=250 → in range
     fireEvent.mouseMove(chartDiv, { clientX: 300, clientY: 100 });
-    expect(document.querySelector('[data-testid="crosshair-line"]')).toBeTruthy();
-    expect(document.querySelector('[data-testid="crosshair-tooltip"]')).toBeTruthy();
+    expect(document.querySelector('[data-testid="crosshair-line"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-testid="crosshair-tooltip"]')).toBeInTheDocument();
   });
 
   it('crosshair tooltip contains date and EUR formatted value', () => {
@@ -373,14 +373,14 @@ describe('PatrimoineChart', () => {
     render(<PatrimoineChart {...defaultProps} zoomPatrimoine={zoom} />);
     const chartDiv = document.querySelector('[style*="user-select: none"]') as HTMLElement;
     fireEvent.mouseMove(chartDiv, { clientX: 300, clientY: 100 });
-    expect(document.querySelector('[data-testid="crosshair-tooltip"]')).toBeTruthy();
+    expect(document.querySelector('[data-testid="crosshair-tooltip"]')).toBeInTheDocument();
   });
 
   it('crosshair disappears on mouseLeave', () => {
     render(<PatrimoineChart {...defaultProps} zoomPatrimoine={undefined} />);
     const chartDiv = document.querySelector('[style*="user-select: none"]') as HTMLElement;
     fireEvent.mouseMove(chartDiv, { clientX: 300, clientY: 100 });
-    expect(document.querySelector('[data-testid="crosshair-line"]')).toBeTruthy();
+    expect(document.querySelector('[data-testid="crosshair-line"]')).toBeInTheDocument();
     fireEvent.mouseLeave(chartDiv);
     expect(document.querySelector('[data-testid="crosshair-line"]')).toBeNull();
   });
@@ -438,7 +438,7 @@ describe('PatrimoineChart', () => {
     render(<PatrimoineChart {...defaultProps} zoomPatrimoine={undefined} />);
     const chartDiv = document.querySelector('[style*="user-select: none"]') as HTMLElement;
     fireEvent.mouseMove(chartDiv, { clientX: 789, clientY: 100 });
-    expect(document.querySelector('[data-testid="crosshair-line"]')).toBeTruthy();
+    expect(document.querySelector('[data-testid="crosshair-line"]')).toBeInTheDocument();
     // The tooltip should show 11000 or 10000 as the nearest value
     const tooltip = document.querySelector('[data-testid="crosshair-tooltip"]');
     expect(tooltip?.textContent).toBeTruthy();
@@ -458,7 +458,7 @@ describe('PatrimoineChart', () => {
     fireEvent.mouseMove(chartDiv, { clientX: 200, clientY: 100 });
     const tooltip = document.querySelector('[data-testid="crosshair-tooltip"]');
     // Tooltip should still appear (flipped to the left)
-    expect(tooltip).toBeTruthy();
+    expect(tooltip).toBeInTheDocument();
   });
 
   it('crosshair tooltip does not flip when mouse is near left side', () => {
@@ -468,6 +468,6 @@ describe('PatrimoineChart', () => {
     fireEvent.mouseMove(chartDiv, { clientX: 100, clientY: 100 });
     const tooltip = document.querySelector('[data-testid="crosshair-tooltip"]');
     // Tooltip appears to the right of cursor (no flip)
-    expect(tooltip).toBeTruthy();
+    expect(tooltip).toBeInTheDocument();
   });
 });

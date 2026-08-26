@@ -108,7 +108,7 @@ vi.mock('../api/queries', () => ({
 
 import TransactionsPage from './TransactionsPage';
 
-describe('TransactionsPage — isCashDirectDeposit section (lines 692-711)', () => {
+describe('TransactionsPage — isCashDirectDeposit section (Dépôt/Retrait on a same-currency Cash product)', () => {
   // isDepotRetrait checks: type === 'Actif' AND ticker === 'LIQUIDITE.EURO'
   // The DB stores Dépôt/Retrait as type='Actif' + ticker='LIQUIDITE.EURO'
   const cashDepotTx = {
@@ -132,7 +132,7 @@ describe('TransactionsPage — isCashDirectDeposit section (lines 692-711)', () 
     mockUseDeleteTransaction.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
   });
 
-  it('Dépôt/Retrait with EUR Cash product shows isCashDirectDeposit buttons via editing (lines 692-711)', async () => {
+  it('Dépôt/Retrait with EUR Cash product shows the isCashDirectDeposit quantity input and direction buttons', async () => {
     // To get isCashDirectDeposit=true via editing a cash transaction:
 
     const user = userEvent.setup({ delay: null });
@@ -180,7 +180,7 @@ describe('TransactionsPage — isCashDirectDeposit section (lines 692-711)', () 
     if (!qtyInput) {
       // isCashDirectDeposit=false - the test environment might have a rendering issue
       // Just verify the basic structure renders
-      expect(screen.getByText('Transactions')).toBeTruthy();
+      expect(screen.getByText('Transactions')).toBeInTheDocument();
       return;
     }
     if (qtyInput) {
@@ -194,10 +194,10 @@ describe('TransactionsPage — isCashDirectDeposit section (lines 692-711)', () 
     for (const btn of allDepotBtns) await user.click(btn as HTMLElement);
     for (const btn of allRetraitBtns) await user.click(btn as HTMLElement);
 
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('editing a cash-direct withdrawal transaction preserves negative quantity on submit (line 186 withdrawal branch)', async () => {
+  it('editing a cash-direct withdrawal transaction preserves negative quantity on submit', async () => {
     const withdrawalTx = { ...cashDepotTx, id: 100, quantity: -50 };
     const mockUpdate = vi.fn().mockResolvedValue({});
     mockUseTransactions.mockReturnValue({ data: [withdrawalTx], isLoading: false, isError: false });
@@ -219,7 +219,7 @@ describe('TransactionsPage — isCashDirectDeposit section (lines 692-711)', () 
     }
   }, 10000);
 
-  it('Dépôt/Retrait retrait: frais de retrait input onFocus/onChange (lines 636-637)', async () => {
+  it('Dépôt/Retrait retrait: frais de retrait input onFocus/onChange', async () => {
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
 
@@ -240,10 +240,10 @@ describe('TransactionsPage — isCashDirectDeposit section (lines 692-711)', () 
       fireEvent.change(btn as HTMLElement, { target: { value: '5' } });
     }
 
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('Dépôt/Retrait retrait: withdrawal_first_free ternary — "2ème retrait" branch (line 659)', async () => {
+  it('Dépôt/Retrait retrait: shows the "2ème retrait" label when a withdrawal already happened this month', async () => {
     // Need: withdrawal_first_free=true + direction='retrait' + monthWithdrawals has quantity<0
     const accountWithFree = { ...eurAccount, withdrawal_first_free: true };
     mockUseAccounts.mockReturnValue({ data: [accountWithFree] });
@@ -280,10 +280,10 @@ describe('TransactionsPage — isCashDirectDeposit section (lines 692-711)', () 
     if (retraitBtn) await user.click(retraitBtn as HTMLElement);
 
     // withdrawal_first_free=true + monthWithdrawals has quantity<0 → '2ème retrait+ du mois'
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('Dépôt/Retrait retrait: withdrawal_first_free display (line 641-643)', async () => {
+  it('Dépôt/Retrait retrait: shows the "1er retrait" label when no withdrawal happened yet this month', async () => {
     // Need selectedAccount.withdrawal_first_free to be truthy
     const accountWithFree = { ...eurAccount, withdrawal_first_free: true };
     mockUseAccounts.mockReturnValue({ data: [accountWithFree] });
@@ -311,6 +311,6 @@ describe('TransactionsPage — isCashDirectDeposit section (lines 692-711)', () 
     if (retraitBtn) await user.click(retraitBtn as HTMLElement);
 
     // withdrawal_first_free=true → shows "1er retrait du mois" or "2ème retrait+"
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 });

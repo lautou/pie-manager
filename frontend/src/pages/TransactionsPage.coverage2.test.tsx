@@ -135,14 +135,14 @@ const openEditModal = async (user: ReturnType<typeof userEvent.setup>) => {
   if (editBtns.length > 0) await user.click(editBtns[0]);
 };
 
-describe('TransactionsPage — coverage2: defaultExecRow fallback (line 93)', () => {
+describe('TransactionsPage — coverage2: defaultExecRow date fallback', () => {
   // defaultExecRow: date: f.date || localDateStr()
   // The || right branch fires when f.date is ''. This happens when the form is
   // in its initial emptyForm() state and fractional_order is toggled on.
   // emptyForm() sets date = localDateStr() so it won't be empty in normal use.
   // The || fallback is a pure null-safety guard — mark as ignored.
   // (No test needed; handled via v8 ignore in source.)
-  it('placeholder: line 93 || fallback is a safety guard — page renders', () => {
+  it('renders the transactions page as a smoke test for the unreachable date-fallback guard', () => {
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
     mockUseAccounts.mockReturnValue({ data: [mockAccount] });
     mockUseProducts.mockReturnValue({ data: [mockProduct] });
@@ -150,11 +150,11 @@ describe('TransactionsPage — coverage2: defaultExecRow fallback (line 93)', ()
     mockUseUpdateTransaction.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
     mockUseDeleteTransaction.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
     render(<TransactionsPage />);
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   });
 });
 
-describe('TransactionsPage — coverage2: operationType initializer "vente" branch (line 137)', () => {
+describe('TransactionsPage — coverage2: operationType initial value when editing an Actif transaction', () => {
   // useState(() => editingTx?.type === 'Actif' && ... && (editingTx.quantity ?? 0) > 0 ? 'vente' : 'achat')
   // The 'vente' branch fires when editing an Actif tx with positive quantity.
   beforeEach(() => {
@@ -166,7 +166,7 @@ describe('TransactionsPage — coverage2: operationType initializer "vente" bran
     mockUseDeleteTransaction.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
   });
 
-  it('editing Actif tx with positive quantity initialises operationType to "vente" (line 137)', async () => {
+  it('editing an Actif transaction with positive quantity initialises operationType to "vente"', async () => {
     // quantity > 0 → 'vente' branch
     const venteTx = { ...baseTx, quantity: 10 };
     mockUseTransactions.mockReturnValue({ data: [venteTx], isLoading: false, isError: false });
@@ -177,11 +177,11 @@ describe('TransactionsPage — coverage2: operationType initializer "vente" bran
 
     const modal = screen.getByTestId('modal');
     // When operationType='vente', the Vente button should appear as active (primary)
-    expect(modal).toBeTruthy();
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(modal).toBeInTheDocument();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('editing Actif tx with quantity=0 uses ?? 0 → "achat" (line 137)', async () => {
+  it('editing an Actif transaction with quantity=0 initialises operationType to "achat"', async () => {
     // quantity === 0 is falsy — the ?? 0 safety is there for null/undefined.
     // Use quantity=0 which is valid and exercises the > 0 false branch → 'achat'.
     const zeroQtyTx = { ...baseTx, quantity: 0 };
@@ -191,12 +191,12 @@ describe('TransactionsPage — coverage2: operationType initializer "vente" bran
     render(<TransactionsPage />);
     await openEditModal(user);
 
-    expect(screen.getByTestId('modal')).toBeTruthy();
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 });
 
-describe('TransactionsPage — coverage2: useEffect setDirection "retrait" (line 181)', () => {
+describe('TransactionsPage — coverage2: direction initial value when editing a Cash transaction', () => {
   // setDirection(isCashDirect && editingTx.quantity < 0 ? 'retrait' : 'depot')
   // The 'retrait' branch fires when editing a Cash product withdrawal (quantity < 0).
   beforeEach(() => {
@@ -207,7 +207,7 @@ describe('TransactionsPage — coverage2: useEffect setDirection "retrait" (line
     mockUseDeleteTransaction.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
   });
 
-  it('editing Cash withdrawal tx sets direction to retrait (line 181)', async () => {
+  it('editing a Cash withdrawal transaction initialises direction to "retrait"', async () => {
     // product.category='Cash', product.currency='EUR', account.currency='EUR' → isCashDirect=true
     // quantity < 0 → 'retrait'
     const withdrawalTx = {
@@ -224,12 +224,12 @@ describe('TransactionsPage — coverage2: useEffect setDirection "retrait" (line
 
     // Modal renders — direction should be 'retrait' (line 181 'retrait' branch)
     const modal = screen.getByTestId('modal');
-    expect(modal).toBeTruthy();
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(modal).toBeInTheDocument();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 });
 
-describe('TransactionsPage — coverage2: recomputeFees commission_schedule and is_ttf_eligible (lines 224, 227)', () => {
+describe('TransactionsPage — coverage2: recomputeFees courtage and TTF calculation', () => {
   // Line 224: account?.commission_schedule ? computeCommission(...) : 0
   // Line 227: opType === 'achat' && product?.is_ttf_eligible ? TTF_RATE : 0
   beforeEach(() => {
@@ -239,7 +239,7 @@ describe('TransactionsPage — coverage2: recomputeFees commission_schedule and 
     mockUseDeleteTransaction.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
   });
 
-  it('account with commission_schedule and ttf_eligible product triggers fee computation (lines 224, 227)', async () => {
+  it('entering quantity and price for a TTF-eligible product on an account with a commission schedule computes courtage and TTF fees', async () => {
     // Account has a commission schedule → newCourtage computed via computeCommission
     // Product is TTF eligible → newTTF computed
     const accountWithFees = {
@@ -274,10 +274,10 @@ describe('TransactionsPage — coverage2: recomputeFees commission_schedule and 
       fireEvent.change(numberInputs[2], { target: { value: '100' } }); // unit_price
     }
 
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('TTF not computed when operationType is vente (line 227 false branch)', async () => {
+  it('TTF fee stays zero for a vente operation even on a TTF-eligible product', async () => {
     const ttfProduct = { ticker: 'MSFT', name: 'Microsoft', category: 'Action', currency: 'EUR', is_ttf_eligible: true };
     mockUseAccounts.mockReturnValue({ data: [mockAccount] });
     mockUseProducts.mockReturnValue({ data: [ttfProduct] });
@@ -303,11 +303,11 @@ describe('TransactionsPage — coverage2: recomputeFees commission_schedule and 
     if (numberInputs.length >= 3) fireEvent.change(numberInputs[2], { target: { value: '50' } });
 
     // TTF should be 0 (vente → false branch at line 227)
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 });
 
-describe('TransactionsPage — coverage2: handleTickerChange branches (lines 362, 363, 370)', () => {
+describe('TransactionsPage — coverage2: handleTickerChange product lookup and defaults', () => {
   // Line 362: products.find(...) ?? null — null branch when ticker not in products list
   // Line 363: product?.currency ?? '' — '' branch when product has no currency
   // Line 370: product?.category === 'Cash' ? 1.0 : prev.unit_price — 1.0 branch for Cash
@@ -319,7 +319,7 @@ describe('TransactionsPage — coverage2: handleTickerChange branches (lines 362
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
   });
 
-  it('selecting a Cash product sets unit_price to 1.0 (line 370 true branch)', async () => {
+  it('selecting a Cash product sets unit_price to 1.0', async () => {
     // cashProduct.category === 'Cash' → unit_price is forced to 1.0
     // Use a Cash product whose ticker is NOT LIQUIDITE.EURO (which is excluded from the dropdown)
     const otherCashProduct = { ticker: 'CASH.USD', name: 'Liquidités USD', category: 'Cash', currency: 'USD' };
@@ -336,10 +336,10 @@ describe('TransactionsPage — coverage2: handleTickerChange branches (lines 362
       if (tickerSelect) await user.selectOptions(tickerSelect, 'CASH.USD');
     }
     // Cash product → unit_price set to 1.0, currency set to 'USD', exchange_rate kept (prev.exchange_rate)
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('handleTickerChange: selecting EUR ticker sets exchange_rate to 1.0 (line 369 true branch)', async () => {
+  it('selecting a EUR-denominated ticker sets exchange_rate to 1.0', async () => {
     // When firstCurrency === 'EUR' → exchange_rate is forced to 1.0
     const eurProduct = { ticker: 'BNP', name: 'BNP Paribas', category: 'Action', currency: 'EUR' };
     mockUseAccounts.mockReturnValue({ data: [mockAccount] });
@@ -354,18 +354,18 @@ describe('TransactionsPage — coverage2: handleTickerChange branches (lines 362
       const tickerSelect = modal.querySelector('select[aria-label="Ticker"]') as HTMLSelectElement;
       if (tickerSelect) await user.selectOptions(tickerSelect, 'BNP');
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 });
 
-describe('TransactionsPage — coverage2: handleSubmit normalizedQty branches (lines 392-403)', () => {
+describe('TransactionsPage — coverage2: handleSubmit quantity sign normalisation by transaction type', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseAccounts.mockReturnValue({ data: [mockAccount] });
     mockUseDeleteTransaction.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
   });
 
-  it('handleSubmit Revenu type sends positive quantity (line 400 branch)', async () => {
+  it('submitting a Revenu transaction sends a positive quantity', async () => {
     const mockCreate = vi.fn().mockResolvedValue({ id: 200 });
     mockUseCreateTransaction.mockReturnValue({ mutateAsync: mockCreate, isPending: false });
     mockUseUpdateTransaction.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
@@ -395,10 +395,10 @@ describe('TransactionsPage — coverage2: handleSubmit normalizedQty branches (l
     const submitBtn = Array.from(modal.querySelectorAll('button')).find(b => b.textContent === 'Ajouter');
     if (submitBtn) await user.click(submitBtn as HTMLElement);
 
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('handleSubmit Frais par unite sends negative abs quantity (line 398 branch)', async () => {
+  it('submitting a Frais transaction in "par unité" mode sends a negative quantity', async () => {
     const mockCreate = vi.fn().mockResolvedValue({ id: 201 });
     mockUseCreateTransaction.mockReturnValue({ mutateAsync: mockCreate, isPending: false });
     mockUseUpdateTransaction.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
@@ -432,10 +432,10 @@ describe('TransactionsPage — coverage2: handleSubmit normalizedQty branches (l
     const submitBtn = Array.from(modal.querySelectorAll('button')).find(b => b.textContent === 'Ajouter');
     if (submitBtn) await user.click(submitBtn as HTMLElement);
 
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('handleSubmit Actif vente sends positive quantity (line 402 vente branch)', async () => {
+  it('submitting an Actif vente transaction sends a positive quantity', async () => {
     const mockCreate = vi.fn().mockResolvedValue({ id: 202 });
     mockUseCreateTransaction.mockReturnValue({ mutateAsync: mockCreate, isPending: false });
     mockUseUpdateTransaction.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
@@ -465,10 +465,10 @@ describe('TransactionsPage — coverage2: handleSubmit normalizedQty branches (l
     const submitBtn = Array.from(modal.querySelectorAll('button')).find(b => b.textContent === 'Ajouter');
     if (submitBtn) await user.click(submitBtn as HTMLElement);
 
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('handleSubmit non-Error exception shows generic message (line 442 false branch)', async () => {
+  it('submitting a transaction that rejects with a non-Error value shows the generic error message', async () => {
     const mockCreate = vi.fn().mockRejectedValue('non-error string');
     mockUseCreateTransaction.mockReturnValue({ mutateAsync: mockCreate, isPending: false });
     mockUseUpdateTransaction.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
@@ -490,11 +490,11 @@ describe('TransactionsPage — coverage2: handleSubmit normalizedQty branches (l
     if (submitBtn) await user.click(submitBtn as HTMLElement);
 
     // Error should be shown using t('error.generic') because thrown value is not an Error
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 });
 
-describe('TransactionsPage — coverage2: fractional order vente additional_executions (lines 428, 430)', () => {
+describe('TransactionsPage — coverage2: fractional order additional executions for a vente', () => {
   // Line 428: operationType === 'achat' ? -Math.abs(...) : Math.abs(...) — vente branch
   // Line 430: e.exchange_rate || form.exchange_rate — || fallback when exec.exchange_rate is 0
   beforeEach(() => {
@@ -506,7 +506,7 @@ describe('TransactionsPage — coverage2: fractional order vente additional_exec
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
   });
 
-  it('fractional order with vente and exec.exchange_rate=0 covers lines 428 vente branch and 430 fallback', async () => {
+  it('fractional vente order with an additional execution at exchange_rate=0 falls back to the form exchange rate', async () => {
     const mockCreate = vi.fn().mockResolvedValue({ id: 300 });
     mockUseCreateTransaction.mockReturnValue({ mutateAsync: mockCreate, isPending: false });
 
@@ -551,11 +551,11 @@ describe('TransactionsPage — coverage2: fractional order vente additional_exec
     const submitBtn = Array.from(modal.querySelectorAll('button')).find(b => b.textContent === 'Ajouter');
     if (submitBtn) await user.click(submitBtn as HTMLElement);
 
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 });
 
-describe('TransactionsPage — coverage2: exchange_rate input branches (lines 614, 618, 619)', () => {
+describe('TransactionsPage — coverage2: exchange_rate input display and EUR-currency guard', () => {
   // Line 614: value={form.exchange_rate || ''} — || '' when exchange_rate is 0
   // Line 618-619: if (!isEurCurrency) setField — the true branch (non-EUR)
   beforeEach(() => {
@@ -568,7 +568,7 @@ describe('TransactionsPage — coverage2: exchange_rate input branches (lines 61
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
   });
 
-  it('typing into exchange_rate input when non-EUR fires setField (lines 618-619)', async () => {
+  it('typing into the exchange_rate input for a non-EUR ticker updates the form field', async () => {
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
     await openAddModal(user);
@@ -593,10 +593,10 @@ describe('TransactionsPage — coverage2: exchange_rate input branches (lines 61
       // Test exchange_rate = 0 → value='' branch (line 614)
       fireEvent.change(exchangeInput, { target: { value: '0' } });
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('exchange_rate onChange when isEurCurrency=true does NOT call setField (line 618 false branch)', async () => {
+  it('exchange_rate onChange for a EUR-currency ticker does not update the form field', async () => {
     // When currency is EUR, the input is disabled — onChange still fires but the if(!isEurCurrency) guard
     // prevents setField from being called. We test by triggering onChange on the disabled input.
     const user = userEvent.setup({ delay: null });
@@ -617,11 +617,11 @@ describe('TransactionsPage — coverage2: exchange_rate input branches (lines 61
       // Fire change even though disabled — the if(!isEurCurrency) guard should prevent setField
       fireEvent.change(exchangeInput, { target: { value: '1.5' } });
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 });
 
-describe('TransactionsPage — coverage2: Dépôt/Retrait quantity input branches (lines 640, 642, 653)', () => {
+describe('TransactionsPage — coverage2: Dépôt/Retrait montant and fee input focus/display behaviour', () => {
   // Line 640: value={form.quantity || ''} — '' when quantity=0
   // Line 642: onFocus e.target.select()
   // Line 653: onFocus e.target.select() on courtage input during retrait
@@ -635,7 +635,7 @@ describe('TransactionsPage — coverage2: Dépôt/Retrait quantity input branche
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
   });
 
-  it('Dépôt/Retrait montant input onFocus calls select and quantity || "" shows empty (lines 640-642)', async () => {
+  it('Dépôt/Retrait montant input selects its text on focus and displays empty when quantity is 0', async () => {
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
     await openAddModal(user);
@@ -654,10 +654,10 @@ describe('TransactionsPage — coverage2: Dépôt/Retrait quantity input branche
       // Also test onChange (line 642)
       fireEvent.change(montantInput, { target: { value: '0' } }); // quantity becomes 0 → || '' branch
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('Retrait frais de retrait input onFocus calls select (line 653)', async () => {
+  it('Retrait frais de retrait input selects its text on focus', async () => {
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
     await openAddModal(user);
@@ -680,11 +680,11 @@ describe('TransactionsPage — coverage2: Dépôt/Retrait quantity input branche
       // courtage_eur || '' when value is 0
       fireEvent.change(spinButtons[1], { target: { value: '0' } }); // line 651 courtage_eur || ''
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 });
 
-describe('TransactionsPage — coverage2: fractional first exec non-EUR inputs (lines 786, 788, 799, 809)', () => {
+describe('TransactionsPage — coverage2: fractional order first-execution row for a non-EUR ticker', () => {
   // Lines 781-791: !isEurCurrency && <div> showing exchange_rate input in first exec row
   // Line 786: value={form.exchange_rate || ''}
   // Line 788: onChange setField('exchange_rate', ...)
@@ -702,7 +702,7 @@ describe('TransactionsPage — coverage2: fractional first exec non-EUR inputs (
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
   });
 
-  it('fractional order with non-EUR ticker shows exchange_rate in first exec row (lines 786, 788, 799, 809)', async () => {
+  it('fractional order with a non-EUR ticker shows the exchange_rate input in the first execution row', async () => {
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
     await openAddModal(user);
@@ -736,11 +736,11 @@ describe('TransactionsPage — coverage2: fractional first exec non-EUR inputs (
       fireEvent.change(inp, { target: { value: '0' } }); // exchange_rate || '' branch
     });
 
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 });
 
-describe('TransactionsPage — coverage2: additional exec non-EUR taux (lines 841, 845, 860, 874, 881)', () => {
+describe('TransactionsPage — coverage2: fractional order additional-execution row for a non-EUR ticker', () => {
   // Line 836: !isEurCurrency && <div> exchange_rate in additional exec row
   // Line 841: value={exec.exchange_rate || ''}
   // Line 843-847: onFocus + onChange for exec exchange_rate
@@ -759,7 +759,7 @@ describe('TransactionsPage — coverage2: additional exec non-EUR taux (lines 84
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
   });
 
-  it('additional exec row with non-EUR ticker shows Taux input (lines 836, 841, 845)', async () => {
+  it('additional execution row for a non-EUR ticker shows the Taux (exchange rate) input', async () => {
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
     await openAddModal(user);
@@ -802,11 +802,11 @@ describe('TransactionsPage — coverage2: additional exec non-EUR taux (lines 84
       fireEvent.focus(el);
     });
 
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 });
 
-describe('TransactionsPage — coverage2: fractional parent banner and isCash branches (lines 915, 938, 939)', () => {
+describe('TransactionsPage — coverage2: fractional-child banner and Cash unit_price guard', () => {
   // Line 915: isEditing && editingTx?.fractional_parent_id → shows fractional banner
   // Line 938-939: if (!isCash) setField('unit_price', ...) — true branch when isCash=true and onChange fires (no-op)
   beforeEach(() => {
@@ -815,7 +815,7 @@ describe('TransactionsPage — coverage2: fractional parent banner and isCash br
     mockUseDeleteTransaction.mockReturnValue({ mutateAsync: vi.fn(), isPending: false });
   });
 
-  it('editing tx with fractional_parent_id shows fractional banner (line 915)', async () => {
+  it('editing a transaction with a fractional_parent_id shows the fractional-execution banner', async () => {
     const fractionalChildTx = {
       ...baseTx, id: 50, fractional_parent_id: 1,
       linked_transaction_id: null,
@@ -832,10 +832,10 @@ describe('TransactionsPage — coverage2: fractional parent banner and isCash br
     // The fractional banner should be visible (line 915-919)
     const modal = screen.getByTestId('modal');
     expect(modal.textContent).toContain('Exécution fractionnée');
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('onChange on unit_price input when isCash=true does not call setField (line 938 false branch)', async () => {
+  it('unit_price onChange for a Cash product does not update the form field', async () => {
     // When selected product is Cash, isCash=true → unit_price input is disabled
     // But if onChange is fired anyway, the if(!isCash) guard prevents setField
     const cashOnlyAccount = { ...mockAccount, allowed_tickers: null };
@@ -868,11 +868,11 @@ describe('TransactionsPage — coverage2: fractional parent banner and isCash br
       // onChange fires but if(!isCash) is false → setField NOT called (line 938 false branch)
       fireEvent.change(unitPriceInput, { target: { value: '2.0' } });
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 });
 
-describe('TransactionsPage — coverage2: courtage/TTF onFocus handlers (lines 957, 970)', () => {
+describe('TransactionsPage — coverage2: courtage and TTF input focus/display behaviour', () => {
   // Line 956: onFocus=(e) => e.target.select() on courtage input
   // Line 969: onFocus=(e) => e.target.select() on TTF input
   beforeEach(() => {
@@ -885,7 +885,7 @@ describe('TransactionsPage — coverage2: courtage/TTF onFocus handlers (lines 9
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
   });
 
-  it('courtage input onFocus calls e.target.select() (line 956)', async () => {
+  it('courtage input selects its text on focus', async () => {
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
     await openAddModal(user);
@@ -900,10 +900,10 @@ describe('TransactionsPage — coverage2: courtage/TTF onFocus handlers (lines 9
       // courtage_eur || '' when value is 0 (line 955)
       fireEvent.change(courtageInput, { target: { value: '0' } });
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('TTF input onFocus calls e.target.select() (line 969)', async () => {
+  it('TTF input selects its text on focus', async () => {
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
     await openAddModal(user);
@@ -918,11 +918,11 @@ describe('TransactionsPage — coverage2: courtage/TTF onFocus handlers (lines 9
       // ttf_eur || '' when value is 0 (line 967)
       fireEvent.change(ttfInput, { target: { value: '0' } });
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 });
 
-describe('TransactionsPage — coverage2: Dépôt/Retrait retrait submit (line 396 retrait branch)', () => {
+describe('TransactionsPage — coverage2: Dépôt/Retrait quantity sign on submit', () => {
   // The retrait sub-branch of the isDepotRetraitType ternary:
   //   direction === 'depot' ? Math.abs(form.quantity) : -Math.abs(form.quantity)
   // Fires when form.type='Dépôt/Retrait' AND direction='retrait'
@@ -935,7 +935,7 @@ describe('TransactionsPage — coverage2: Dépôt/Retrait retrait submit (line 3
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
   });
 
-  it('submitting Dépôt/Retrait in depot mode sends positive quantity (line 396 Math.abs branch)', async () => {
+  it('submitting Dépôt/Retrait in depot mode sends a positive quantity', async () => {
     const mockCreate = vi.fn().mockResolvedValue({ id: 998 });
     mockUseCreateTransaction.mockReturnValue({ mutateAsync: mockCreate, isPending: false });
 
@@ -970,10 +970,10 @@ describe('TransactionsPage — coverage2: Dépôt/Retrait retrait submit (line 3
     expect(mockCreate).toHaveBeenCalled();
     const payload = mockCreate.mock.calls[0][0];
     expect(payload.quantity).toBeGreaterThan(0);
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('submitting Dépôt/Retrait in retrait mode sends negative quantity (line 396 -Math.abs branch)', async () => {
+  it('submitting Dépôt/Retrait in retrait mode sends a negative quantity', async () => {
     const mockCreate = vi.fn().mockResolvedValue({ id: 999 });
     mockUseCreateTransaction.mockReturnValue({ mutateAsync: mockCreate, isPending: false });
 
@@ -1009,11 +1009,11 @@ describe('TransactionsPage — coverage2: Dépôt/Retrait retrait submit (line 3
     expect(mockCreate).toHaveBeenCalled();
     const payload = mockCreate.mock.calls[0][0];
     expect(payload.quantity).toBeLessThan(0);
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 });
 
-describe('TransactionsPage — coverage2: unit_price parseFloat NaN fallback (line 947)', () => {
+describe('TransactionsPage — coverage2: unit_price input NaN fallback', () => {
   // Line 947: setField('unit_price', parseFloat(e.target.value) || 0)
   // The || 0 branch fires when parseFloat returns NaN (empty string or non-numeric input)
   beforeEach(() => {
@@ -1026,7 +1026,7 @@ describe('TransactionsPage — coverage2: unit_price parseFloat NaN fallback (li
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
   });
 
-  it('unit_price onChange with empty value triggers || 0 fallback (line 947)', async () => {
+  it('unit_price onChange with an empty value falls back to 0', async () => {
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
     await openAddModal(user);
@@ -1043,11 +1043,11 @@ describe('TransactionsPage — coverage2: unit_price parseFloat NaN fallback (li
       fireEvent.change(unitPriceInput, { target: { value: '' } });
       // This covers the || 0 right branch at line 947
     }
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 });
 
-describe('TransactionsPage — coverage2: isRevolutFX weekend/weekday branches via new modal (lines 986, 987)', () => {
+describe('TransactionsPage — coverage2: Revolut FX weekend-surcharge notice', () => {
   // These lines are inside the isRevolutFX span in the Actif courtage section.
   // They're already tested in TransactionsPage.test.tsx via spy — just verify they render here too.
   const fxAccount = {
@@ -1066,7 +1066,7 @@ describe('TransactionsPage — coverage2: isRevolutFX weekend/weekday branches v
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
   });
 
-  it('isRevolutFX weekday branch renders FX info (line 987)', async () => {
+  it('a weekday Revolut FX transaction renders the monthly free-allowance info', async () => {
     const commissionModule = await import('../utils/commission');
     const spy = vi.spyOn(commissionModule, 'isWeekendNewYork').mockReturnValue(false);
 
@@ -1087,11 +1087,11 @@ describe('TransactionsPage — coverage2: isRevolutFX weekend/weekday branches v
     if (numberInputs.length >= 2) fireEvent.change(numberInputs[1], { target: { value: '0.0064' } });
 
     // Weekday branch (line 987): shows "échangés ce mois / X€ gratuits"
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
     spy.mockRestore();
   }, 10000);
 
-  it('isRevolutFX weekend branch renders warning (line 986)', async () => {
+  it('a weekend Revolut FX transaction renders the weekend-surcharge warning', async () => {
     const commissionModule = await import('../utils/commission');
     const spy = vi.spyOn(commissionModule, 'isWeekendNewYork').mockReturnValue(true);
 
@@ -1111,7 +1111,7 @@ describe('TransactionsPage — coverage2: isRevolutFX weekend/weekday branches v
     if (numberInputs.length >= 2) fireEvent.change(numberInputs[1], { target: { value: '0.0064' } });
 
     // Weekend branch (line 986): shows "Week-end NY — change payant"
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
     spy.mockRestore();
   }, 10000);
 });

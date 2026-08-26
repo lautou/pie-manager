@@ -309,6 +309,169 @@ func postgresMajorMismatch(existing, target string) bool {
 	return existing != "" && target != "" && existing != target
 }
 
+// checkPostgresUpgradeCompatibility guards against starting a newer PostgreSQL major version
+// against an older on-disk data volume (issue #58 — see postgresMajorMismatch's own doc
+// comment) before performInstall touches anything. A real mismatch prints the full manual
+// migration instructions and returns a non-nil error, which the caller treats as fatal. A
+// same-version or fresh install is a no-op; any other version change is a normal upgrade,
+// prompting the user to back up first.
+func checkPostgresUpgradeCompatibility(existingVersion string) error {
+	if existingVersion == "" || existingVersion == Version {
+		return nil
+	}
+
+	if volumeName := pgDataVolumeName(); volumeName != "" {
+		existingPGMajor := pgVersionMajor(volumeName)
+		targetPGMajor := composePostgresMajor(composeProd)
+		if postgresMajorMismatch(existingPGMajor, targetPGMajor) {
+			fmt.Printf("\n✗ PostgreSQL major version mismatch: your data is on PostgreSQL %s, "+
+				"but PIE Manager %s requires PostgreSQL %s.\n", existingPGMajor, Version, targetPGMajor)
+			fmt.Println("  A direct upgrade is not possible — PostgreSQL major versions are not")
+			fmt.Println("  binary-compatible, and the new database container would simply refuse")
+			fmt.Println("  to start against your existing data. Nothing has been changed.")
+			fmt.Println("\n  Manual migration required:")
+			fmt.Printf("    1. If PIE Manager %s is still running, open it now and go to\n", existingVersion)
+			fmt.Println("       Administration système → Télécharger une sauvegarde. Keep the file safe.")
+			fmt.Println("    2. Stop PIE Manager, then remove the old database:")
+			fmt.Printf("         podman volume rm %s\n", volumeName)
+			fmt.Printf("    3. Re-run this installer — it will start fresh on PostgreSQL %s.\n", targetPGMajor)
+			fmt.Println("    4. Once running, go to Administration système → Restaurer une sauvegarde")
+			fmt.Println("       and select the file you downloaded in step 1.")
+			return fmt.Errorf("PostgreSQL %s data volume incompatible with required PostgreSQL %s", existingPGMajor, targetPGMajor)
+		}
+	}
+
+	fmt.Printf("Updating: %s → %s\n\n", existingVersion, Version)
+	fmt.Println("⚠  Backup recommended before upgrading.")
+	fmt.Println("   Open PIE Manager → Administration système → Télécharger une sauvegarde")
+	fmt.Print("   Press Enter when done (or Ctrl+C to cancel)...")
+	fmt.Scanln()
+	return nil
+}
+
+// pullImages pulls every image this release needs, skipping any already present locally. On
+// an upgrade (existingVersion != ""), a pull failure is not fatal: it warns and returns
+// existingVersion so the caller keeps running the previous container version (the installer
+// binary itself still gets updated to Version regardless). On a fresh install a pull failure
+// is fatal, since there is no previous version to fall back to.
+func pullImages(existingVersion string) (string, error) {
+	images := append(versionedImages(Version),
+		"docker.io/library/postgres:"+composePostgresMajor(composeProd)+"-alpine",
+		"docker.io/library/haproxy:alpine",
+	)
+	for _, img := range images {
+		if podmanImageExists(img) {
+			fmt.Printf("Image %s... already present, skipping pull.\n", img)
+			continue
+		}
+		fmt.Printf("Pulling %s... ", img)
+		cmd := exec.Command("podman", "pull", img)
+		cmd.Stdout = io.Discard
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			if existingVersion != "" {
+				fmt.Printf("\nWARNING: Could not pull %s (%v)\n", img, err)
+				fmt.Printf("  Container images will remain at v%s.\n", existingVersion)
+				fmt.Println("  The installer binary has been updated to " + Version + ".")
+				return existingVersion, nil
+			}
+			return "", fmt.Errorf("pulling %s: %w", img, err)
+		}
+		fmt.Println("OK")
+	}
+	return Version, nil
+}
+
+// writeInstallConfig creates the install directory (if needed) and writes every config file
+// the compose stack depends on: compose-prod.yaml/haproxy.cfg (embedded assets), VERSION, and
+// a freshly resolved .env (port auto-selected on first install, kept as-is on an update).
+func writeInstallConfig(target, containerVersion string) error {
+	if err := os.MkdirAll(target, 0755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(target, "compose-prod.yaml"), composeProd, 0644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(target, "VERSION"), []byte(Version+"\n"), 0644); err != nil {
+		return err
+	}
+
+	port := readAppPort(target)
+	if port == defaultPort {
+		port = findAvailablePort(defaultPort)
+		if port != defaultPort {
+			fmt.Printf("  Port %d in use, using %d instead.\n", defaultPort, port)
+		}
+	}
+
+	envContent := fmt.Sprintf("APP_VERSION=%s\nINSTALLER_VERSION=%s\nAPP_PORT=%d\n",
+		containerVersion, Version, port)
+	if err := os.WriteFile(filepath.Join(target, ".env"), []byte(envContent), 0644); err != nil {
+		return fmt.Errorf("writing .env: %w", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(target, "haproxy.cfg"), haproxyCfg, 0644); err != nil {
+		return fmt.Errorf("writing haproxy.cfg: %w", err)
+	}
+	return nil
+}
+
+// selfUpdateBinary copies the running installer binary to destBinary, via a
+// rename-old/copy-new/remove-old dance so a partially-written copy never leaves destBinary in
+// a broken state and so overwriting a currently-executing binary never hits "text file busy".
+// A no-op if selfPath and destBinary already resolve to the same file (e.g. re-running the
+// already-installed binary in place).
+func selfUpdateBinary(selfPath, destBinary string) error {
+	selfResolved, _ := filepath.EvalSymlinks(selfPath)
+	destResolved, _ := filepath.EvalSymlinks(destBinary)
+	if selfResolved == destResolved {
+		return nil
+	}
+	os.Rename(destBinary, destBinary+".old")
+	if err := copyFile(selfPath, destBinary, 0755); err != nil {
+		os.Rename(destBinary+".old", destBinary)
+		return err
+	}
+	os.Remove(destBinary + ".old")
+	return nil
+}
+
+// symlinkBinaryIntoLocalBin symlinks the installed binary into ~/.local/bin so `pie-manager`
+// works from a shell with no PATH changes on distros that already include it (Fedora,
+// Ubuntu). Best-effort: a failure here (unwritable home, etc.) doesn't block the install,
+// since the desktop entry/icon remain the primary launch path regardless.
+func symlinkBinaryIntoLocalBin(home, destBinary string) {
+	localBin := filepath.Join(home, ".local/bin")
+	os.MkdirAll(localBin, 0755) //nolint:errcheck
+	symlink := filepath.Join(localBin, "pie-manager")
+	os.Remove(symlink)              //nolint:errcheck
+	os.Symlink(destBinary, symlink) //nolint:errcheck
+}
+
+// shouldRemoveImageTag reports whether a locally-cached tag of one of this app's own image
+// repos is safe to remove during install cleanup: not blank, not the version just installed,
+// and not "latest" (kept so a `:latest`-pinned reference elsewhere never breaks).
+func shouldRemoveImageTag(tag, current string) bool {
+	return tag != "" && tag != current && tag != "latest"
+}
+
+// removeOldImageVersions deletes every locally-cached tag of this app's own two image repos
+// except current and "latest" — only ever queries backendImageRepo/frontendImageRepo, so it
+// never touches images from other Podman projects on the same machine.
+func removeOldImageVersions(current string) {
+	for _, repo := range []string{backendImageRepo, frontendImageRepo} {
+		out, err := exec.Command("podman", "images", repo, "--format", "{{.Tag}}").Output()
+		if err != nil {
+			continue
+		}
+		for _, tag := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+			if shouldRemoveImageTag(tag, current) {
+				exec.Command("podman", "rmi", repo+":"+tag).Run() //nolint:errcheck
+			}
+		}
+	}
+}
+
 // performInstall runs the platform-independent core of the install flow shared by Linux's
 // and macOS's own runInstall: resolve the install directory, guard against a PostgreSQL
 // major-version mismatch, pull container images, write config files, self-copy the binary,
@@ -329,32 +492,8 @@ func performInstall(
 	fmt.Printf("Install directory: %s\n", target)
 
 	existingVersion := readInstalledVersion(target)
-	if existingVersion != "" && existingVersion != Version {
-		if volumeName := pgDataVolumeName(); volumeName != "" {
-			existingPGMajor := pgVersionMajor(volumeName)
-			targetPGMajor := composePostgresMajor(composeProd)
-			if postgresMajorMismatch(existingPGMajor, targetPGMajor) {
-				fmt.Printf("\n✗ PostgreSQL major version mismatch: your data is on PostgreSQL %s, "+
-					"but PIE Manager %s requires PostgreSQL %s.\n", existingPGMajor, Version, targetPGMajor)
-				fmt.Println("  A direct upgrade is not possible — PostgreSQL major versions are not")
-				fmt.Println("  binary-compatible, and the new database container would simply refuse")
-				fmt.Println("  to start against your existing data. Nothing has been changed.")
-				fmt.Println("\n  Manual migration required:")
-				fmt.Printf("    1. If PIE Manager %s is still running, open it now and go to\n", existingVersion)
-				fmt.Println("       Administration système → Télécharger une sauvegarde. Keep the file safe.")
-				fmt.Println("    2. Stop PIE Manager, then remove the old database:")
-				fmt.Printf("         podman volume rm %s\n", volumeName)
-				fmt.Printf("    3. Re-run this installer — it will start fresh on PostgreSQL %s.\n", targetPGMajor)
-				fmt.Println("    4. Once running, go to Administration système → Restaurer une sauvegarde")
-				fmt.Println("       and select the file you downloaded in step 1.")
-				os.Exit(1)
-			}
-		}
-		fmt.Printf("Updating: %s → %s\n\n", existingVersion, Version)
-		fmt.Println("⚠  Backup recommended before upgrading.")
-		fmt.Println("   Open PIE Manager → Administration système → Télécharger une sauvegarde")
-		fmt.Print("   Press Enter when done (or Ctrl+C to cancel)...")
-		fmt.Scanln()
+	if err := checkPostgresUpgradeCompatibility(existingVersion); err != nil {
+		os.Exit(1)
 	}
 
 	if err := onPodmanMachineReady(); err != nil {
@@ -365,113 +504,35 @@ func performInstall(
 	composeCmd := detectComposeCmd()
 	fmt.Printf("Compose: %s\n", composeCmd)
 
-	// Pull images — skip if already present.
-	// On upgrade: if a pull fails, warn and keep the previous APP_VERSION.
-	containerVersion := Version
-	images := append(versionedImages(Version),
-		"docker.io/library/postgres:18-alpine",
-		"docker.io/library/haproxy:alpine",
-	)
-	for _, img := range images {
-		if podmanImageExists(img) {
-			fmt.Printf("Image %s... already present, skipping pull.\n", img)
-			continue
-		}
-		fmt.Printf("Pulling %s... ", img)
-		cmd := exec.Command("podman", "pull", img)
-		cmd.Stdout = io.Discard
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			if existingVersion != "" {
-				fmt.Printf("\nWARNING: Could not pull %s (%v)\n", img, err)
-				fmt.Printf("  Container images will remain at v%s.\n", existingVersion)
-				fmt.Println("  The installer binary has been updated to " + Version + ".")
-				containerVersion = existingVersion
-				break
-			}
-			fmt.Printf("ERROR: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("OK")
+	containerVersion, err := pullImages(existingVersion)
+	if err != nil {
+		fmt.Printf("ERROR: %v\n", err)
+		os.Exit(1)
 	}
 
 	fmt.Print("Installing files... ")
-	if err := os.MkdirAll(target, 0755); err != nil {
+	if err := writeInstallConfig(target, containerVersion); err != nil {
 		fmt.Printf("ERROR: %v\n", err)
 		os.Exit(1)
 	}
 
-	if err := os.WriteFile(filepath.Join(target, "compose-prod.yaml"), composeProd, 0644); err != nil {
-		fmt.Printf("ERROR: %v\n", err)
-		os.Exit(1)
-	}
-
-	if err := os.WriteFile(filepath.Join(target, "VERSION"), []byte(Version+"\n"), 0644); err != nil {
-		fmt.Printf("ERROR: %v\n", err)
-		os.Exit(1)
-	}
-
-	port := readAppPort(target)
-	if port == defaultPort {
-		port = findAvailablePort(defaultPort)
-		if port != defaultPort {
-			fmt.Printf("  Port %d in use, using %d instead.\n", defaultPort, port)
-		}
-	}
-
-	envContent := fmt.Sprintf("APP_VERSION=%s\nINSTALLER_VERSION=%s\nAPP_PORT=%d\n",
-		containerVersion, Version, port)
-	if err := os.WriteFile(filepath.Join(target, ".env"), []byte(envContent), 0644); err != nil {
-		fmt.Printf("ERROR writing .env: %v\n", err)
-		os.Exit(1)
-	}
-
-	if err := os.WriteFile(filepath.Join(target, "haproxy.cfg"), haproxyCfg, 0644); err != nil {
-		fmt.Printf("ERROR writing haproxy.cfg: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Copy the binary itself (rename+write to avoid "text file busy").
 	selfPath, _ := os.Executable()
 	destBinary := filepath.Join(target, "pie-manager")
-	selfResolved, _ := filepath.EvalSymlinks(selfPath)
-	destResolved, _ := filepath.EvalSymlinks(destBinary)
-	if selfResolved != destResolved {
-		os.Rename(destBinary, destBinary+".old")
-		if err := copyFile(selfPath, destBinary, 0755); err != nil {
-			os.Rename(destBinary+".old", destBinary)
-			fmt.Printf("ERROR copying binary: %v\n", err)
-			os.Exit(1)
-		}
-		os.Remove(destBinary + ".old")
+	if err := selfUpdateBinary(selfPath, destBinary); err != nil {
+		fmt.Printf("ERROR copying binary: %v\n", err)
+		os.Exit(1)
 	}
 	fmt.Println("OK")
 
-	localBin := filepath.Join(home, ".local/bin")
-	os.MkdirAll(localBin, 0755)
-	symlink := filepath.Join(localBin, "pie-manager")
-	os.Remove(symlink)
-	os.Symlink(destBinary, symlink)
+	symlinkBinaryIntoLocalBin(home, destBinary)
 
 	onDesktopIntegration(home, target)
 
 	fmt.Println("\nStarting services...")
 	forceRecreate(composeCmd, filepath.Join(target, "compose-prod.yaml"))
 
-	// Remove old PIE Manager image versions — only our own images, never
-	// images from other Podman projects on the same machine.
 	fmt.Print("Removing old PIE Manager image versions... ")
-	for _, repo := range []string{backendImageRepo, frontendImageRepo} {
-		out, err := exec.Command("podman", "images", repo, "--format", "{{.Tag}}").Output()
-		if err != nil {
-			continue
-		}
-		for _, tag := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-			if tag != "" && tag != Version && tag != "latest" {
-				exec.Command("podman", "rmi", repo+":"+tag).Run() //nolint:errcheck
-			}
-		}
-	}
+	removeOldImageVersions(Version)
 	fmt.Println("OK")
 
 	fmt.Printf("\n✓ PIE Manager %s installed successfully!\n", Version)

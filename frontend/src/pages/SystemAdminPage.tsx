@@ -18,6 +18,7 @@ import {
 import { REFRESH_KEYS } from '../hooks/useAutoRefresh';
 import { useSyncStatus, formatSyncDateTime } from '../hooks/useSyncStatus';
 import { localDateStr } from '../utils/format';
+import { extractApiErrorMessage } from '../utils/errors';
 import apiClient from '../api/client';
 import type { TaskStatus } from '../api/queries';
 
@@ -107,9 +108,8 @@ export default function SystemAdminPage() {
       form.append('file', file);
       await apiClient.post('/api/admin/restore', form, { headers: { 'Content-Type': 'multipart/form-data' } });
       setRestoreMsg({ type: 'success', text: 'Restauration réussie. Rechargez la page pour voir les données mises à jour.' });
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? String(err);
-      setRestoreMsg({ type: 'danger', text: msg });
+    } catch (err) {
+      setRestoreMsg({ type: 'danger', text: extractApiErrorMessage(err, String(err)) });
     } finally {
       setIsRestoring(false);
       /* v8 ignore next -- @preserve */

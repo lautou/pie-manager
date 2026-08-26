@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { createBrokerAPI, updateBrokerAPI, deleteBrokerAPI, updateBrokerPortfoliosAPI } from '../api/queries';
 import type { Broker, User } from '../types';
+import { extractApiErrorMessage } from '../utils/errors';
 
 interface BrokerForm {
   portfolio_ids: number[];
@@ -57,7 +58,7 @@ export function useBrokerCrud(portfolios: User[]) {
         }
       }
       qc.invalidateQueries({ queryKey: ['brokers'] }); closeBrokerModal();
-    } catch (e: any) { setBrokerError(e?.response?.data?.detail ?? 'Erreur'); }
+    } catch (e) { setBrokerError(extractApiErrorMessage(e, 'Erreur')); }
     finally { setBrokerSaving(false); }
   };
   const handleDeleteBroker = (acc: Broker) => {
@@ -72,7 +73,7 @@ export function useBrokerCrud(portfolios: User[]) {
       qc.invalidateQueries({ queryKey: ['brokers'] });
       setBrokerDeleteTarget(null);
       setDeleteBrokerError(null);
-    } catch (e: any) { setDeleteBrokerError(e?.response?.data?.detail ?? 'Impossible de supprimer'); }
+    } catch (e) { setDeleteBrokerError(extractApiErrorMessage(e, 'Impossible de supprimer')); }
     finally { setIsDeletingBroker(false); }
   };
 

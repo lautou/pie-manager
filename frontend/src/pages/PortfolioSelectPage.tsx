@@ -24,6 +24,7 @@ import {
 } from '@patternfly/react-core';
 import { ImportIcon, PencilAltIcon, PlusCircleIcon, TrashIcon } from '@patternfly/react-icons';
 import { usePortfolios, useCreatePortfolio, useRenamePortfolio, useDeletePortfolio } from '../api/queries';
+import { extractApiErrorMessage } from '../utils/errors';
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '';
@@ -53,8 +54,8 @@ export default function PortfolioSelectPage() {
       await createPortfolio.mutateAsync({ name: newName.trim() });
       setCreateOpen(false);
       setNewName('');
-    } catch (e: unknown) {
-      setError((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? 'Erreur');
+    } catch (e) {
+      setError(extractApiErrorMessage(e, 'Erreur'));
     }
   };
 
@@ -64,8 +65,8 @@ export default function PortfolioSelectPage() {
     try {
       await renamePortfolio.mutateAsync({ id: renameTarget.id, name: renameTarget.name });
       setRenameTarget(null);
-    } catch (e: unknown) {
-      setError((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? 'Erreur');
+    } catch (e) {
+      setError(extractApiErrorMessage(e, 'Erreur'));
     }
   };
 

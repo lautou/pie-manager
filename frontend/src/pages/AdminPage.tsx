@@ -19,6 +19,7 @@ import {
 import type { Pool, Broker } from '../types';
 import { useSortable } from '../hooks/useSortable';
 import ConfirmModal from '../components/ConfirmModal';
+import { extractApiErrorMessage } from '../utils/errors';
 
 // ── Pool Management sub-component ─────────────────────────────────────────
 
@@ -75,7 +76,7 @@ function PoolManager({ portfolioId }: { portfolioId: string }) {
       }
       setEditingPool(null); setPoolError('');
       refetchPools(); qc.invalidateQueries({ queryKey: ['pools'] });
-    } catch (e: any) { setPoolError(e?.response?.data?.detail ?? t('error.saveFailed')); }
+    } catch (e) { setPoolError(extractApiErrorMessage(e, t('error.saveFailed'))); }
   };
 
   const handleDelete = (p: Pool) => {
@@ -92,7 +93,7 @@ function PoolManager({ portfolioId }: { portfolioId: string }) {
       refetchPools();
       setPoolDeleteTarget(null);
       setActionError(null);
-    } catch (e: any) { setActionError(e?.response?.data?.detail ?? t('error.deleteFailed')); }
+    } catch (e) { setActionError(extractApiErrorMessage(e, t('error.deleteFailed'))); }
     finally { setIsDeletingPool(false); }
   };
 
@@ -100,7 +101,7 @@ function PoolManager({ portfolioId }: { portfolioId: string }) {
     /* v8 ignore next -- @preserve */
     if (!selectedPool) return;
     try { await addTickerToPool(selectedPool.id, ticker); refetchProducts(); setTickerSearch(''); setActionError(null); }
-    catch (e: any) { setActionError(e?.response?.data?.detail ?? t('error.saveFailed')); }
+    catch (e) { setActionError(extractApiErrorMessage(e, t('error.saveFailed'))); }
   };
 
   const handleRemoveTicker = async (ticker: string) => {

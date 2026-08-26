@@ -7,6 +7,7 @@ import {
 } from '@patternfly/react-core';
 import { PencilAltIcon, PlusCircleIcon, TrashIcon } from '@patternfly/react-icons';
 import ConfirmModal from './ConfirmModal';
+import { extractApiErrorMessage } from '../utils/errors';
 
 const inputSt: React.CSSProperties = { padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', fontSize: '0.9rem', width: '100%' };
 const tdSt: React.CSSProperties = { padding: '6px 8px', fontSize: '0.9rem', borderBottom: '1px solid #eee' };
@@ -108,8 +109,8 @@ export default function CrudManager<T extends { code: string; label: string }>({
         }
       }
       closeModal(); onMutated();
-    } catch (e: any) {
-      setFormError(e?.response?.data?.detail ?? 'Erreur lors de l\'enregistrement');
+    } catch (e) {
+      setFormError(extractApiErrorMessage(e, 'Erreur lors de l\'enregistrement'));
     }
   };
 
@@ -123,8 +124,8 @@ export default function CrudManager<T extends { code: string; label: string }>({
       await onDelete(deleteTarget.code);
       onMutated();
       setDeleteTarget(null);
-    } catch (e: any) {
-      setDeleteError({ code: deleteTarget.code, message: e?.response?.data?.detail ?? 'Erreur lors de la suppression' });
+    } catch (e) {
+      setDeleteError({ code: deleteTarget.code, message: extractApiErrorMessage(e, 'Erreur lors de la suppression') });
     } finally { setIsDeleting(false); }
   };
 

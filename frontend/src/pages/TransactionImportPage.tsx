@@ -21,11 +21,7 @@ import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import { DownloadIcon, UploadIcon } from '@patternfly/react-icons';
 import { useValidateImport, useCommitImport } from '../api/queries';
 import type { ImportRowResult } from '../api/queries';
-
-function extractErrorMessage(err: unknown): string {
-  const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-  return detail ?? String(err);
-}
+import { extractApiErrorMessage } from '../utils/errors';
 
 function StatusLabel({ status }: { status: ImportRowResult['status'] }) {
   const { t } = useTranslation();
@@ -87,8 +83,8 @@ export default function TransactionImportPage() {
       const result = await validateImport.mutateAsync(selected);
       setRows(result.rows);
       setIncluded(new Set(result.rows.filter((r) => r.status === 'ok').map((r) => r.row_number)));
-    } catch (err: unknown) {
-      setErrorMsg(extractErrorMessage(err));
+    } catch (err) {
+      setErrorMsg(extractApiErrorMessage(err, String(err)));
     }
   };
 
@@ -111,8 +107,8 @@ export default function TransactionImportPage() {
       setRows(null);
       setFile(null);
       setIncluded(new Set());
-    } catch (err: unknown) {
-      setErrorMsg(t('import.errorMessage', { message: extractErrorMessage(err) }));
+    } catch (err) {
+      setErrorMsg(t('import.errorMessage', { message: extractApiErrorMessage(err, String(err)) }));
     }
   };
 

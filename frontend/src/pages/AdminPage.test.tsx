@@ -82,17 +82,17 @@ describe('AdminPage', () => {
 
   it('renders page title', () => {
     render(<AdminPage />);
-    expect(screen.getByText('Paramètres')).toBeTruthy();
+    expect(screen.getByText('Paramètres')).toBeInTheDocument();
   });
 
   it('shows pool management section', () => {
     render(<AdminPage />);
-    expect(screen.getByText(/Gestion des pools/i)).toBeTruthy();
+    expect(screen.getByText(/Gestion des pools/i)).toBeInTheDocument();
   });
 
   it('shows pool in list', () => {
     render(<AdminPage />);
-    expect(screen.getByText('Asie')).toBeTruthy();
+    expect(screen.getByText('Asie')).toBeInTheDocument();
   });
 
   it('can click on pool row to select it', async () => {
@@ -101,10 +101,10 @@ describe('AdminPage', () => {
 
     const asieCell = screen.getAllByText('Asie')[0];
     const row = asieCell.closest('tr');
-    expect(row).toBeTruthy();
+    expect(row).toBeInTheDocument();
     if (row) {
       await user.click(row);
-      expect(screen.getByText(/Actifs du pool/i)).toBeTruthy();
+      expect(screen.getByText(/Actifs du pool/i)).toBeInTheDocument();
     }
   }, 10000);
 
@@ -119,10 +119,10 @@ describe('AdminPage', () => {
 
     const btns = screen.getAllByRole('button');
     const nouveauBtn = btns.find(b => b.textContent?.includes('Nouveau pool'));
-    expect(nouveauBtn).toBeTruthy();
+    expect(nouveauBtn).toBeInTheDocument();
     if (nouveauBtn) {
       await user.click(nouveauBtn);
-      expect(screen.getByText('Enregistrer')).toBeTruthy();
+      expect(screen.getByText('Enregistrer')).toBeInTheDocument();
     }
   }, 10000);
 
@@ -151,7 +151,7 @@ describe('AdminPage', () => {
     const editBtn = btns.find(b => b.textContent?.includes('✏️'));
     if (editBtn) {
       await user.click(editBtn);
-      expect(screen.getByText(/Modifier/i)).toBeTruthy();
+      expect(screen.getByText(/Modifier/i)).toBeInTheDocument();
     }
   }, 10000);
 
@@ -165,7 +165,7 @@ describe('AdminPage', () => {
       await user.click(nouveauBtn);
       const saveBtn = screen.getByText('Enregistrer');
       await user.click(saveBtn);
-      expect(screen.getByText(/Le nom est requis/i)).toBeTruthy();
+      expect(screen.getByText(/Le nom est requis/i)).toBeInTheDocument();
     }
   }, 10000);
 
@@ -177,7 +177,7 @@ describe('AdminPage', () => {
     const nouveauBtn = btns.find(b => b.textContent?.includes('Nouveau pool'));
     if (nouveauBtn) {
       await user.click(nouveauBtn);
-      expect(screen.getByText('Enregistrer')).toBeTruthy();
+      expect(screen.getByText('Enregistrer')).toBeInTheDocument();
       await user.click(screen.getByText('Annuler'));
       expect(screen.queryByText('Enregistrer')).toBeNull();
     }
@@ -191,7 +191,7 @@ describe('AdminPage', () => {
     const deleteBtn = btns.find(b => b.textContent?.includes('🗑'));
     if (deleteBtn) {
       await user.click(deleteBtn);
-      expect(screen.getByTestId('modal')).toBeTruthy();
+      expect(screen.getByTestId('modal')).toBeInTheDocument();
     }
   }, 10000);
 
@@ -203,7 +203,7 @@ describe('AdminPage', () => {
     const row = asieCell.closest('tr');
     if (row) {
       await user.click(row);
-      expect(screen.getByText(/Actifs du pool/i)).toBeTruthy();
+      expect(screen.getByText(/Actifs du pool/i)).toBeInTheDocument();
 
       const closeBtns = screen.getAllByRole('button');
       const closeBtn = closeBtns.find(b => b.textContent === '✕');
@@ -260,7 +260,7 @@ describe('AdminPage — additional coverage', () => {
       const xBtns = screen.getAllByRole('button').filter(b => b.textContent === '×');
       if (xBtns.length > 0) {
         await user.click(xBtns[0]);
-        expect(screen.getByText('Paramètres')).toBeTruthy();
+        expect(screen.getByText('Paramètres')).toBeInTheDocument();
       }
     }
   }, 10000);
@@ -280,7 +280,7 @@ describe('AdminPage — additional coverage', () => {
       await user.click(row);
       const searchInput = screen.getByPlaceholderText(/Rechercher un actif/i);
       await user.type(searchInput, 'ZZZZNOTFOUND');
-      expect(screen.getByText(/Aucun actif disponible/i)).toBeTruthy();
+      expect(screen.getByText(/Aucun actif disponible/i)).toBeInTheDocument();
     }
   }, 10000);
 
@@ -297,7 +297,7 @@ describe('AdminPage — additional coverage', () => {
       await user.clear(nameInput);
       await user.type(nameInput, 'TestPool');
       await user.click(screen.getByText('Enregistrer'));
-      expect(screen.getByText('Paramètres')).toBeTruthy();
+      expect(screen.getByText('Paramètres')).toBeInTheDocument();
     }
   }, 10000);
 });
@@ -326,7 +326,7 @@ describe('AdminPage — coverage for uncovered branches', () => {
     if (editBtn) {
       await user.click(editBtn);
       await user.click(screen.getByText('Enregistrer'));
-      expect(screen.getByText('Paramètres')).toBeTruthy();
+      expect(screen.getByText('Paramètres')).toBeInTheDocument();
     }
   }, 10000);
 
@@ -346,7 +346,7 @@ describe('AdminPage — coverage for uncovered branches', () => {
         await user.type(numberInputs[0], '0');
       }
       await user.click(screen.getByText('Enregistrer'));
-      expect(screen.getByText('Paramètres')).toBeTruthy();
+      expect(screen.getByText('Paramètres')).toBeInTheDocument();
     }
   }, 10000);
 
@@ -366,7 +366,7 @@ describe('AdminPage — coverage for uncovered branches', () => {
       const textInputs = screen.getAllByRole('textbox');
       await user.type(textInputs[0], 'DuplicatePool');
       await user.click(screen.getByText('Enregistrer'));
-      expect(screen.getByText('Paramètres')).toBeTruthy();
+      expect(screen.getByText('Paramètres')).toBeInTheDocument();
     }
   }, 10000);
 
@@ -414,7 +414,7 @@ describe('AdminPage — coverage for uncovered branches', () => {
     if (deleteBtn) {
       await user.click(deleteBtn);
       await user.click(screen.getByText('Supprimer'));
-      await rtlWaitFor(() => expect(screen.getByText('Cannot delete pool with positions')).toBeTruthy());
+      await rtlWaitFor(() => expect(screen.getByText('Cannot delete pool with positions')).toBeInTheDocument());
     }
   }, 10000);
 
@@ -432,7 +432,7 @@ describe('AdminPage — coverage for uncovered branches', () => {
       if (results.length > 0) {
         await user.click(results[results.length - 1]);
       }
-      expect(screen.getByText('Paramètres')).toBeTruthy();
+      expect(screen.getByText('Paramètres')).toBeInTheDocument();
     }
   }, 10000);
 
@@ -444,7 +444,7 @@ describe('AdminPage — coverage for uncovered branches', () => {
     const row = asieCell.closest('tr');
     if (row) {
       await user.click(row);
-      expect(screen.getByText(/Actifs du pool/i)).toBeTruthy();
+      expect(screen.getByText(/Actifs du pool/i)).toBeInTheDocument();
       await user.click(row);
       expect(screen.queryByText(/Actifs du pool/i)).toBeNull();
     }
@@ -463,7 +463,7 @@ describe('AdminPage — coverage for uncovered branches', () => {
       if (deleteBtn) {
         await user.click(deleteBtn);
         await user.click(screen.getByText('Supprimer'));
-        expect(screen.getByText('Paramètres')).toBeTruthy();
+        expect(screen.getByText('Paramètres')).toBeInTheDocument();
       }
     }
   }, 10000);
@@ -488,7 +488,7 @@ describe('AdminPage — coverage for uncovered branches', () => {
         await user.click(results[results.length - 1]);
       }
     }
-    await rtlWaitFor(() => expect(screen.getByText('Ticker already assigned')).toBeTruthy());
+    await rtlWaitFor(() => expect(screen.getByText('Ticker already assigned')).toBeInTheDocument());
   }, 10000);
 
   it('change strategy select in pool form', async () => {
@@ -501,7 +501,7 @@ describe('AdminPage — coverage for uncovered branches', () => {
       await user.click(nouveauBtn);
       const strategySelect = screen.getByDisplayValue('Offensive');
       await user.selectOptions(strategySelect, 'Defensive');
-      expect(screen.getByText('Paramètres')).toBeTruthy();
+      expect(screen.getByText('Paramètres')).toBeInTheDocument();
     }
   }, 10000);
 
@@ -521,7 +521,7 @@ describe('AdminPage — coverage for uncovered branches', () => {
         await user.unhover(results[results.length - 1]);
       }
     }
-    expect(screen.getByText('Paramètres')).toBeTruthy();
+    expect(screen.getByText('Paramètres')).toBeInTheDocument();
   }, 10000);
 });
 
@@ -544,16 +544,16 @@ describe('AdminPage — direct state rendering coverage', () => {
     const defensivePool = { id: 2, portfolio_id: 1, name: 'Or', strategy: 'Defensive', target_pct: 0.25, is_active: true };
     mockUsePools.mockReturnValue({ data: [mockPool, defensivePool], refetch: vi.fn() });
     render(<AdminPage />);
-    expect(screen.getByText('Asie')).toBeTruthy();
-    expect(screen.getByText('Or')).toBeTruthy();
-    expect(screen.getByText('Defensive')).toBeTruthy();
+    expect(screen.getByText('Asie')).toBeInTheDocument();
+    expect(screen.getByText('Or')).toBeInTheDocument();
+    expect(screen.getByText('Defensive')).toBeInTheDocument();
   });
 
   it('pool is_active false shows ⏸️', () => {
     const inactivePool = { id: 3, portfolio_id: 1, name: 'Yen', strategy: 'Defensive', target_pct: 0.25, is_active: false };
     mockUsePools.mockReturnValue({ data: [inactivePool], refetch: vi.fn() });
     render(<AdminPage />);
-    expect(screen.getByText('⏸️')).toBeTruthy();
+    expect(screen.getByText('⏸️')).toBeInTheDocument();
   });
 
   it('savePool: API error without detail falls back to "Erreur"', async () => {
@@ -570,7 +570,7 @@ describe('AdminPage — direct state rendering coverage', () => {
       const textInputs = screen.getAllByRole('textbox');
       await user.type(textInputs[0], 'TestPool');
       await user.click(screen.getByText('Enregistrer'));
-      expect(screen.getByText('Paramètres')).toBeTruthy();
+      expect(screen.getByText('Paramètres')).toBeInTheDocument();
     }
   }, 10000);
 
@@ -586,7 +586,7 @@ describe('AdminPage — direct state rendering coverage', () => {
     if (deleteBtn) {
       await user.click(deleteBtn);
       await user.click(screen.getByText('Supprimer'));
-      await rtlWaitFor(() => expect(screen.getByText('Erreur suppression')).toBeTruthy());
+      await rtlWaitFor(() => expect(screen.getByText('Erreur suppression')).toBeInTheDocument());
     }
   }, 10000);
 
@@ -651,7 +651,7 @@ describe('AdminPage — direct state rendering coverage', () => {
         if (resultDiv) {
           fe.mouseEnter(resultDiv);
           fe.mouseLeave(resultDiv);
-          expect(screen.getByText('Paramètres')).toBeTruthy();
+          expect(screen.getByText('Paramètres')).toBeInTheDocument();
         }
       }
     }
@@ -670,7 +670,7 @@ describe('AdminPage — PoolManager sort headers and color input', () => {
     mockUseAllBrokers.mockReturnValue({ data: [], isLoading: false });
   });
 
-  it('clicking pool table column headers calls togglePool (lines 111-114)', async () => {
+  it('clicking pool table column headers calls togglePool', async () => {
     const user = userEvent.setup({ delay: null });
     const { container } = render(<AdminPage />);
 
@@ -679,10 +679,10 @@ describe('AdminPage — PoolManager sort headers and color input', () => {
     for (const th of ths.slice(0, 4)) {
       await user.click(th as HTMLElement);
     }
-    expect(screen.getByText('Paramètres')).toBeTruthy();
+    expect(screen.getByText('Paramètres')).toBeInTheDocument();
   }, 10000);
 
-  it('sort getValue covers target_pct / is_active / string fallback branches with 2 pools (line 33)', async () => {
+  it('clicking each pool column header sorts by target_pct, is_active, and name/strategy fallback with 2 pools', async () => {
     // With 2+ pools the sort comparator actually calls getValue for comparison.
     // Clicking each column header exercises each branch of the getValue ternary chain:
     //   col='target_pct' → p.target_pct branch
@@ -703,10 +703,10 @@ describe('AdminPage — PoolManager sort headers and color input', () => {
     if (ths.length > 0) {
       await user.click(ths[0] as HTMLElement);
     }
-    expect(screen.getByText('Paramètres')).toBeTruthy();
+    expect(screen.getByText('Paramètres')).toBeInTheDocument();
   }, 10000);
 
-  it('color picker input onChange calls setNewColor (line 159)', async () => {
+  it('color picker input onChange calls setNewColor', async () => {
     const user = userEvent.setup({ delay: null });
     const { container } = render(<AdminPage />);
 
@@ -723,7 +723,7 @@ describe('AdminPage — PoolManager sort headers and color input', () => {
         expect(colorInput.value).toBe('#ff0000');
       }
     }
-    expect(screen.getByText('Paramètres')).toBeTruthy();
+    expect(screen.getByText('Paramètres')).toBeInTheDocument();
   }, 10000);
 });
 
@@ -743,13 +743,13 @@ describe('AdminPage — AccountAssignmentManager coverage', () => {
     mockUseAllBrokers.mockReturnValue({ data: [], isLoading: false });
 
     render(<AdminPage />);
-    expect(screen.getByText('Aucun')).toBeTruthy();
+    expect(screen.getByText('Aucun')).toBeInTheDocument();
     const configBtn = screen.getByText('Configuration générale');
     await userEvent.click(configBtn);
     expect(mockNavigate).toHaveBeenCalledWith('/config?from=1');
   }, 10000);
 
-  it('shows loading text when isLoading=true (line 251)', () => {
+  it('AccountAssignmentManager shows a loading indicator while broker data is loading', () => {
     vi.clearAllMocks();
     mockUsePools.mockReturnValue({ data: [mockPool], refetch: vi.fn() });
     mockUsePoolProducts.mockReturnValue({ data: [], refetch: vi.fn() });
@@ -758,10 +758,10 @@ describe('AdminPage — AccountAssignmentManager coverage', () => {
     mockUseAllBrokers.mockReturnValue({ data: [], isLoading: true });
 
     render(<AdminPage />);
-    expect(screen.getByText('Paramètres')).toBeTruthy();
+    expect(screen.getByText('Paramètres')).toBeInTheDocument();
   }, 10000);
 
-  it('renders account checkboxes when accounts exist (lines 254-268)', () => {
+  it('renders account checkboxes when accounts exist', () => {
     vi.clearAllMocks();
     mockUsePools.mockReturnValue({ data: [mockPool], refetch: vi.fn() });
     mockUsePoolProducts.mockReturnValue({ data: [], refetch: vi.fn() });
@@ -776,7 +776,7 @@ describe('AdminPage — AccountAssignmentManager coverage', () => {
     });
 
     render(<AdminPage />);
-    expect(screen.getByText('Paramètres')).toBeTruthy();
+    expect(screen.getByText('Paramètres')).toBeInTheDocument();
     expect(screen.getAllByText('Degiro').length).toBeGreaterThan(0);
     expect(screen.getAllByText('IBKR').length).toBeGreaterThan(0);
   }, 10000);
@@ -805,7 +805,7 @@ describe('AdminPage — AccountAssignmentManager coverage', () => {
     }
   }, 10000);
 
-  it('clicking unassigned account checkbox exercises the add-pid branch (line 240 false branch)', async () => {
+  it('clicking an unassigned account checkbox adds the portfolio id to its assignment list', async () => {
     // portfolio_ids: [] → isAssigned=false → toggle adds pid to array [...acc.portfolio_ids, pid]
     vi.clearAllMocks();
     mockUsePools.mockReturnValue({ data: [mockPool], refetch: vi.fn() });

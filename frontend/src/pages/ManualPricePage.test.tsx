@@ -112,25 +112,25 @@ describe('ManualPricePage', () => {
   it('shows spinner when loading', () => {
     mockUseProducts.mockReturnValue({ data: undefined, isLoading: true, isError: false });
     render(<ManualPricePage />);
-    expect(screen.getByTestId('spinner-xl')).toBeTruthy();
+    expect(screen.getByTestId('spinner-xl')).toBeInTheDocument();
   });
 
   it('shows error alert when isError', () => {
     mockUseProducts.mockReturnValue({ data: undefined, isLoading: false, isError: true });
     render(<ManualPricePage />);
-    expect(screen.getByTestId('alert-danger')).toBeTruthy();
+    expect(screen.getByTestId('alert-danger')).toBeInTheDocument();
   });
 
   it('shows empty state when no manual products', () => {
     mockUseProducts.mockReturnValue({ data: [mockNonManualProduct], isLoading: false, isError: false });
     render(<ManualPricePage />);
-    expect(screen.getByText(/Aucun produit à cotation manuelle trouvé/i)).toBeTruthy();
+    expect(screen.getByText(/Aucun produit à cotation manuelle trouvé/i)).toBeInTheDocument();
   });
 
   it('renders page title', () => {
     mockUseProducts.mockReturnValue({ data: [], isLoading: false, isError: false });
     render(<ManualPricePage />);
-    expect(screen.getByText(/Saisie des prix manuels/i)).toBeTruthy();
+    expect(screen.getByText(/Saisie des prix manuels/i)).toBeInTheDocument();
   });
 
   it('excludes an Or physique product this portfolio never held (issue #75)', () => {
@@ -140,28 +140,28 @@ describe('ManualPricePage', () => {
     mockUseProducts.mockReturnValue({ data: [mockManualProduct], isLoading: false, isError: false });
     mockUseHoldings.mockReturnValue({ data: [], isLoading: false });
     render(<ManualPricePage />);
-    expect(screen.getByText(/Aucun produit à cotation manuelle trouvé/i)).toBeTruthy();
+    expect(screen.getByText(/Aucun produit à cotation manuelle trouvé/i)).toBeInTheDocument();
   });
 
   it('shows spinner while holdings are still loading, even once products has loaded', () => {
     mockUseProducts.mockReturnValue({ data: [mockManualProduct], isLoading: false, isError: false });
     mockUseHoldings.mockReturnValue({ data: undefined, isLoading: true });
     render(<ManualPricePage />);
-    expect(screen.getByTestId('spinner-xl')).toBeTruthy();
+    expect(screen.getByTestId('spinner-xl')).toBeInTheDocument();
   });
 
   it('renders manual product card', () => {
     mockUseProducts.mockReturnValue({ data: [mockManualProduct], isLoading: false, isError: false });
     render(<ManualPricePage />);
-    expect(screen.getByText('Or physique')).toBeTruthy();
-    expect(screen.getByTestId('badge')).toBeTruthy();
+    expect(screen.getByText('Or physique')).toBeInTheDocument();
+    expect(screen.getByTestId('badge')).toBeInTheDocument();
   });
 
   it('shows latest price when available', () => {
     mockUseProducts.mockReturnValue({ data: [mockManualProduct], isLoading: false, isError: false });
     mockUsePrices.mockReturnValue({ data: [mockPrice], isLoading: false });
     render(<ManualPricePage />);
-    expect(screen.getByText(/Dernier prix connu/i)).toBeTruthy();
+    expect(screen.getByText(/Dernier prix connu/i)).toBeInTheDocument();
   });
 
   it('shows "Aucun prix enregistré" when no prices', () => {
@@ -176,7 +176,7 @@ describe('ManualPricePage', () => {
     mockUseProducts.mockReturnValue({ data: [mockManualProduct], isLoading: false, isError: false });
     mockUsePrices.mockReturnValue({ data: undefined, isLoading: true });
     render(<ManualPricePage />);
-    expect(screen.getByTestId('spinner-sm')).toBeTruthy();
+    expect(screen.getByTestId('spinner-sm')).toBeInTheDocument();
   });
 
   it('shows error alert in product card on mutation error', () => {
@@ -184,24 +184,24 @@ describe('ManualPricePage', () => {
     mockUsePrices.mockReturnValue({ data: [], isLoading: false });
     mockUseCreatePrice.mockReturnValue({ mutateAsync: vi.fn(), isPending: false, isError: true });
     render(<ManualPricePage />);
-    expect(screen.getByTestId('alert-danger')).toBeTruthy();
+    expect(screen.getByTestId('alert-danger')).toBeInTheDocument();
   });
 
   it('renders Enregistrer button', () => {
     mockUseProducts.mockReturnValue({ data: [mockManualProduct], isLoading: false, isError: false });
     render(<ManualPricePage />);
-    expect(screen.getByText('Enregistrer')).toBeTruthy();
+    expect(screen.getByText('Enregistrer')).toBeInTheDocument();
   });
 
   it('renders multiple manual products', () => {
     const secondProduct = { ticker: 'SILV', name: 'Argent physique', category: 'Actif', instrument_type: 'Or physique', currency: 'EUR' };
     mockUseProducts.mockReturnValue({ data: [mockManualProduct, secondProduct], isLoading: false, isError: false });
     render(<ManualPricePage />);
-    expect(screen.getByText('Or physique')).toBeTruthy();
-    expect(screen.getByText('Argent physique')).toBeTruthy();
+    expect(screen.getByText('Or physique')).toBeInTheDocument();
+    expect(screen.getByText('Argent physique')).toBeInTheDocument();
   });
 
-  it('clicking Enregistrer calls createPrice.mutateAsync (lines 56-65)', async () => {
+  it('clicking Enregistrer saves the price via createPrice.mutateAsync', async () => {
     const mockMutate = vi.fn().mockResolvedValue({});
     mockUseProducts.mockReturnValue({ data: [mockManualProduct], isLoading: false, isError: false });
     // Provide a price so the button is enabled
@@ -231,7 +231,7 @@ describe('ManualPricePage', () => {
     const minusBtn = screen.getAllByRole('button').find(b => b.textContent === '-');
     if (minusBtn) {
       await user.click(minusBtn);
-      expect(screen.getByText('Or physique')).toBeTruthy();
+      expect(screen.getByText('Or physique')).toBeInTheDocument();
     }
   });
 
@@ -245,7 +245,7 @@ describe('ManualPricePage', () => {
     const plusBtn = screen.getAllByRole('button').find(b => b.textContent === '+');
     if (plusBtn) {
       await user.click(plusBtn);
-      expect(screen.getByText('Or physique')).toBeTruthy();
+      expect(screen.getByText('Or physique')).toBeInTheDocument();
     }
   });
 
@@ -259,21 +259,21 @@ describe('ManualPricePage', () => {
     const numberInput = screen.getByRole('spinbutton');
     await user.clear(numberInput);
     await user.type(numberInput, '2000');
-    expect(screen.getByText('Or physique')).toBeTruthy();
+    expect(screen.getByText('Or physique')).toBeInTheDocument();
   });
 
-  it('date picker renders with FrDatePicker (line 116)', () => {
+  it('renders the price date field using FrDatePicker', () => {
     mockUseProducts.mockReturnValue({ data: [mockManualProduct], isLoading: false, isError: false });
     mockUsePrices.mockReturnValue({ data: [], isLoading: false });
 
     render(<ManualPricePage />);
 
     // FrDatePicker is rendered via the DatePicker mock with data-testid="date-picker"
-    expect(screen.getByTestId('date-picker')).toBeTruthy();
-    expect(screen.getByText('Or physique')).toBeTruthy();
+    expect(screen.getByTestId('date-picker')).toBeInTheDocument();
+    expect(screen.getByText('Or physique')).toBeInTheDocument();
   });
 
-  it('FrDatePicker onChange clears date when value is empty (line 160)', () => {
+  it('clearing the date picker input resets the selected date to empty', () => {
     mockUseProducts.mockReturnValue({ data: [mockManualProduct], isLoading: false, isError: false });
     mockUsePrices.mockReturnValue({ data: [], isLoading: false });
 
@@ -282,20 +282,20 @@ describe('ManualPricePage', () => {
     // Clearing the date input triggers FrDatePicker's else-if(!_strVal) branch → setDate('')
     const dateInput = screen.getByTestId('date-picker');
     fireEvent.change(dateInput, { target: { value: '' } });
-    expect(screen.getByText('Or physique')).toBeTruthy();
+    expect(screen.getByText('Or physique')).toBeInTheDocument();
   });
 
-  it('product with no currency falls back to EUR (line 53 branch)', () => {
+  it('falls back to EUR when the product has no currency set', () => {
     // When product.currency is empty/falsy, currency = product.currency || 'EUR' = 'EUR'
     const productNoCurrency = { ticker: 'GOLD', name: 'Or physique', category: 'Actif', instrument_type: 'Or physique', currency: '' };
     mockUseProducts.mockReturnValue({ data: [productNoCurrency], isLoading: false, isError: false });
     mockUsePrices.mockReturnValue({ data: [], isLoading: false });
     render(<ManualPricePage />);
     // Should render without crash and show the label with EUR
-    expect(screen.getByText(/Prix \(EUR\)/i)).toBeTruthy();
+    expect(screen.getByText(/Prix \(EUR\)/i)).toBeInTheDocument();
   });
 
-  it('setTimeout callback in handleSave fires to hide success alert (line 65 anonymous fn)', async () => {
+  it('hides the success alert automatically a few seconds after a successful save', async () => {
     // The setTimeout(() => setSuccessVisible(false), 3000) callback at line 65
     // is the uncovered function. Use fake timers to advance time.
     vi.useFakeTimers();
@@ -320,10 +320,10 @@ describe('ManualPricePage', () => {
     });
 
     vi.useRealTimers();
-    expect(screen.getByText('Or physique')).toBeTruthy();
+    expect(screen.getByText('Or physique')).toBeInTheDocument();
   });
 
-  it('handleSave: catch block when mutateAsync throws (lines 66-68)', async () => {
+  it('silently handles a save failure when createPrice.mutateAsync rejects', async () => {
     // The catch block in handleSave is empty (swallows error), but it's still a statement
     const mockMutate = vi.fn().mockRejectedValueOnce(new Error('Price save failed'));
     mockUseProducts.mockReturnValue({ data: [mockManualProduct], isLoading: false, isError: false });
@@ -337,19 +337,19 @@ describe('ManualPricePage', () => {
     const enregistrerBtn = screen.getByText('Enregistrer');
     await user.click(enregistrerBtn);
     // Error is caught silently; page should still render
-    expect(screen.getByText('Or physique')).toBeTruthy();
+    expect(screen.getByText('Or physique')).toBeInTheDocument();
   });
 
-  it('button shows isPending state with Enregistrement text (line 148 branch)', () => {
+  it('shows the "Enregistrement…" pending state with a spinner while saving', () => {
     // When isPending is true, the button shows spinner + "Enregistrement…"
     mockUseProducts.mockReturnValue({ data: [mockManualProduct], isLoading: false, isError: false });
     mockUsePrices.mockReturnValue({ data: [mockPrice], isLoading: false });
     mockUseCreatePrice.mockReturnValue({ mutateAsync: vi.fn(), isPending: true, isError: false });
     render(<ManualPricePage />);
     // The "Enregistrement…" text should appear (from the isPending branch)
-    expect(screen.getByText(/Enregistrement/i)).toBeTruthy();
+    expect(screen.getByText(/Enregistrement/i)).toBeInTheDocument();
     // The spinner inside the button should appear
-    expect(screen.getByTestId('spinner-sm')).toBeTruthy();
+    expect(screen.getByTestId('spinner-sm')).toBeInTheDocument();
   });
 
   // ── PriceAgeBadge colour tests ─────────────────────────────────────────────
@@ -448,7 +448,7 @@ describe('ManualPricePage', () => {
     expect(label.getAttribute('data-color')).toBe('red');
   });
 
-  it('price input onChange with invalid value sets price to 0 (line 179 — else setPrice(0))', () => {
+  it('resets the price to 0 when the price input is cleared to a non-numeric value', () => {
     // Line 179: onChange → if (!isNaN(val)) setPrice(val); else setPrice(0)
     // Trigger the else branch by entering a non-numeric string
     mockUseProducts.mockReturnValue({ data: [mockManualProduct], isLoading: false, isError: false });
@@ -458,10 +458,10 @@ describe('ManualPricePage', () => {
     const numberInput = screen.getByRole('spinbutton') as HTMLInputElement;
     // Enter an empty string → parseFloat('') = NaN → isNaN(NaN) = true → else setPrice(0)
     fireEvent.change(numberInput, { target: { value: '' } });
-    expect(screen.getByText(/Or physique/i)).toBeTruthy(); // page still renders
+    expect(screen.getByText(/Or physique/i)).toBeInTheDocument(); // page still renders
   });
 
-  it('inputProps.onFocus on price NumberInput selects the input text (line 171 anonymous fn)', () => {
+  it('selects the price input text when the price field receives focus', () => {
     // The local NumberInput override passes inputProps.onFocus to the actual <input> element.
     // Firing focus on the <input> calls (e) => e.currentTarget.select() (line 171).
     mockUseProducts.mockReturnValue({ data: [mockManualProduct], isLoading: false, isError: false });

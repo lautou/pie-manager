@@ -163,12 +163,12 @@ describe('AccountsSummaryPage — sort switch coverage', () => {
         await user.click(ths[0]);
       }
     }
-    expect(screen.getByText('Comptes')).toBeTruthy();
+    expect(screen.getByText('Comptes')).toBeInTheDocument();
   });
 
   // ── Lines 243-245: acc sort switch cases (ticker=0, name=1, totalEur=5) ─────
 
-  it('acc sort by Ticker (col 0) — line 242: localeCompare branch', async () => {
+  it('sorts the account positions table by Ticker', async () => {
     const user = userEvent.setup({ delay: null });
     const { container } = render(<AccountsSummaryPage />);
 
@@ -181,10 +181,10 @@ describe('AccountsSummaryPage — sort switch coverage', () => {
     } else if (ths0.length === 1) {
       await user.click(ths0[0]);
     }
-    expect(screen.getByText('Comptes')).toBeTruthy();
+    expect(screen.getByText('Comptes')).toBeInTheDocument();
   });
 
-  it('acc sort by Nom (col 1) — line 243: localeCompare branch', async () => {
+  it('sorts the account positions table by product name', async () => {
     const user = userEvent.setup({ delay: null });
     const { container } = render(<AccountsSummaryPage />);
 
@@ -196,10 +196,10 @@ describe('AccountsSummaryPage — sort switch coverage', () => {
     for (const th of ths1) {
       await user.click(th);
     }
-    expect(screen.getByText('Comptes')).toBeTruthy();
+    expect(screen.getByText('Comptes')).toBeInTheDocument();
   });
 
-  it('acc sort by Total EUR (col 5) — line 244: numeric comparator', async () => {
+  it('sorts the account positions table by Total EUR using a numeric comparator', async () => {
     const user = userEvent.setup({ delay: null });
     const { container } = render(<AccountsSummaryPage />);
 
@@ -208,7 +208,7 @@ describe('AccountsSummaryPage — sort switch coverage', () => {
     for (const th of ths5) {
       await user.click(th);
     }
-    expect(screen.getByText('Comptes')).toBeTruthy();
+    expect(screen.getByText('Comptes')).toBeInTheDocument();
   });
 
   it('acc sort by Ticker, then Nom to cover asc→desc toggle on acc table', async () => {
@@ -233,10 +233,10 @@ describe('AccountsSummaryPage — sort switch coverage', () => {
       await user.click(th);
       await user.click(th);
     }
-    expect(screen.getByText('Comptes')).toBeTruthy();
+    expect(screen.getByText('Comptes')).toBeInTheDocument();
   });
 
-  it('summary sort default branch (line 109): firing onSummSort with out-of-range index via indirect call', () => {
+  it('renders sortable column headers for the summary table with multiple accounts', () => {
     // We cannot reach the default: return 0 in the summary sort switch via the UI
     // because summSortIndex is typed as SummColIndex (0|1|2|3|4) and the Th mock
     // only fires with real column indices. However, V8 coverage counts the
@@ -250,6 +250,6 @@ describe('AccountsSummaryPage — sort switch coverage', () => {
     const ths = Array.from(container.querySelectorAll('th[data-col-index]'));
     // Just verify the component renders correctly with multiple accounts
     expect(ths.length).toBeGreaterThan(0);
-    expect(screen.getByText('Comptes')).toBeTruthy();
+    expect(screen.getByText('Comptes')).toBeInTheDocument();
   });
 });

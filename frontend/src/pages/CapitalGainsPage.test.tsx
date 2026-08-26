@@ -120,7 +120,7 @@ describe('CapitalGainsPage', () => {
   it('shows spinner when loading', () => {
     mockUseCapitalGains.mockReturnValue({ data: undefined, isLoading: true, isError: false });
     render(<CapitalGainsPage />);
-    expect(screen.getByTestId('spinner')).toBeTruthy();
+    expect(screen.getByTestId('spinner')).toBeInTheDocument();
   });
 
   // ── Error state ───────────────────────────────────────────────────────────
@@ -128,13 +128,13 @@ describe('CapitalGainsPage', () => {
   it('shows error message when query fails', () => {
     mockUseCapitalGains.mockReturnValue({ data: undefined, isLoading: false, isError: true });
     render(<CapitalGainsPage />);
-    expect(screen.getByText(/Erreur lors du chargement des plus-values/i)).toBeTruthy();
+    expect(screen.getByText(/Erreur lors du chargement des plus-values/i)).toBeInTheDocument();
   });
 
   it('shows error when data is undefined (no error flag)', () => {
     mockUseCapitalGains.mockReturnValue({ data: undefined, isLoading: false, isError: false });
     render(<CapitalGainsPage />);
-    expect(screen.getByText(/Erreur lors du chargement des plus-values/i)).toBeTruthy();
+    expect(screen.getByText(/Erreur lors du chargement des plus-values/i)).toBeInTheDocument();
   });
 
   // ── Page title ────────────────────────────────────────────────────────────
@@ -142,7 +142,7 @@ describe('CapitalGainsPage', () => {
   it('renders page title "Plus-values"', () => {
     mockUseCapitalGains.mockReturnValue({ data: mockCapitalGainsData, isLoading: false, isError: false });
     render(<CapitalGainsPage />);
-    expect(screen.getByText('Plus-values')).toBeTruthy();
+    expect(screen.getByText('Plus-values')).toBeInTheDocument();
   });
 
   // ── Section A — Summary table ─────────────────────────────────────────────
@@ -153,15 +153,15 @@ describe('CapitalGainsPage', () => {
     // "Ticker" appears in both summary and history table headers
     expect(screen.getAllByText('Ticker').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Nom').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('CUMP')).toBeTruthy();
-    expect(screen.getByText('Valeur actuelle')).toBeTruthy();
-    expect(screen.getByText('Coût de revient')).toBeTruthy();
+    expect(screen.getByText('CUMP')).toBeInTheDocument();
+    expect(screen.getByText('Valeur actuelle')).toBeInTheDocument();
+    expect(screen.getByText('Coût de revient')).toBeInTheDocument();
     // "PV latente" appears in both summary col and KPI card title
     expect(screen.getAllByText('PV latente').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('PV latente %')).toBeTruthy();
+    expect(screen.getByText('PV latente %')).toBeInTheDocument();
     // "PV réalisée" appears in summary col and KPI card
     expect(screen.getAllByText('PV réalisée').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('PV nette')).toBeTruthy();
+    expect(screen.getByText('PV nette')).toBeInTheDocument();
   });
 
   it('renders tickers with qty_held > 0 in summary', () => {
@@ -208,7 +208,7 @@ describe('CapitalGainsPage', () => {
     };
     mockUseCapitalGains.mockReturnValue({ data: emptyData, isLoading: false, isError: false });
     render(<CapitalGainsPage />);
-    expect(screen.getByText(/Aucune position ni cession/i)).toBeTruthy();
+    expect(screen.getByText(/Aucune position ni cession/i)).toBeInTheDocument();
   });
 
   it('renders AAPL unrealized_pv value', () => {
@@ -232,8 +232,8 @@ describe('CapitalGainsPage', () => {
   it('renders KPI card titles', () => {
     mockUseCapitalGains.mockReturnValue({ data: mockCapitalGainsData, isLoading: false, isError: false });
     render(<CapitalGainsPage />);
-    expect(screen.getByText('PV latente totale')).toBeTruthy();
-    expect(screen.getByText('PV réalisée totale')).toBeTruthy();
+    expect(screen.getByText('PV latente totale')).toBeInTheDocument();
+    expect(screen.getByText('PV réalisée totale')).toBeInTheDocument();
     // "PV nette totale" card removed — only 2 KPI cards now
     expect(screen.queryByText('PV nette totale')).toBeNull();
   });
@@ -260,18 +260,18 @@ describe('CapitalGainsPage', () => {
   it('renders history table header columns', () => {
     mockUseCapitalGains.mockReturnValue({ data: mockCapitalGainsData, isLoading: false, isError: false });
     render(<CapitalGainsPage />);
-    expect(screen.getByText('Date')).toBeTruthy();
-    expect(screen.getByText('Nom produit')).toBeTruthy();
-    expect(screen.getByText('Qté vendue')).toBeTruthy();
-    expect(screen.getByText('CUMP à la vente')).toBeTruthy();
-    expect(screen.getByText('Prix de cession')).toBeTruthy();
+    expect(screen.getByText('Date')).toBeInTheDocument();
+    expect(screen.getByText('Nom produit')).toBeInTheDocument();
+    expect(screen.getByText('Qté vendue')).toBeInTheDocument();
+    expect(screen.getByText('CUMP à la vente')).toBeInTheDocument();
+    expect(screen.getByText('Prix de cession')).toBeInTheDocument();
   });
 
   it('renders sell events from history', () => {
     mockUseCapitalGains.mockReturnValue({ data: mockCapitalGainsData, isLoading: false, isError: false });
     render(<CapitalGainsPage />);
     // AAPL event date 2024-06-15 → formatted as 15/06/2024
-    expect(screen.getByText('15/06/2024')).toBeTruthy();
+    expect(screen.getByText('15/06/2024')).toBeInTheDocument();
   });
 
   it('shows "Aucune cession" when no events', () => {
@@ -281,19 +281,19 @@ describe('CapitalGainsPage', () => {
     };
     mockUseCapitalGains.mockReturnValue({ data: noEvents, isLoading: false, isError: false });
     render(<CapitalGainsPage />);
-    expect(screen.getByText(/Aucune cession enregistrée/i)).toBeTruthy();
+    expect(screen.getByText(/Aucune cession enregistrée/i)).toBeInTheDocument();
   });
 
   it('renders "Historique des cessions" section title', () => {
     mockUseCapitalGains.mockReturnValue({ data: mockCapitalGainsData, isLoading: false, isError: false });
     render(<CapitalGainsPage />);
-    expect(screen.getByText('Historique des cessions')).toBeTruthy();
+    expect(screen.getByText('Historique des cessions')).toBeInTheDocument();
   });
 
   it('renders "Récapitulatif par titre" section title', () => {
     mockUseCapitalGains.mockReturnValue({ data: mockCapitalGainsData, isLoading: false, isError: false });
     render(<CapitalGainsPage />);
-    expect(screen.getByText('Récapitulatif par titre')).toBeTruthy();
+    expect(screen.getByText('Récapitulatif par titre')).toBeInTheDocument();
   });
 
   // ── Sorting ───────────────────────────────────────────────────────────────
@@ -306,7 +306,7 @@ describe('CapitalGainsPage', () => {
     // Click on "PV latente" column header — should not crash
     const pvHeader = screen.getByText('PV latente');
     await user.click(pvHeader);
-    expect(screen.getByText('Plus-values')).toBeTruthy();
+    expect(screen.getByText('Plus-values')).toBeInTheDocument();
   });
 
   it('history table sort column click does not crash', async () => {
@@ -316,7 +316,7 @@ describe('CapitalGainsPage', () => {
 
     const dateHeader = screen.getByText('Date');
     await user.click(dateHeader);
-    expect(screen.getByText('Plus-values')).toBeTruthy();
+    expect(screen.getByText('Plus-values')).toBeInTheDocument();
   });
 });
 
@@ -328,7 +328,7 @@ describe('CapitalGainsPage — additional branch coverage', () => {
     Object.keys(pvThClickCount).forEach(k => delete pvThClickCount[k]);
   });
 
-  it('KPI card with negative total_unrealized_pv shows no + prefix (line 158 false branch)', () => {
+  it('KPI card omits the + prefix when total_unrealized_pv is negative', () => {
     mockUseCapitalGains.mockReturnValue({
       data: {
         ...mockCapitalGainsData,
@@ -344,7 +344,7 @@ describe('CapitalGainsPage — additional branch coverage', () => {
     expect(body).toContain('-500.00 €');
   });
 
-  it('KPI card with zero total_realized_pv shows no + prefix (line 173 false branch)', () => {
+  it('KPI card omits the + prefix when total_realized_pv is zero', () => {
     mockUseCapitalGains.mockReturnValue({
       data: {
         ...mockCapitalGainsData,
@@ -374,10 +374,10 @@ describe('CapitalGainsPage — additional branch coverage', () => {
     for (const th of ths.slice(0, 3)) {
       await user.click(th as HTMLElement);
     }
-    expect(screen.getByText('Plus-values')).toBeTruthy();
+    expect(screen.getByText('Plus-values')).toBeInTheDocument();
   }, 10000);
 
-  it('sortTickers with cost_basis_eur=0 uses pctA=0 fallback (line 58-59 false branches)', async () => {
+  it('sortTickers falls back to a 0% ratio when cost_basis_eur is 0', async () => {
     // MSFT has cost_basis_eur: 0 → pctA = 0 (false branch of !== 0)
     mockUseCapitalGains.mockReturnValue({ data: mockCapitalGainsData, isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
@@ -390,10 +390,10 @@ describe('CapitalGainsPage — additional branch coverage', () => {
     if (ths.length > 6) {
       await user.click(ths[6] as HTMLElement);
     }
-    expect(screen.getByText('Plus-values')).toBeTruthy();
+    expect(screen.getByText('Plus-values')).toBeInTheDocument();
   }, 10000);
 
-  it('earliestEventDate is shown in KPI card when events exist (line 175-178 true branch)', () => {
+  it('KPI card shows the earliest event date when sell events exist', () => {
     // earliestEventDate is non-null → {earliestEventDate && ...} shows "Depuis le" date
     mockUseCapitalGains.mockReturnValue({ data: mockCapitalGainsData, isLoading: false, isError: false });
     render(<CapitalGainsPage />);
@@ -402,7 +402,7 @@ describe('CapitalGainsPage — additional branch coverage', () => {
     expect(body).toContain('Depuis le');
   });
 
-  it('no events → earliestEventDate is null, no "Depuis le" shown (line 175 false branch)', () => {
+  it('KPI card omits the "Depuis le" date when no sell events exist', () => {
     const noEventsData = {
       ...mockCapitalGainsData,
       tickers: mockCapitalGainsData.tickers.map(t => ({ ...t, events: [] })),

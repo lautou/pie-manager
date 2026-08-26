@@ -140,31 +140,31 @@ describe('TransactionsPage', () => {
   it('shows spinner when loading', () => {
     mockUseTransactions.mockReturnValue({ data: [], isLoading: true, isError: false });
     render(<TransactionsPage />);
-    expect(screen.getByTestId('spinner')).toBeTruthy();
+    expect(screen.getByTestId('spinner')).toBeInTheDocument();
   });
 
   it('shows error alert when isError', () => {
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: true });
     render(<TransactionsPage />);
-    expect(screen.getByTestId('alert')).toBeTruthy();
+    expect(screen.getByTestId('alert')).toBeInTheDocument();
   });
 
   it('renders page title', () => {
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
     render(<TransactionsPage />);
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   });
 
   it('shows empty state when no transactions', () => {
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
     render(<TransactionsPage />);
-    expect(screen.getByText(/Aucune transaction trouvée/i)).toBeTruthy();
+    expect(screen.getByText(/Aucune transaction trouvée/i)).toBeInTheDocument();
   });
 
   it('renders transaction rows', () => {
     mockUseTransactions.mockReturnValue({ data: [mockTransaction], isLoading: false, isError: false });
     render(<TransactionsPage />);
-    expect(screen.getByText('AAPL')).toBeTruthy();
+    expect(screen.getByText('AAPL')).toBeInTheDocument();
   });
 
   it('clicking a composable ticker in the transactions table opens the composition modal, and closing it clears the state', async () => {
@@ -174,7 +174,7 @@ describe('TransactionsPage', () => {
     render(<TransactionsPage />);
 
     await user.click(screen.getByText('AAPL'));
-    expect(screen.getByTestId('modal')).toBeTruthy();
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
 
     await user.click(screen.getByText('Close'));
     expect(screen.queryByTestId('modal')).toBeNull();
@@ -186,7 +186,7 @@ describe('TransactionsPage', () => {
     render(<TransactionsPage />);
 
     await user.click(screen.getByText('Nouvelle transaction'));
-    expect(screen.getByTestId('modal')).toBeTruthy();
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
   });
 
   it('can close modal', async () => {
@@ -195,7 +195,7 @@ describe('TransactionsPage', () => {
     render(<TransactionsPage />);
 
     await user.click(screen.getByText('Nouvelle transaction'));
-    expect(screen.getByTestId('modal')).toBeTruthy();
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
     await user.click(screen.getByText('Close'));
     expect(screen.queryByTestId('modal')).toBeNull();
   });
@@ -208,13 +208,13 @@ describe('TransactionsPage', () => {
     const checkbox = screen.getByRole('checkbox');
     await user.click(checkbox);
     // Toggle flipped — page still renders
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   });
 
   it('shows currency legend', () => {
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
     render(<TransactionsPage />);
-    expect(screen.getByText(/Légende devise/i)).toBeTruthy();
+    expect(screen.getByText(/Légende devise/i)).toBeInTheDocument();
     expect(screen.getAllByText('EUR').length).toBeGreaterThan(0);
   });
 
@@ -227,7 +227,7 @@ describe('TransactionsPage', () => {
     const editBtn = editButtons.find(b => b.textContent?.includes('edit'));
     if (editBtn) {
       await user.click(editBtn);
-      expect(screen.getByTestId('modal')).toBeTruthy();
+      expect(screen.getByTestId('modal')).toBeInTheDocument();
     }
   });
 
@@ -238,13 +238,13 @@ describe('TransactionsPage', () => {
 
     const tickerInput = screen.getByPlaceholderText('Ticker');
     await user.type(tickerInput, 'AAPL');
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   });
 
   it('shows pagination when there are transactions', () => {
     mockUseTransactions.mockReturnValue({ data: [mockTransaction], isLoading: false, isError: false });
     render(<TransactionsPage />);
-    expect(screen.getByTestId('pagination')).toBeTruthy();
+    expect(screen.getByTestId('pagination')).toBeInTheDocument();
   });
 
   it('can click page 2 pagination button', async () => {
@@ -253,7 +253,7 @@ describe('TransactionsPage', () => {
     render(<TransactionsPage />);
 
     await user.click(screen.getByText('Page 2'));
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   });
 
   it('can delete a transaction', async () => {
@@ -268,7 +268,7 @@ describe('TransactionsPage', () => {
     const trashBtn = btns.find(b => b.textContent?.includes('trash'));
     if (trashBtn) {
       await user.click(trashBtn);
-      expect(screen.getByText('Transactions')).toBeTruthy();
+      expect(screen.getByText('Transactions')).toBeInTheDocument();
     }
   });
 
@@ -296,7 +296,7 @@ describe('TransactionsPage', () => {
     // Find select by aria-label "Type de transaction"
     const typeSelect = screen.getByRole('combobox', { name: 'Type' });
     await user.selectOptions(typeSelect, 'Frais');
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   });
 
   it('shows "Aucune transaction" with active filters', async () => {
@@ -306,28 +306,28 @@ describe('TransactionsPage', () => {
 
     const tickerInput = screen.getByPlaceholderText('Ticker');
     await user.type(tickerInput, 'XYZ');
-    expect(screen.getByText(/Aucune transaction/i)).toBeTruthy();
+    expect(screen.getByText(/Aucune transaction/i)).toBeInTheDocument();
   });
 
   it('shows quantity with decimal for fractional shares', () => {
     const fractionalTx = { ...mockTransaction, quantity: 0.5, ticker: 'BTC' };
     mockUseTransactions.mockReturnValue({ data: [fractionalTx], isLoading: false, isError: false });
     render(<TransactionsPage />);
-    expect(screen.getByText('BTC')).toBeTruthy();
+    expect(screen.getByText('BTC')).toBeInTheDocument();
   });
 
   it('Sens column shows Achat for an Actif transaction with operation=Achat', () => {
     const achatTx = { ...mockTransaction, operation: 'Achat' };
     mockUseTransactions.mockReturnValue({ data: [achatTx], isLoading: false, isError: false });
     render(<TransactionsPage />);
-    expect(screen.getByText('Achat')).toBeTruthy();
+    expect(screen.getByText('Achat')).toBeInTheDocument();
   });
 
   it('Sens column shows Vente for an Actif transaction with operation=Vente', () => {
     const venteTx = { ...mockTransaction, operation: 'Vente' };
     mockUseTransactions.mockReturnValue({ data: [venteTx], isLoading: false, isError: false });
     render(<TransactionsPage />);
-    expect(screen.getByText('Vente')).toBeTruthy();
+    expect(screen.getByText('Vente')).toBeInTheDocument();
   });
 
   it('Sens column shows Dépôt/Retrait for LIQUIDITE.EURO transactions, and — for Frais/Revenu', () => {
@@ -336,8 +336,8 @@ describe('TransactionsPage', () => {
     const feeTx = { ...mockTransaction, id: 12, type: 'Frais', ticker: 'FRAIS.COURTAGE.EUR', operation: null };
     mockUseTransactions.mockReturnValue({ data: [depositTx, withdrawalTx, feeTx], isLoading: false, isError: false });
     render(<TransactionsPage />);
-    expect(screen.getByText('Dépôt')).toBeTruthy();
-    expect(screen.getByText('Retrait')).toBeTruthy();
+    expect(screen.getByText('Dépôt')).toBeInTheDocument();
+    expect(screen.getByText('Retrait')).toBeInTheDocument();
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
 
@@ -355,7 +355,7 @@ describe('TransactionsPage', () => {
     if (submitBtn) {
       await user.click(submitBtn);
       // Some validation might prevent submission, but page shouldn't crash
-      expect(screen.getByText('Transactions')).toBeTruthy();
+      expect(screen.getByText('Transactions')).toBeInTheDocument();
     }
   });
 
@@ -452,10 +452,10 @@ describe('TransactionsPage', () => {
   it('negative quantity shows as negative in table', () => {
     mockUseTransactions.mockReturnValue({ data: [mockTransaction], isLoading: false, isError: false });
     render(<TransactionsPage />);
-    expect(screen.getByText('AAPL')).toBeTruthy();
+    expect(screen.getByText('AAPL')).toBeInTheDocument();
   });
 
-  it('can change date from filter (line 472)', async () => {
+  it('allows typing a date into the "date from" filter input', async () => {
     mockUseTransactions.mockReturnValue({ data: [mockTransaction], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
@@ -464,11 +464,11 @@ describe('TransactionsPage', () => {
     const dateFromInput = screen.getAllByDisplayValue('').find(i => i.getAttribute('type') === 'date');
     if (dateFromInput) {
       await user.type(dateFromInput, '2024-01-01');
-      expect(screen.getByText('Transactions')).toBeTruthy();
+      expect(screen.getByText('Transactions')).toBeInTheDocument();
     }
   });
 
-  it('can change date to filter (line 478)', async () => {
+  it('allows typing a date into the "date to" filter input', async () => {
     mockUseTransactions.mockReturnValue({ data: [mockTransaction], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
@@ -479,11 +479,11 @@ describe('TransactionsPage', () => {
     if (allInputs.length > 1) {
       await user.clear(allInputs[1]);
       await user.type(allInputs[1], '2024-12-31');
-      expect(screen.getByText('Transactions')).toBeTruthy();
+      expect(screen.getByText('Transactions')).toBeInTheDocument();
     }
   });
 
-  it('can interact with unit_price NumberInput in modal (line 347)', async () => {
+  it('allows incrementing and decrementing the unit price via the modal NumberInput', async () => {
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
@@ -495,11 +495,11 @@ describe('TransactionsPage', () => {
     // Click plus on unit_price (second NumberInput)
     if (plusBtns.length >= 2) {
       await user.click(plusBtns[1]);
-      expect(screen.getByText('Transactions')).toBeTruthy();
+      expect(screen.getByText('Transactions')).toBeInTheDocument();
     }
     if (minusBtns.length >= 2) {
       await user.click(minusBtns[1]);
-      expect(screen.getByText('Transactions')).toBeTruthy();
+      expect(screen.getByText('Transactions')).toBeInTheDocument();
     }
   });
 });

@@ -11,6 +11,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
+import '@testing-library/jest-dom';
 import '../../src/i18n';
 import type { SyncStatus } from '../hooks/useSyncStatus';
 import SyncBadge from './SyncBadge';
@@ -175,14 +176,14 @@ describe('SyncBadge', () => {
     );
   });
 
-  it('uses fallback color #6A6E73 and fallback icon ⚪ for unknown status (lines 25-26)', () => {
+  it('uses the fallback color and icon for an unrecognized sync status', () => {
     // An unknown status value triggers STATUS_COLOR[sync.status] ?? '#6A6E73'
     // and STATUS_ICON[sync.status] ?? '⚪'
     const unknownSync = makeSync({ status: 'unknown' as any });
     mockUseSyncStatus.mockReturnValue({ data: unknownSync });
     render(<SyncBadge />);
     // Should render with the fallback icon ⚪
-    expect(screen.getByText(/⚪/)).toBeTruthy();
+    expect(screen.getByText(/⚪/)).toBeInTheDocument();
     // The span should have the fallback color
     const span = screen.getByText(/⚪/).closest('span');
     expect(span!.style.color).toBe('rgb(106, 110, 115)'); // #6A6E73 parsed by jsdom

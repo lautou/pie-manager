@@ -143,25 +143,25 @@ describe('AccountsSummaryPage', () => {
   it('shows spinner when loading', () => {
     mockUseAccountsSummary.mockReturnValue({ data: undefined, isLoading: true, isError: false });
     render(<AccountsSummaryPage />);
-    expect(screen.getByTestId('spinner')).toBeTruthy();
+    expect(screen.getByTestId('spinner')).toBeInTheDocument();
   });
 
   it('shows error when isError', () => {
     mockUseAccountsSummary.mockReturnValue({ data: undefined, isLoading: false, isError: true });
     render(<AccountsSummaryPage />);
-    expect(screen.getByText(/Erreur lors du chargement de la synthèse des comptes/i)).toBeTruthy();
+    expect(screen.getByText(/Erreur lors du chargement de la synthèse des comptes/i)).toBeInTheDocument();
   });
 
   it('shows error when data is undefined', () => {
     mockUseAccountsSummary.mockReturnValue({ data: undefined, isLoading: false, isError: false });
     render(<AccountsSummaryPage />);
-    expect(screen.getByText(/Erreur lors du chargement de la synthèse des comptes/i)).toBeTruthy();
+    expect(screen.getByText(/Erreur lors du chargement de la synthèse des comptes/i)).toBeInTheDocument();
   });
 
   it('renders page title', () => {
     mockUseAccountsSummary.mockReturnValue({ data: [mockAccountSummary], isLoading: false, isError: false });
     render(<AccountsSummaryPage />);
-    expect(screen.getByText('Comptes')).toBeTruthy();
+    expect(screen.getByText('Comptes')).toBeInTheDocument();
   });
 
   it('renders account name', () => {
@@ -180,7 +180,7 @@ describe('AccountsSummaryPage', () => {
     render(<AccountsSummaryPage />);
 
     await user.click(screen.getByText('AAPL'));
-    expect(screen.getByTestId('modal')).toBeTruthy();
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
 
     await user.click(screen.getByTestId('modal-close'));
     expect(screen.queryByTestId('modal')).toBeNull();
@@ -189,55 +189,55 @@ describe('AccountsSummaryPage', () => {
   it('renders KPI cards', () => {
     mockUseAccountsSummary.mockReturnValue({ data: [mockAccountSummary], isLoading: false, isError: false });
     render(<AccountsSummaryPage />);
-    expect(screen.getByText('Total portefeuille')).toBeTruthy();
-    expect(screen.getByText('Espèces totales')).toBeTruthy();
-    expect(screen.getByText('Titres totaux')).toBeTruthy();
+    expect(screen.getByText('Total portefeuille')).toBeInTheDocument();
+    expect(screen.getByText('Espèces totales')).toBeInTheDocument();
+    expect(screen.getByText('Titres totaux')).toBeInTheDocument();
   });
 
   it('renders position ticker', () => {
     mockUseAccountsSummary.mockReturnValue({ data: [mockAccountSummary], isLoading: false, isError: false });
     render(<AccountsSummaryPage />);
-    expect(screen.getByText('AAPL')).toBeTruthy();
+    expect(screen.getByText('AAPL')).toBeInTheDocument();
   });
 
   it('renders manual price badge for manual source', () => {
     mockUseAccountsSummary.mockReturnValue({ data: [mockAccountSummaryManualSource], isLoading: false, isError: false });
     render(<AccountsSummaryPage />);
-    expect(screen.getByText('manual')).toBeTruthy();
+    expect(screen.getByText('manual')).toBeInTheDocument();
   });
 
   it('renders blue label for non-manual source', () => {
     mockUseAccountsSummary.mockReturnValue({ data: [mockAccountSummary], isLoading: false, isError: false });
     render(<AccountsSummaryPage />);
-    expect(screen.getByText('yahoo')).toBeTruthy();
+    expect(screen.getByText('yahoo')).toBeInTheDocument();
   });
 
   it('shows "Aucune position" for account with no positions', () => {
     mockUseAccountsSummary.mockReturnValue({ data: [mockAccountSummaryNoPositions], isLoading: false, isError: false });
     render(<AccountsSummaryPage />);
-    expect(screen.getByText(/Aucune position — espèces uniquement/i)).toBeTruthy();
+    expect(screen.getByText(/Aucune position — espèces uniquement/i)).toBeInTheDocument();
   });
 
   it('shows sync badge', () => {
     mockUseAccountsSummary.mockReturnValue({ data: [mockAccountSummary], isLoading: false, isError: false });
     render(<AccountsSummaryPage />);
-    expect(screen.getByTestId('sync-badge')).toBeTruthy();
+    expect(screen.getByTestId('sync-badge')).toBeInTheDocument();
   });
 
   it('renders summary table', () => {
     mockUseAccountsSummary.mockReturnValue({ data: [mockAccountSummary], isLoading: false, isError: false });
     render(<AccountsSummaryPage />);
-    expect(screen.getByLabelText('Récapitulatif par compte')).toBeTruthy();
+    expect(screen.getByLabelText('Récapitulatif par compte')).toBeInTheDocument();
   });
 
   it('renders position with non-EUR currency', () => {
     mockUseAccountsSummary.mockReturnValue({ data: [mockAccountSummary], isLoading: false, isError: false });
     render(<AccountsSummaryPage />);
     // Position has USD currency — should show native value column
-    expect(screen.getByText('Apple')).toBeTruthy();
+    expect(screen.getByText('Apple')).toBeInTheDocument();
   });
 
-  it('uses fallback color for unknown account name (covers ?? branch on lines 124, 153)', () => {
+  it('falls back to a default color for an account name not in the known-broker color map', () => {
     const unknownAccount = {
       ...mockAccountSummary,
       id: 99,
@@ -253,10 +253,10 @@ describe('AccountsSummaryPage', () => {
     mockUseAccountsSummary.mockReturnValue({ data: [unknownAccount], isLoading: false, isError: false });
     render(<AccountsSummaryPage />);
     expect(screen.getAllByText('UnknownBroker').length).toBeGreaterThan(0);
-    expect(screen.getByText('BTC')).toBeTruthy();
+    expect(screen.getByText('BTC')).toBeInTheDocument();
   });
 
-  it('renders positions stripe styling (even rows line 192)', () => {
+  it('renders alternating row background colors for multiple positions in the detail table', () => {
     const accountWithMultiplePositions = {
       ...mockAccountSummary,
       positions: [
@@ -266,11 +266,11 @@ describe('AccountsSummaryPage', () => {
     };
     mockUseAccountsSummary.mockReturnValue({ data: [accountWithMultiplePositions], isLoading: false, isError: false });
     render(<AccountsSummaryPage />);
-    expect(screen.getByText('AAPL')).toBeTruthy();
-    expect(screen.getByText('MSFT')).toBeTruthy();
+    expect(screen.getByText('AAPL')).toBeInTheDocument();
+    expect(screen.getByText('MSFT')).toBeInTheDocument();
   });
 
-  it('grandTotal = 0 branch shows — in percentage column (line 133)', () => {
+  it('shows a dash in the percentage-of-total column when the grand total is zero', () => {
     const zeroAccount = {
       ...mockAccountSummary,
       cash_balance_eur: 0,
@@ -285,7 +285,7 @@ describe('AccountsSummaryPage', () => {
     expect(body).toContain('—');
   });
 
-  it('position with null last_price_date does not show date (line 207 conditional)', () => {
+  it('does not render a price date when last_price_date is null', () => {
     const accountNullDate = {
       ...mockAccountSummary,
       positions: [
@@ -295,12 +295,12 @@ describe('AccountsSummaryPage', () => {
     mockUseAccountsSummary.mockReturnValue({ data: [accountNullDate], isLoading: false, isError: false });
     render(<AccountsSummaryPage />);
     // No date shown for null last_price_date
-    expect(screen.getByText('AAPL')).toBeTruthy();
+    expect(screen.getByText('AAPL')).toBeInTheDocument();
     const body = document.body.textContent ?? '';
     expect(body).not.toContain('2024-01-01');
   });
 
-  it('position with EUR currency shows — in devise column (line 215 else branch)', () => {
+  it('shows a dash in the native-currency column for a EUR-denominated position', () => {
     const eurAccount = {
       ...mockAccountSummary,
       positions: [
@@ -314,7 +314,7 @@ describe('AccountsSummaryPage', () => {
     expect(cells.length).toBeGreaterThan(0);
   });
 
-  it('position with empty/null currency falls back to EUR in price formatting (line 203 || branch)', () => {
+  it('falls back to EUR when formatting the last price for a position with an empty currency', () => {
     // pos.currency = '' → pos.currency || 'EUR' = 'EUR' (the fallback branch)
     const accountEmptyCurrency = {
       ...mockAccountSummary,
@@ -325,7 +325,7 @@ describe('AccountsSummaryPage', () => {
     mockUseAccountsSummary.mockReturnValue({ data: [accountEmptyCurrency], isLoading: false, isError: false });
     // Should render without crash (price format uses EUR as fallback)
     render(<AccountsSummaryPage />);
-    expect(screen.getByText('BOND')).toBeTruthy();
+    expect(screen.getByText('BOND')).toBeInTheDocument();
   });
 
   it('Manuel category: shows "—" for Quantité and Dernier prix, date under Total EUR', () => {
@@ -336,7 +336,7 @@ describe('AccountsSummaryPage', () => {
     // At least Quantité (—) and Dernier prix (—) and Total devise (—) = 3 dashes
     expect(dashes.length).toBeGreaterThanOrEqual(3);
     // The last_price_date appears under Total EUR
-    expect(screen.getByText('2026-05-16')).toBeTruthy();
+    expect(screen.getByText('2026-05-16')).toBeInTheDocument();
   });
 
   // ── StalePriceBadge integration via SyntheseComptesPage ─────────────────
@@ -379,7 +379,7 @@ describe('AccountsSummaryPage', () => {
     };
     mockUseAccountsSummary.mockReturnValue({ data: [accountNullDate], isLoading: false, isError: false });
     render(<AccountsSummaryPage />);
-    expect(screen.getByText('Prix inconnu')).toBeTruthy();
+    expect(screen.getByText('Prix inconnu')).toBeInTheDocument();
   });
 
   it('StalePriceBadge: no stale badge for manual source even with old date', () => {
@@ -410,7 +410,7 @@ describe('AccountsSummaryPage — sort callbacks', () => {
     mockUseCapitalGains.mockReturnValue({ data: undefined, isLoading: false, isError: false });
   });
 
-  it('onSummSort: clicking summary table Th fires sort callback (line 56)', async () => {
+  it('clicking a summary table column header triggers the summary sort callback', async () => {
     // onSummSort is passed to the summary table Th via sort prop.
     // The overridden Th mock calls sort.onSort when clicked.
     const twoAccounts = [
@@ -427,11 +427,11 @@ describe('AccountsSummaryPage — sort callbacks', () => {
     if (ths.length > 0) {
       await user.click(ths[0]);
       // Sort happened — page still renders correctly
-      expect(screen.getByText('Comptes')).toBeTruthy();
+      expect(screen.getByText('Comptes')).toBeInTheDocument();
     }
   });
 
-  it('onAccSort: clicking per-account detail table Th fires sort callback (line 65)', async () => {
+  it('clicking a per-account detail table column header triggers the account sort callback', async () => {
     // onAccSort is passed to the per-account detail table Th via sort prop.
     const account = { ...mockAccountSummary, positions: [
       { ticker: 'AAPL', product_name: 'Apple', category: 'Actif', quantity: 10, last_price: 150, last_price_date: '2024-01-01', last_price_source: 'yahoo', value_eur: 1500, currency: 'USD' },
@@ -447,15 +447,15 @@ describe('AccountsSummaryPage — sort callbacks', () => {
     // Summary table has 5 columns; detail table Ths come after
     if (ths.length > 5) {
       await user.click(ths[5]); // first column of detail table
-      expect(screen.getByText('Comptes')).toBeTruthy();
+      expect(screen.getByText('Comptes')).toBeInTheDocument();
     } else if (ths.length > 0) {
       // Fallback: click last Th
       await user.click(ths[ths.length - 1]);
-      expect(screen.getByText('Comptes')).toBeTruthy();
+      expect(screen.getByText('Comptes')).toBeInTheDocument();
     }
   });
 
-  it('sortedSummaries.sort comparator with multiple accounts covers all switch cases (line 97)', async () => {
+  it('sorts the summary table by each column across multiple accounts', async () => {
     // Need 2+ accounts so the comparator actually runs.
     // Also need to switch sort column to exercise different cases.
     const accounts = [
@@ -473,10 +473,10 @@ describe('AccountsSummaryPage — sort callbacks', () => {
     for (let i = 0; i < Math.min(5, ths.length); i++) {
       await user.click(ths[i]);
     }
-    expect(screen.getByText('Comptes')).toBeTruthy();
+    expect(screen.getByText('Comptes')).toBeInTheDocument();
   });
 
-  it('clicking Th twice exercises desc sort direction (line 148 / 276 "-1" branch)', async () => {
+  it('clicking the same summary column header twice switches the sort to descending order', async () => {
     // Click same column twice: first = 'asc', second = 'desc' (toggles via thClickCount)
     const twoAccounts = [
       { ...mockAccountSummary, id: 1, name: 'Alpha', total_eur: 8000, cash_balance_eur: 500, positions_value_eur: 7500 },
@@ -491,11 +491,11 @@ describe('AccountsSummaryPage — sort callbacks', () => {
       // Click twice: first click → 'asc', second click → 'desc'
       await user.click(ths[0]);
       await user.click(ths[0]);
-      expect(screen.getByText('Comptes')).toBeTruthy();
+      expect(screen.getByText('Comptes')).toBeInTheDocument();
     }
   });
 
-  it('pct sort with grandTotal=0 uses 0 fallback (lines 283-284 false branches)', async () => {
+  it('sorting by the percentage column with a zero grand total does not crash', async () => {
     // grandTotal = sum of total_eur. Use total_eur=0 for all accounts.
     const zeroAccounts = [
       { id: 1, name: 'Alpha', currency: 'EUR', cash_balance_eur: 0, positions_value_eur: 0, total_eur: 0, positions: [] },
@@ -512,10 +512,10 @@ describe('AccountsSummaryPage — sort callbacks', () => {
       await user.click(ths[4]);
       // grandTotal = 0 → pA = 0, pB = 0 → both use the false branch of grandTotal > 0
     }
-    expect(screen.getByText('Comptes')).toBeTruthy();
+    expect(screen.getByText('Comptes')).toBeInTheDocument();
   });
 
-  it('accSort desc direction exercises line 148 dir=-1 in per-account sort', async () => {
+  it('clicking the same detail table column header twice sorts positions in descending order', async () => {
     const accountWithPositions = {
       ...mockAccountSummary,
       positions: [
@@ -533,7 +533,7 @@ describe('AccountsSummaryPage — sort callbacks', () => {
     if (ths.length > 6) {
       await user.click(ths[5]); // first = 'asc'
       await user.click(ths[5]); // second = 'desc' → dir=-1
-      expect(screen.getByText('Comptes')).toBeTruthy();
+      expect(screen.getByText('Comptes')).toBeInTheDocument();
     }
   });
 });
@@ -548,7 +548,7 @@ describe('StalePriceBadge (from AccountsSummaryPage test file)', () => {
 
   it('renders "Prix inconnu" for null date with non-manual source', () => {
     render(<StalePriceBadge lastPriceDate={null} source="yahoo" />);
-    expect(screen.getByText('Prix inconnu')).toBeTruthy();
+    expect(screen.getByText('Prix inconnu')).toBeInTheDocument();
   });
 
   it('renders nothing for a date 2 days ago (threshold boundary)', () => {
@@ -560,7 +560,7 @@ describe('StalePriceBadge (from AccountsSummaryPage test file)', () => {
   it('renders "Prix : 7j" for a date 7 days ago', () => {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     render(<StalePriceBadge lastPriceDate={sevenDaysAgo} source="yahoo" />);
-    expect(screen.getByText('Prix : 7j')).toBeTruthy();
+    expect(screen.getByText('Prix : 7j')).toBeInTheDocument();
   });
 });
 
@@ -572,7 +572,7 @@ describe('AccountsSummaryPage — computePV and pvColor coverage', () => {
     Object.keys(thClickCount).forEach(k => delete thClickCount[k]);
   });
 
-  it('renders PV row when capital gains (CUMP) data is available (covers lines 63-65, 86)', () => {
+  it('renders the unrealized P&L line for an account when capital gains data is available', () => {
     // Position with category='Actif' and CUMP data → computePV returns non-null
     const accountWithPV = {
       id: 1,
@@ -598,14 +598,14 @@ describe('AccountsSummaryPage — computePV and pvColor coverage', () => {
 
     render(<AccountsSummaryPage />);
     // hasPV = true (computePV returns non-null for AAPL) → PV line renders with + prefix
-    expect(screen.getByText('Comptes')).toBeTruthy();
+    expect(screen.getByText('Comptes')).toBeInTheDocument();
     // The PV display should show a positive value (green)
     // The formatEUR mock returns "500.00 €" for 500
     // The pvColor returns '#137333' for positive — this is a style, not text
     expect(screen.getAllByText(/AAPL/).length).toBeGreaterThan(0);
   });
 
-  it('computePV returns null for Frais category (line 63 branch)', () => {
+  it('does not show an unrealized P&L for a Frais-category position', () => {
     // Position with category='Frais' → computePV returns null immediately (line 63)
     const accountWithFrais = {
       id: 1,
@@ -630,10 +630,10 @@ describe('AccountsSummaryPage — computePV and pvColor coverage', () => {
 
     render(<AccountsSummaryPage />);
     // hasPV = false (all positions return null from computePV) → no PV line
-    expect(screen.getByText('Comptes')).toBeTruthy();
+    expect(screen.getByText('Comptes')).toBeInTheDocument();
   });
 
-  it('computePV returns null when costBasis = 0 (line 65 branch)', () => {
+  it('does not show an unrealized P&L when the position quantity is zero (zero cost basis)', () => {
     // Position with cump > 0 but quantity = 0 → costBasis = 0 (line 65)
     const accountWithZeroQty = {
       id: 1,
@@ -657,7 +657,7 @@ describe('AccountsSummaryPage — computePV and pvColor coverage', () => {
     });
 
     render(<AccountsSummaryPage />);
-    expect(screen.getByText('Comptes')).toBeTruthy();
+    expect(screen.getByText('Comptes')).toBeInTheDocument();
   });
 
   it('pvColor: negative PV renders red (pvColor < 0 branch)', () => {
@@ -686,10 +686,10 @@ describe('AccountsSummaryPage — computePV and pvColor coverage', () => {
 
     render(<AccountsSummaryPage />);
     // hasPV = true → renders PV column; pvColor = '#D93025' for negative
-    expect(screen.getByText('Comptes')).toBeTruthy();
+    expect(screen.getByText('Comptes')).toBeInTheDocument();
   });
 
-  it('pvColor: zero PV renders neutral color (line 57 - return Color 200)', () => {
+  it('pvColor: renders the unrealized P&L in a neutral color when it is exactly zero', () => {
     // Position with PV = 0 → pvColor(0) = 'var(--pf-t--global--text--color--subtle)' (line 57)
     const accountZeroPV = {
       id: 1, name: 'Degiro', currency: 'EUR', cash_balance_eur: 0, positions_value_eur: 1000, total_eur: 1000,
@@ -707,10 +707,10 @@ describe('AccountsSummaryPage — computePV and pvColor coverage', () => {
     });
 
     render(<AccountsSummaryPage />);
-    expect(screen.getByText('Comptes')).toBeTruthy();
+    expect(screen.getByText('Comptes')).toBeInTheDocument();
   });
 
-  it('sort by pvEur column covers lines 157-158', async () => {
+  it('sorts the detail table by the unrealized P&L and P&L percentage columns', async () => {
     const accounts = [
       {
         id: 1, name: 'Degiro', currency: 'EUR', cash_balance_eur: 1000, positions_value_eur: 3000, total_eur: 4000,
@@ -742,6 +742,6 @@ describe('AccountsSummaryPage — computePV and pvColor coverage', () => {
       await user.click(th as HTMLElement);
     }
 
-    expect(screen.getByText('Comptes')).toBeTruthy();
+    expect(screen.getByText('Comptes')).toBeInTheDocument();
   });
 });

@@ -202,7 +202,7 @@ describe('PerformancePage', () => {
     mockUseTWRR.mockReturnValue({ data: mockTWRR, isLoading: false });
 
     render(<PerformancePage />);
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('renders Valeur patrimoine card with current value and MAX euro change', () => {
@@ -211,7 +211,7 @@ describe('PerformancePage', () => {
     mockUseTWRR.mockReturnValue({ data: mockTWRR, isLoading: false });
 
     render(<PerformancePage />);
-    expect(screen.getByText('Valeur patrimoine')).toBeTruthy();
+    expect(screen.getByText('Valeur patrimoine')).toBeInTheDocument();
     // Last snapshot total_eur = 11000
     expect(screen.getAllByText('11000.00 €').length).toBeGreaterThanOrEqual(1);
     // abs change for available periods (1M,3M,YTD,MAX) = 11000-10000 = +1000
@@ -224,8 +224,8 @@ describe('PerformancePage', () => {
     mockUseTWRR.mockReturnValue({ data: mockTWRR, isLoading: false });
 
     render(<PerformancePage />);
-    expect(screen.getByText('TWRR (Time-Weighted Rate of Return)')).toBeTruthy();
-    expect(screen.getByText(/Mesure fiable/i)).toBeTruthy();
+    expect(screen.getByText('TWRR (Time-Weighted Rate of Return)')).toBeInTheDocument();
+    expect(screen.getByText(/Mesure fiable/i)).toBeInTheDocument();
     // Both grids show period labels (Valeur patrimoine + TWRR)
     expect(screen.getAllByText('1Y').length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText('MAX').length).toBeGreaterThanOrEqual(2);
@@ -237,7 +237,7 @@ describe('PerformancePage', () => {
     mockUseTWRR.mockReturnValue({ data: mockTWRR, isLoading: false });
 
     render(<PerformancePage />);
-    expect(screen.getByText('2024-01-01')).toBeTruthy();
+    expect(screen.getByText('2024-01-01')).toBeInTheDocument();
   });
 
   it('time scale buttons are rendered', () => {
@@ -246,8 +246,8 @@ describe('PerformancePage', () => {
     mockUseTWRR.mockReturnValue({ data: mockTWRR, isLoading: false });
 
     render(<PerformancePage />);
-    expect(screen.getAllByText('1M')[0]).toBeTruthy();
-    expect(screen.getAllByText('MAX')[0]).toBeTruthy();
+    expect(screen.getAllByText('1M')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('MAX')[0]).toBeInTheDocument();
   });
 
   it('clicking time scale changes selected scale', async () => {
@@ -261,7 +261,7 @@ describe('PerformancePage', () => {
     const btn1M = screen.getAllByText('1M')[0];
     await user.click(btn1M);
     // After clicking 1M, check the page still renders
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('toggle view buttons render and can be clicked', async () => {
@@ -274,7 +274,7 @@ describe('PerformancePage', () => {
 
     // Click Offensif / Défensif toggle
     await user.click(screen.getByTestId('toggle-Offensif / Défensif'));
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('toggle to Pools view', async () => {
@@ -286,7 +286,7 @@ describe('PerformancePage', () => {
     render(<PerformancePage />);
 
     await user.click(screen.getByTestId('toggle-Pools'));
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('toggle to Positions view', async () => {
@@ -298,7 +298,7 @@ describe('PerformancePage', () => {
     render(<PerformancePage />);
 
     await user.click(screen.getByTestId('toggle-Positions'));
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('clicking MAX time scale', async () => {
@@ -310,7 +310,7 @@ describe('PerformancePage', () => {
     render(<PerformancePage />);
 
     await user.click(screen.getAllByText('MAX')[0]);
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('clicking a snapshot row opens modal', async () => {
@@ -327,7 +327,7 @@ describe('PerformancePage', () => {
     const snapRow = rows.find(r => r.textContent?.includes('2024-01-01'));
     if (snapRow) {
       await user.click(snapRow);
-      expect(screen.getByTestId('modal')).toBeTruthy();
+      expect(screen.getByTestId('modal')).toBeInTheDocument();
     }
   });
 
@@ -344,7 +344,7 @@ describe('PerformancePage', () => {
     const snapRow = rows.find(r => r.textContent?.includes('2024-01-01'));
     if (snapRow) {
       await user.click(snapRow);
-      expect(screen.getByTestId('modal')).toBeTruthy();
+      expect(screen.getByTestId('modal')).toBeInTheDocument();
       // Close the modal
       await user.click(screen.getByText('Close'));
       expect(screen.queryByTestId('modal')).toBeNull();
@@ -364,7 +364,7 @@ describe('PerformancePage', () => {
     const snapRow = rows.find(r => r.textContent?.includes('2024-01-01'));
     if (snapRow) {
       await user.click(snapRow);
-      expect(screen.getByTestId('modal')).toBeTruthy();
+      expect(screen.getByTestId('modal')).toBeInTheDocument();
     }
   });
 
@@ -398,9 +398,9 @@ describe('PerformancePage', () => {
     const snapRow = rows.find(r => r.textContent?.includes('2024-01-01'));
     if (snapRow) {
       await user.click(snapRow);
-      expect(screen.getByTestId('modal')).toBeTruthy();
+      expect(screen.getByTestId('modal')).toBeInTheDocument();
       // Positions should be shown in the modal
-      expect(screen.getByText('AAPL')).toBeTruthy();
+      expect(screen.getByText('AAPL')).toBeInTheDocument();
     }
   });
 
@@ -422,7 +422,7 @@ describe('PerformancePage', () => {
 
     const rows = screen.getAllByRole('row');
     const snapRow = rows.find(r => r.textContent?.includes('2024-01-01'));
-    expect(snapRow).toBeTruthy();
+    expect(snapRow).toBeInTheDocument();
     await user.click(snapRow!);
     const snapshotModal = screen.getByTestId('modal');
 
@@ -440,7 +440,7 @@ describe('PerformancePage', () => {
     mockUseTWRR.mockReturnValue({ data: mockTWRR, isLoading: false });
 
     render(<PerformancePage />);
-    expect(screen.getByText('Aucune donnée disponible.')).toBeTruthy();
+    expect(screen.getByText('Aucune donnée disponible.')).toBeInTheDocument();
   });
 
   it('clicking 3M time scale sets selected scale', async () => {
@@ -452,7 +452,7 @@ describe('PerformancePage', () => {
     render(<PerformancePage />);
 
     await user.click(screen.getAllByText('3M')[0]);
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('clicking YTD time scale works', async () => {
@@ -464,7 +464,7 @@ describe('PerformancePage', () => {
     render(<PerformancePage />);
 
     await user.click(screen.getAllByText('YTD')[0]);
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('clicking 5Y time scale works', async () => {
@@ -476,7 +476,7 @@ describe('PerformancePage', () => {
     render(<PerformancePage />);
 
     await user.click(screen.getAllByText('5Y')[0]);
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('clicking 10Y time scale works', async () => {
@@ -488,7 +488,7 @@ describe('PerformancePage', () => {
     render(<PerformancePage />);
 
     await user.click(screen.getAllByText('10Y')[0]);
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('renders two KPI cards: Valeur patrimoine and TWRR', () => {
@@ -497,9 +497,9 @@ describe('PerformancePage', () => {
     mockUseTWRR.mockReturnValue({ data: mockTWRR, isLoading: false });
 
     render(<PerformancePage />);
-    expect(screen.getByText('Valeur patrimoine')).toBeTruthy();
-    expect(screen.getByText('TWRR (Time-Weighted Rate of Return)')).toBeTruthy();
-    expect(screen.getByText(/Mesure fiable/i)).toBeTruthy();
+    expect(screen.getByText('Valeur patrimoine')).toBeInTheDocument();
+    expect(screen.getByText('TWRR (Time-Weighted Rate of Return)')).toBeInTheDocument();
+    expect(screen.getByText(/Mesure fiable/i)).toBeInTheDocument();
   });
 
   it('shows Aucun snapshot when no daily data', () => {
@@ -508,7 +508,7 @@ describe('PerformancePage', () => {
     mockUseTWRR.mockReturnValue({ data: mockTWRR, isLoading: false });
 
     render(<PerformancePage />);
-    expect(screen.getByText('Aucun snapshot disponible.')).toBeTruthy();
+    expect(screen.getByText('Aucun snapshot disponible.')).toBeInTheDocument();
   });
 
   it('pagination button can be clicked', async () => {
@@ -526,9 +526,9 @@ describe('PerformancePage', () => {
     render(<PerformancePage />);
 
     // Pagination should be rendered
-    expect(screen.getByTestId('pagination')).toBeTruthy();
+    expect(screen.getByTestId('pagination')).toBeInTheDocument();
     await user.click(screen.getByText('Next'));
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('shows "Aucune position à cette date." when histPositions is empty', async () => {
@@ -544,7 +544,7 @@ describe('PerformancePage', () => {
     const snapRow = rows.find(r => r.textContent?.includes('2024-01-01'));
     if (snapRow) {
       await user.click(snapRow);
-      expect(screen.getByText('Aucune position à cette date.')).toBeTruthy();
+      expect(screen.getByText('Aucune position à cette date.')).toBeInTheDocument();
     }
   });
 
@@ -555,7 +555,7 @@ describe('PerformancePage', () => {
 
     render(<PerformancePage />);
     // The chart should render when patrimoineData.length > 0
-    expect(screen.getByText(/Évolution du patrimoine/i)).toBeTruthy();
+    expect(screen.getByText(/Évolution du patrimoine/i)).toBeInTheDocument();
     // Chart area should appear (not "Aucune donnée disponible.")
     const noDataMsgs = screen.queryAllByText('Aucune donnée disponible.');
     expect(noDataMsgs.length).toBe(0);
@@ -589,7 +589,7 @@ describe('PerformancePage', () => {
     expect(resetBtns.length).toBeGreaterThan(0);
     // Click the reset zoom button
     fireEvent.click(resetBtns[0]);
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
 
     vi.restoreAllMocks();
   });
@@ -610,11 +610,11 @@ describe('PerformancePage', () => {
     // Toggle to strategie view
     await user.click(screen.getByTestId('toggle-Offensif / Défensif'));
     // Legend buttons should appear for Offensif and Défensif
-    expect(screen.getByText('Offensif')).toBeTruthy();
-    expect(screen.getByText('Défensif')).toBeTruthy();
+    expect(screen.getByText('Offensif')).toBeInTheDocument();
+    expect(screen.getByText('Défensif')).toBeInTheDocument();
     // Click the Offensif legend button to toggle visibility
     await user.click(screen.getByText('Offensif'));
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('shows TWRR pools view with pool legend buttons', async () => {
@@ -634,7 +634,7 @@ describe('PerformancePage', () => {
 
     // Toggle to pools view — should show pool names in legend
     await user.click(screen.getByTestId('toggle-Pools'));
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
     // Click a pool legend button to toggle visibility
     const asieBtn = screen.queryByText('Asie');
     if (asieBtn) {
@@ -659,7 +659,7 @@ describe('PerformancePage', () => {
 
     // Toggle to positions view
     await user.click(screen.getByTestId('toggle-Positions'));
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
     const aaplBtn = screen.queryByText('AAPL');
     if (aaplBtn) {
       await user.click(aaplBtn);
@@ -684,7 +684,7 @@ describe('PerformancePage', () => {
       // Trigger brush end (short drag — less than 5px threshold won't apply zoom)
       fireEvent.mouseUp(chartDiv);
     }
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('brush events on patrimoine chart div — mousedown, mousemove, mouseleave', () => {
@@ -701,7 +701,7 @@ describe('PerformancePage', () => {
       fireEvent.mouseMove(patrimoineDiv, { clientX: 200, clientY: 50 });
       fireEvent.mouseLeave(patrimoineDiv);
     }
-    expect(screen.getByText('Performance')).toBeTruthy();
+    expect(screen.getByText('Performance')).toBeInTheDocument();
   });
 
   it('TWRR period grid shows 1Y value (index 120→130 = +8.33%)', () => {
@@ -710,10 +710,10 @@ describe('PerformancePage', () => {
     mockUseTWRR.mockReturnValue({ data: mockTWRR, isLoading: false });
 
     render(<PerformancePage />);
-    expect(screen.getByText('TWRR (Time-Weighted Rate of Return)')).toBeTruthy();
+    expect(screen.getByText('TWRR (Time-Weighted Rate of Return)')).toBeInTheDocument();
     // 1Y period: index 120→130 = (130/120-1)*100 = 8.33%
-    expect(screen.getByText('+8.33 %')).toBeTruthy();
-    expect(screen.getByText(/Mesure fiable/i)).toBeTruthy();
+    expect(screen.getByText('+8.33 %')).toBeInTheDocument();
+    expect(screen.getByText(/Mesure fiable/i)).toBeInTheDocument();
   });
 
   it('shows "Non disponible" in Valeur patrimoine when no daily snapshots', () => {

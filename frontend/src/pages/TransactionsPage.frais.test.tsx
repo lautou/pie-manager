@@ -172,10 +172,10 @@ describe('TransactionsPage — line 97: Frais editingTx useState initializer', (
     // Modal opens — the useState lazy initializer at line 97 runs:
     //   editingTx.type === 'Frais' → true → returns editingTx.quantity === -1 → true
     const modal = screen.getByTestId('modal');
-    expect(modal).toBeTruthy();
+    expect(modal).toBeInTheDocument();
     // When forfait=true, the 'Forfait' button shows as active
     // We just verify no crash and page is stable
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
   it('line 97 false branch: editing Frais tx with quantity=-5 → forfait=false', async () => {
@@ -196,8 +196,8 @@ describe('TransactionsPage — line 97: Frais editingTx useState initializer', (
     // Modal opens — the useState lazy initializer at line 97 runs:
     //   editingTx.type === 'Frais' → true → returns editingTx.quantity === -1 → false
     const modal = screen.getByTestId('modal');
-    expect(modal).toBeTruthy();
+    expect(modal).toBeInTheDocument();
     // When forfait=false, the quantity input for "par unité" shows
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 });

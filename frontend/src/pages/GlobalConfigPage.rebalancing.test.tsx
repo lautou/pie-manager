@@ -157,9 +157,9 @@ describe('GlobalConfigPage — Rééquilibrage (tolerance thresholds)', () => {
 
   it('renders the tolerance section with both threshold fields', () => {
     render(<GlobalConfigPage />);
-    expect(screen.getByText(/Rééquilibrage — seuils de tolérance/i)).toBeTruthy();
-    expect(screen.getByLabelText('Seuil OK (%)')).toBeTruthy();
-    expect(screen.getByLabelText('Seuil alerte (%)')).toBeTruthy();
+    expect(screen.getByText(/Rééquilibrage — seuils de tolérance/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('Seuil OK (%)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Seuil alerte (%)')).toBeInTheDocument();
   });
 
   it('saving the OK threshold calls mutateAsync with the correct key', async () => {

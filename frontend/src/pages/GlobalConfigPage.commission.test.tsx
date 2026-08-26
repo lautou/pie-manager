@@ -157,7 +157,7 @@ describe('GlobalConfigPage — CommissionManager broker display', () => {
   it('shows commission schedule summary (multi-tranche)', () => {
     render(<GlobalConfigPage />);
     // formatScheduleSummary with 2 tiers shows "2 tranches — ex. 700€ → X.XX €"
-    expect(screen.getByText(/2 tranches — ex. 700/i)).toBeTruthy();
+    expect(screen.getByText(/2 tranches — ex. 700/i)).toBeInTheDocument();
   });
 
   it('shows commission schedule summary for single flat tier', () => {
@@ -166,7 +166,7 @@ describe('GlobalConfigPage — CommissionManager broker display', () => {
       isLoading: false,
     });
     render(<GlobalConfigPage />);
-    expect(screen.getByText(/Fixe 2.50 €/i)).toBeTruthy();
+    expect(screen.getByText(/Fixe 2.50 €/i)).toBeInTheDocument();
   });
 
   it('shows — for null commission_schedule', () => {
@@ -178,7 +178,7 @@ describe('GlobalConfigPage — CommissionManager broker display', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
 
-  it('include_fees_in_cump=false renders "Courtage exclu" title (line 263 false branch)', () => {
+  it('include_fees_in_cump=false renders "Courtage exclu" title', () => {
     mockUseAllAccounts.mockReturnValue({
       data: [{ ...MOCK_BROKER, include_fees_in_cump: false }],
       isLoading: false,
@@ -192,7 +192,7 @@ describe('GlobalConfigPage — CommissionManager broker display', () => {
     render(<GlobalConfigPage />);
     const inputs = screen.getAllByRole('spinbutton');
     const saleRateInput = inputs.find((inp: any) => parseFloat((inp as HTMLInputElement).value) === 0.005);
-    expect(saleRateInput).toBeTruthy();
+    expect(saleRateInput).toBeInTheDocument();
   });
 
   it('shows "= achat" when commission_schedule set and sale_rate = 0', () => {
@@ -201,7 +201,7 @@ describe('GlobalConfigPage — CommissionManager broker display', () => {
       isLoading: false,
     });
     render(<GlobalConfigPage />);
-    expect(screen.getByText('= achat')).toBeTruthy();
+    expect(screen.getByText('= achat')).toBeInTheDocument();
   });
 
   it('shows — for sale_rate when no schedule and rate = 0', () => {
@@ -215,7 +215,7 @@ describe('GlobalConfigPage — CommissionManager broker display', () => {
 
   it('shows allowed_tickers count', () => {
     render(<GlobalConfigPage />);
-    expect(screen.getByText(/1 produit/)).toBeTruthy();
+    expect(screen.getByText(/1 produit/)).toBeInTheDocument();
   });
 
   it('shows Tous when allowed_tickers is null', () => {
@@ -224,7 +224,7 @@ describe('GlobalConfigPage — CommissionManager broker display', () => {
       isLoading: false,
     });
     render(<GlobalConfigPage />);
-    expect(screen.getByText('Tous')).toBeTruthy();
+    expect(screen.getByText('Tous')).toBeInTheDocument();
   });
 
   it('shows allowed_tickers plural (>1 product)', () => {
@@ -233,14 +233,14 @@ describe('GlobalConfigPage — CommissionManager broker display', () => {
       isLoading: false,
     });
     render(<GlobalConfigPage />);
-    expect(screen.getByText(/2 produits/)).toBeTruthy();
+    expect(screen.getByText(/2 produits/)).toBeInTheDocument();
   });
 
   it('shows FX info when monthly_free_eur set', () => {
     render(<GlobalConfigPage />);
-    expect(screen.getByText(/1000€\/mois gratuits/)).toBeTruthy();
-    expect(screen.getByText(/au-delà: 1.00%/)).toBeTruthy();
-    expect(screen.getByText(/week-end: 1.50%/)).toBeTruthy();
+    expect(screen.getByText(/1000€\/mois gratuits/)).toBeInTheDocument();
+    expect(screen.getByText(/au-delà: 1.00%/)).toBeInTheDocument();
+    expect(screen.getByText(/week-end: 1.50%/)).toBeInTheDocument();
   });
 
   it('shows — for FX when monthly_free_eur is null', () => {
@@ -265,7 +265,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByText('Commission'));
-    expect(screen.getByText(/Jusqu'à/i)).toBeTruthy();
+    expect(screen.getByText(/Jusqu'à/i)).toBeInTheDocument();
   }, 10000);
 
   it('commission editor shows tier rows', async () => {
@@ -284,7 +284,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     const delBtns = screen.getAllByText('×');
     await user.click(delBtns[0]);
     // Still renders
-    expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
+    expect(screen.getByText(/Gérer les brokers/i)).toBeInTheDocument();
   }, 10000);
 
   it('can add a tier row', async () => {
@@ -292,7 +292,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     render(<GlobalConfigPage />);
     await user.click(screen.getByText('Commission'));
     await user.click(screen.getByText('+ Ajouter une tranche'));
-    expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
+    expect(screen.getByText(/Gérer les brokers/i)).toBeInTheDocument();
   }, 10000);
 
   it('shows "Grille vide" message when no tiers', async () => {
@@ -303,7 +303,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByText('Commission'));
-    expect(screen.getByText(/Grille vide → commission = 0/i)).toBeTruthy();
+    expect(screen.getByText(/Grille vide → commission = 0/i)).toBeInTheDocument();
   }, 10000);
 
   it('can change tier type to percent via select', async () => {
@@ -313,7 +313,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     const selects = screen.getAllByRole('combobox');
     if (selects.length > 0) {
       await user.selectOptions(selects[0], 'percent');
-      expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
+      expect(screen.getByText(/Gérer les brokers/i)).toBeInTheDocument();
     }
   }, 10000);
 
@@ -335,7 +335,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     await user.click(screen.getByText('Commission'));
     const saveBtns = screen.getAllByText('Enregistrer');
     await user.click(saveBtns[1]); // index 0 = TTF card's save button, index 1 = Commission panel's
-    expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
+    expect(screen.getByText(/Gérer les brokers/i)).toBeInTheDocument();
     fetchSpy.mockRestore();
   }, 10000);
 
@@ -353,14 +353,14 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     render(<GlobalConfigPage />);
     await user.click(screen.getByText('Commission'));
     await user.click(screen.getByText('Produits'));
-    expect(screen.getByText(/Disponibles/i)).toBeTruthy();
+    expect(screen.getByText(/Disponibles/i)).toBeInTheDocument();
   }, 10000);
 
   it('clicking row-level Produits button opens editor directly in tickers mode', async () => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByText('Produits'));
-    expect(screen.getByText(/Disponibles/i)).toBeTruthy();
+    expect(screen.getByText(/Disponibles/i)).toBeInTheDocument();
   }, 10000);
 
   it('clicking row-level Produits button on a broker with no allowed_tickers falls back to []', async () => {
@@ -371,14 +371,14 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByText('Produits'));
-    expect(screen.getByText(/Disponibles/i)).toBeTruthy();
+    expect(screen.getByText(/Disponibles/i)).toBeInTheDocument();
   }, 10000);
 
   it('clicking row-level Change FX button opens editor directly in fx mode', async () => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByText('Change FX'));
-    expect(screen.getByText(/Plafond mensuel gratuit/i)).toBeTruthy();
+    expect(screen.getByText(/Plafond mensuel gratuit/i)).toBeInTheDocument();
   }, 10000);
 
   it('clicking row-level Change FX button on a broker with null FX fields falls back to empty strings', async () => {
@@ -389,7 +389,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByText('Change FX'));
-    expect(screen.getByText(/Plafond mensuel gratuit/i)).toBeTruthy();
+    expect(screen.getByText(/Plafond mensuel gratuit/i)).toBeInTheDocument();
   }, 10000);
 
   it('in Produits tab: can filter left panel', async () => {
@@ -399,7 +399,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     await user.click(screen.getByText('Produits'));
     const filterInputs = screen.getAllByPlaceholderText(/Filtrer/i);
     await user.type(filterInputs[0], 'AAPL');
-    expect(screen.getByText(/Disponibles/i)).toBeTruthy();
+    expect(screen.getByText(/Disponibles/i)).toBeInTheDocument();
   }, 10000);
 
   it('in Produits tab: can filter right panel', async () => {
@@ -457,10 +457,10 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     await user.click(screen.getByText('Commission'));
     await user.click(screen.getByText('Produits'));
     await user.click(screen.getByText(/← Tout retirer/i));
-    expect(screen.getByText(/Aucun — tous autorisés/i)).toBeTruthy();
+    expect(screen.getByText(/Aucun — tous autorisés/i)).toBeInTheDocument();
   }, 10000);
 
-  it('clicking unknown ticker in Produits tab calls removeTicker (line 365 fn70)', async () => {
+  it('clicking an unknown ticker in Produits tab calls removeTicker', async () => {
     // UNKNOWN_XYZ is in allowed_tickers but NOT in products → shows as "inconnu"
     // Clicking it calls () => removeTicker(t) → fn70 at line 365
     mockUseAllAccounts.mockReturnValue({
@@ -489,10 +489,10 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     render(<GlobalConfigPage />);
     await user.click(screen.getByText('Commission'));
     await user.click(screen.getByText('Produits'));
-    expect(screen.getByText('inconnu')).toBeTruthy();
+    expect(screen.getByText('inconnu')).toBeInTheDocument();
   }, 10000);
 
-  it('in Produits tab: filtering right panel with tickerFilterRight triggers unknown ticker filter (line 364)', async () => {
+  it('in Produits tab: filtering the right panel also matches unknown allowed tickers', async () => {
     // Need tickerFilterRight to be non-empty to cover `t.includes(tickerFilterRight.toUpperCase())`
     mockUseAllAccounts.mockReturnValue({
       data: [{ ...MOCK_BROKER, allowed_tickers: ['AAPL', 'UNKNOWN_XYZ'] }],
@@ -540,7 +540,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     render(<GlobalConfigPage />);
     await user.click(screen.getByText('Commission'));
     await user.click(screen.getByText('Change FX'));
-    expect(screen.getByText(/Plafond mensuel/i)).toBeTruthy();
+    expect(screen.getByText(/Plafond mensuel/i)).toBeInTheDocument();
   }, 10000);
 
   it('in Change FX tab: can save FX commission', async () => {
@@ -555,7 +555,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     fetchSpy.mockRestore();
   }, 10000);
 
-  it('in Change FX tab: fetch error throws (line 35 error path)', async () => {
+  it('in Change FX tab: putFXCommission fetch error is caught by handleSave', async () => {
     // putFXCommission: when res.ok=false → throw new Error(await res.text()) — line 35
     const fetchSpy = vi.spyOn(window, 'fetch').mockResolvedValueOnce({
       ok: false,
@@ -568,11 +568,11 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     const saveBtns = screen.getAllByText('Enregistrer');
     await user.click(saveBtns[1]); // index 0 = TTF card's save button, index 1 = Commission panel's
     // Error is caught by handleSave try/catch → sets error state
-    expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
+    expect(screen.getByText(/Gérer les brokers/i)).toBeInTheDocument();
     fetchSpy.mockRestore();
   }, 10000);
 
-  it('in Produits tab: putAllowedTickers fetch error throws (line 50 error path)', async () => {
+  it('in Produits tab: putAllowedTickers fetch error is caught by handleSave', async () => {
     // putAllowedTickers: when res.ok=false → throw new Error(await res.text()) — line 50
     const fetchSpy = vi.spyOn(window, 'fetch').mockResolvedValueOnce({
       ok: false,
@@ -584,7 +584,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     await user.click(screen.getByText('Produits'));
     const saveBtns = screen.getAllByText('Enregistrer');
     await user.click(saveBtns[1]); // index 0 = TTF card's save button, index 1 = Commission panel's
-    expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
+    expect(screen.getByText(/Gérer les brokers/i)).toBeInTheDocument();
     fetchSpy.mockRestore();
   }, 10000);
 
@@ -605,7 +605,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     fetchSpy.mockRestore();
   }, 10000);
 
-  it('in Change FX tab: typing in FX inputs calls onChange handlers (lines 383-385)', async () => {
+  it('in Change FX tab: typing in each FX input calls its onChange handler', async () => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByText('Commission'));
@@ -620,10 +620,10 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
       await user.clear(inp);
       await user.type(inp, '1.5');
     }
-    expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
+    expect(screen.getByText(/Gérer les brokers/i)).toBeInTheDocument();
   }, 10000);
 
-  it('in Change FX tab: onFocus triggers select (line 383)', async () => {
+  it('in Change FX tab: onFocus on the monthly-free input triggers text selection', async () => {
     render(<GlobalConfigPage />);
     fireEvent.click(screen.getByText('Commission'));
     fireEvent.click(screen.getByText('Change FX'));
@@ -639,7 +639,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     expect(selectSpy).toHaveBeenCalled();
   }, 10000);
 
-  it('clicking allowed product in Produits tab calls removeTicker (line 128 fn23-fn25, line 360 fn67)', async () => {
+  it('clicking allowed product via its "Clic pour retirer" element calls removeTicker', async () => {
     // AAPL is in allowed_tickers → appears in right panel → clicking removes it → removeTicker called
     // This covers: onClick={() => removeTicker(p.ticker)} at line 360 (fn67)
     // AND: setSelectedTickers(s => s.filter(x => x !== t)) at line 128 (fn24, fn25)
@@ -662,7 +662,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     expect(screen.getAllByText(/Autorisés/i).length).toBeGreaterThan(0);
   }, 10000);
 
-  it('addTicker inner function covers fn23 (line 128)', async () => {
+  it('addTicker appends the clicked ticker via a functional setState update', async () => {
     // addTicker: (t: string) => setSelectedTickers(s => [...s, t])
     // The inner fn (s => [...s, t]) is fn23
     mockUseAllAccounts.mockReturnValue({
@@ -679,7 +679,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     expect(screen.getAllByText(/Autorisés/i).length).toBeGreaterThan(0);
   }, 10000);
 
-  it('switching to FX tab with null monthly_free_eur and zero above_rate (lines 287-288 false branches)', async () => {
+  it('switching to Change FX tab falls back to empty strings for null/zero FX fields', async () => {
     // Cover ternary false branches: monthly_free_eur=null → '', above_monthly_rate=0 → '', weekend_rate=null → ''
     mockUseAllAccounts.mockReturnValue({
       data: [{ ...MOCK_BROKER, monthly_free_eur: null, above_monthly_rate: 0, weekend_rate: null }],
@@ -690,10 +690,10 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     await user.click(screen.getByText('Commission'));
     await user.click(screen.getByText('Change FX'));
     // With null monthly_free_eur → setFxMonthlyFree(''); above_monthly_rate=0 → ''; weekend_rate=null → ''
-    expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
+    expect(screen.getByText(/Gérer les brokers/i)).toBeInTheDocument();
   }, 10000);
 
-  it('switching from FX tab back to Commission tab (line 285 onClick)', async () => {
+  it('switching from Change FX tab back to Commission tab', async () => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByText('Commission'));
@@ -701,10 +701,10 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     await user.click(screen.getByText('Change FX'));
     // Switch back to Commission (line 285)
     await user.click(screen.getByText('Commission'));
-    expect(screen.getByText(/Jusqu'à/i)).toBeTruthy();
+    expect(screen.getByText(/Jusqu'à/i)).toBeInTheDocument();
   }, 10000);
 
-  it('tier input up_to: onFocus triggers select (line 304)', async () => {
+  it('tier input up_to: onFocus triggers text selection', async () => {
     render(<GlobalConfigPage />);
     fireEvent.click(screen.getByText('Commission'));
     // After opening Commission, tier rows are shown with number inputs
@@ -718,7 +718,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     }
   }, 10000);
 
-  it('tier input value: onFocus triggers select and onChange updates tier value (line 314)', async () => {
+  it('tier input value: onFocus triggers select and onChange updates the tier value', async () => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByText('Commission'));
@@ -732,10 +732,10 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
       fireEvent.change(el, { target: { value: '2.5' } });
       // Don't need to assert each spy, just verify no crash
     }
-    expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
+    expect(screen.getByText(/Gérer les brokers/i)).toBeInTheDocument();
   }, 10000);
 
-  it('broker table name sort header onClick (line 225)', async () => {
+  it('clicking the broker table name column header toggles sort order', async () => {
     const user = userEvent.setup({ delay: null });
     const { container } = render(<GlobalConfigPage />);
     // Click broker table column header (line 225 — accTh('name') onClick toggleAcc('name'))
@@ -743,7 +743,7 @@ describe('GlobalConfigPage — CommissionManager edit panel', () => {
     const nameTh = brokerTableThs.find(th => th.textContent?.includes('Broker'));
     if (nameTh) {
       await user.click(nameTh as HTMLElement);
-      expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
+      expect(screen.getByText(/Gérer les brokers/i)).toBeInTheDocument();
     }
   }, 10000);
 });
@@ -762,7 +762,7 @@ describe('GlobalConfigPage — CommissionManager broker CRUD', () => {
     const editBtns = screen.getAllByRole('button').filter((b: HTMLElement) => b.textContent?.includes('✏️'));
     if (editBtns.length > 0) {
       await user.click(editBtns[0]);
-      expect(screen.getByTestId('modal')).toBeTruthy();
+      expect(screen.getByTestId('modal')).toBeInTheDocument();
     }
   }, 10000);
 
@@ -776,7 +776,7 @@ describe('GlobalConfigPage — CommissionManager broker CRUD', () => {
       const modal = screen.getByTestId('modal');
       const textInputs = modal.querySelectorAll('input[type="text"], input:not([type])');
       const nameInput = Array.from(textInputs).find((inp: any) => (inp as HTMLInputElement).value === 'Degiro');
-      expect(nameInput).toBeTruthy();
+      expect(nameInput).toBeInTheDocument();
     }
   }, 10000);
 
@@ -824,10 +824,10 @@ describe('GlobalConfigPage — CommissionManager broker CRUD', () => {
       await user.click(newBrokerBtn);
       // The new broker modal shows a currency input (only shown when brokerModal === 'new')
       const modal = screen.getByTestId('modal');
-      expect(modal).toBeTruthy();
+      expect(modal).toBeInTheDocument();
       // The currency field has a maxLength=3 input
       const currencyInput = modal.querySelector('input[maxLength="3"]');
-      expect(currencyInput).toBeTruthy();
+      expect(currencyInput).toBeInTheDocument();
     }
   }, 10000);
 
@@ -869,11 +869,11 @@ describe('GlobalConfigPage — CommissionManager broker CRUD', () => {
         const saveBtn = Array.from(actions.querySelectorAll('button')).find(b => b.textContent?.includes('Enregistrer'));
         if (saveBtn) await user.click(saveBtn);
       }
-      await rtlWaitFor(() => expect(screen.getByText(/Broker name taken/i)).toBeTruthy());
+      await rtlWaitFor(() => expect(screen.getByText(/Broker name taken/i)).toBeInTheDocument());
     }
   }, 10000);
 
-  it('currency input onChange in new broker modal converts to uppercase (line 190)', async () => {
+  it('currency input onChange in new broker modal converts to uppercase', async () => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     const newBrokerBtn = screen.getAllByRole('button').find((b: HTMLElement) => b.textContent?.includes('Nouveau broker'));
@@ -890,7 +890,7 @@ describe('GlobalConfigPage — CommissionManager broker CRUD', () => {
     }
   }, 10000);
 
-  it('color input onChange in broker modal updates color (line 196)', async () => {
+  it('color input onChange in broker modal updates color', async () => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     const newBrokerBtn = screen.getAllByRole('button').find((b: HTMLElement) => b.textContent?.includes('Nouveau broker'));
@@ -916,7 +916,7 @@ describe('GlobalConfigPage — CommissionManager broker CRUD', () => {
       // Find Portfolio 1 checkbox
       if (portfolioCheckboxes.length > 0) {
         await user.click(portfolioCheckboxes[0]);
-        expect(screen.getByText(/Portfolio 1/)).toBeTruthy();
+        expect(screen.getByText(/Portfolio 1/)).toBeInTheDocument();
       }
     }
   }, 10000);
@@ -966,7 +966,7 @@ describe('GlobalConfigPage — CommissionManager broker CRUD', () => {
     if (deleteBtns.length > 0) {
       await user.click(deleteBtns[0]);
       await user.click(screen.getByText('Supprimer'));
-      await rtlWaitFor(() => expect(screen.getByText('Has transactions')).toBeTruthy());
+      await rtlWaitFor(() => expect(screen.getByText('Has transactions')).toBeInTheDocument());
     }
   }, 10000);
 });
@@ -1005,7 +1005,7 @@ describe('GlobalConfigPage — CommissionManager inline features', () => {
     const cumpCheckbox = screen.getAllByRole('checkbox').find((c: HTMLElement) =>
       c.getAttribute('title')?.includes('CUMP') || c.getAttribute('title')?.includes('Courtage')
     ) as HTMLElement;
-    expect(cumpCheckbox).toBeTruthy();
+    expect(cumpCheckbox).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(cumpCheckbox);
@@ -1013,7 +1013,7 @@ describe('GlobalConfigPage — CommissionManager inline features', () => {
       await Promise.resolve();
     });
 
-    await rtlWaitFor(() => expect(screen.getByText('CUMP update error')).toBeTruthy());
+    await rtlWaitFor(() => expect(screen.getByText('CUMP update error')).toBeInTheDocument());
     fetchSpy.mockRestore();
   }, 10000);
 
@@ -1023,7 +1023,7 @@ describe('GlobalConfigPage — CommissionManager inline features', () => {
     const cumpCheckbox = screen.getAllByRole('checkbox').find((c: HTMLElement) =>
       c.getAttribute('title')?.includes('CUMP') || c.getAttribute('title')?.includes('Courtage')
     ) as HTMLElement;
-    expect(cumpCheckbox).toBeTruthy();
+    expect(cumpCheckbox).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(cumpCheckbox);
@@ -1031,7 +1031,7 @@ describe('GlobalConfigPage — CommissionManager inline features', () => {
       await Promise.resolve();
     });
 
-    await rtlWaitFor(() => expect(screen.getByText('Erreur lors de la mise à jour du CUMP')).toBeTruthy());
+    await rtlWaitFor(() => expect(screen.getByText('Erreur lors de la mise à jour du CUMP')).toBeInTheDocument());
     fetchSpy.mockRestore();
   }, 10000);
 
@@ -1060,7 +1060,7 @@ describe('GlobalConfigPage — CommissionManager inline features', () => {
     const saleRateInput = inputs.find((inp: HTMLElement) =>
       parseFloat((inp as HTMLInputElement).value) === 0.005
     );
-    expect(saleRateInput).toBeTruthy();
+    expect(saleRateInput).toBeInTheDocument();
     if (saleRateInput) {
       expect(saleRateInput.getAttribute('title')).toMatch(/0.5%/);
     }
@@ -1077,7 +1077,7 @@ describe('GlobalConfigPage — additional branch coverage', () => {
 
   afterEach(() => { vi.restoreAllMocks(); });
 
-  it('broker with null color renders fallback #6A6E73 (line 243 ?? branch)', () => {
+  it('broker with null color renders fallback #6A6E73', () => {
     mockUseAllAccounts.mockReturnValue({
       data: [{ ...MOCK_BROKER, color: null }],
       isLoading: false,
@@ -1086,10 +1086,10 @@ describe('GlobalConfigPage — additional branch coverage', () => {
     // Broker with null color → acc.color ?? '#6A6E73' uses fallback
     expect(screen.getAllByText('Degiro').length).toBeGreaterThan(0);
     // The page renders without crash — the dot span uses #6A6E73 as backgroundColor
-    expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
+    expect(screen.getByText(/Gérer les brokers/i)).toBeInTheDocument();
   });
 
-  it('broker with null currency in openEditBroker uses EUR fallback (line 78 ?? branch)', async () => {
+  it('broker with null currency in openEditBroker uses EUR fallback', async () => {
     // openEditBroker: acc.currency ?? 'EUR' and acc.color ?? '#1890FF'
     mockUseAllAccounts.mockReturnValue({
       data: [{ ...MOCK_BROKER, currency: null, color: null }],
@@ -1101,11 +1101,11 @@ describe('GlobalConfigPage — additional branch coverage', () => {
     if (editBtns.length > 0) {
       await user.click(editBtns[0]);
       // Edit modal opens with currency='EUR' (fallback) and color='#1890FF' (fallback)
-      expect(screen.getByTestId('modal')).toBeTruthy();
+      expect(screen.getByTestId('modal')).toBeInTheDocument();
     }
   }, 10000);
 
-  it('toggleBrokerPortfolio add branch: clicking an unchecked portfolio adds it (line 83 false branch)', async () => {
+  it('toggleBrokerPortfolio: clicking an unchecked portfolio adds it to portfolio_ids', async () => {
     // Start with portfolio_ids=[] then toggle to add portfolio 1
     mockUseAllAccounts.mockReturnValue({
       data: [{ ...MOCK_BROKER, portfolio_ids: [] }],
@@ -1124,10 +1124,10 @@ describe('GlobalConfigPage — additional branch coverage', () => {
         await user.click(checkboxes[0]);
       }
     }
-    expect(screen.getByText(/Gérer les brokers/i)).toBeTruthy();
+    expect(screen.getByText(/Gérer les brokers/i)).toBeInTheDocument();
   }, 10000);
 
-  it('handleSaveBroker catch without detail uses "Erreur" fallback (line 96 ?? branch)', async () => {
+  it('handleSaveBroker catch without detail uses "Erreur" fallback', async () => {
     const { createBrokerAPI } = await import('../api/queries');
     vi.mocked(createBrokerAPI).mockRejectedValueOnce(new Error('Plain error'));
     const user = userEvent.setup({ delay: null });
@@ -1145,11 +1145,11 @@ describe('GlobalConfigPage — additional branch coverage', () => {
         if (saveBtn) await user.click(saveBtn);
       }
       // Error shown: falls back to 'Erreur' since plain Error has no response.data.detail
-      await rtlWaitFor(() => expect(screen.getByText('Erreur')).toBeTruthy());
+      await rtlWaitFor(() => expect(screen.getByText('Erreur')).toBeInTheDocument());
     }
   }, 10000);
 
-  it('handleDeleteBroker catch without detail uses "Impossible de supprimer" fallback (line 102 ?? branch)', async () => {
+  it('handleDeleteBroker catch without detail uses "Impossible de supprimer" fallback', async () => {
     const { deleteBrokerAPI } = await import('../api/queries');
     vi.mocked(deleteBrokerAPI).mockRejectedValueOnce(new Error('Generic error'));
     const user = userEvent.setup({ delay: null });
@@ -1158,11 +1158,11 @@ describe('GlobalConfigPage — additional branch coverage', () => {
     if (deleteBtns.length > 0) {
       await user.click(deleteBtns[0]);
       await user.click(screen.getByText('Supprimer'));
-      await rtlWaitFor(() => expect(screen.getByText('Impossible de supprimer')).toBeTruthy());
+      await rtlWaitFor(() => expect(screen.getByText('Impossible de supprimer')).toBeInTheDocument());
     }
   }, 10000);
 
-  it('tiersFromSchedule with null schedule uses [] fallback (line 131 ?? branch)', async () => {
+  it('tiersFromSchedule with null commission_schedule uses [] fallback', async () => {
     // Open commission editor for a broker with null commission_schedule
     mockUseAllAccounts.mockReturnValue({
       data: [{ ...MOCK_BROKER, commission_schedule: null }],
@@ -1172,10 +1172,10 @@ describe('GlobalConfigPage — additional branch coverage', () => {
     render(<GlobalConfigPage />);
     await user.click(screen.getByText('Commission'));
     // With null schedule → tiersFromSchedule(null) → (null ?? []) uses [] → no tiers
-    expect(screen.getByText(/Grille vide → commission = 0/i)).toBeTruthy();
+    expect(screen.getByText(/Grille vide → commission = 0/i)).toBeInTheDocument();
   }, 10000);
 
-  it('weekend_rate null does not render weekend-rate row (line 288 false branch)', () => {
+  it('weekend_rate null does not render weekend-rate row', () => {
     mockUseAllAccounts.mockReturnValue({
       data: [{ ...MOCK_BROKER, monthly_free_eur: 500, weekend_rate: null }],
       isLoading: false,
@@ -1184,10 +1184,10 @@ describe('GlobalConfigPage — additional branch coverage', () => {
     // weekend_rate is null → {acc.weekend_rate !== null && <span>} does not render
     expect(screen.queryByText(/week-end:/)).toBeNull();
     // monthly_free_eur is 500 → renders the FX info
-    expect(screen.getByText(/500€\/mois gratuits/)).toBeTruthy();
+    expect(screen.getByText(/500€\/mois gratuits/)).toBeInTheDocument();
   });
 
-  it('Produits tab with null allowed_tickers uses [] fallback (line 291 ?? branch)', async () => {
+  it('Produits tab with null allowed_tickers uses [] fallback for selectedTickers', async () => {
     // When allowed_tickers is null, clicking Produits sets selectedTickers to []
     mockUseAllAccounts.mockReturnValue({
       data: [{ ...MOCK_BROKER, allowed_tickers: null }],
@@ -1198,7 +1198,7 @@ describe('GlobalConfigPage — additional branch coverage', () => {
     await user.click(screen.getByText('Commission'));
     await user.click(screen.getByText('Produits'));
     // selectedTickers = null ?? [] = [] → no allowed tickers shown
-    expect(screen.getByText(/Aucun — tous autorisés/i)).toBeTruthy();
+    expect(screen.getByText(/Aucun — tous autorisés/i)).toBeInTheDocument();
   }, 10000);
 
   it('putCommissionSaleRate fetch error is caught by caller and shown via an Alert', async () => {
@@ -1212,7 +1212,7 @@ describe('GlobalConfigPage — additional branch coverage', () => {
     const saleRateInput = inputs.find((inp: HTMLElement) =>
       parseFloat((inp as HTMLInputElement).value) === 0.005
     ) as HTMLInputElement;
-    expect(saleRateInput).toBeTruthy();
+    expect(saleRateInput).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.change(saleRateInput, { target: { value: '0.006' } });
@@ -1220,8 +1220,8 @@ describe('GlobalConfigPage — additional branch coverage', () => {
       await Promise.resolve();
     });
 
-    await rtlWaitFor(() => expect(screen.getByText('Sale rate error')).toBeTruthy());
-    expect(container).toBeTruthy();
+    await rtlWaitFor(() => expect(screen.getByText('Sale rate error')).toBeInTheDocument());
+    expect(container).toBeInTheDocument();
     fetchSpy.mockRestore();
   }, 10000);
 
@@ -1232,7 +1232,7 @@ describe('GlobalConfigPage — additional branch coverage', () => {
     const saleRateInput = inputs.find((inp: HTMLElement) =>
       parseFloat((inp as HTMLInputElement).value) === 0.005
     ) as HTMLInputElement;
-    expect(saleRateInput).toBeTruthy();
+    expect(saleRateInput).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.change(saleRateInput, { target: { value: '0.006' } });
@@ -1240,19 +1240,19 @@ describe('GlobalConfigPage — additional branch coverage', () => {
       await Promise.resolve();
     });
 
-    await rtlWaitFor(() => expect(screen.getByText('Erreur lors de la mise à jour du taux de vente')).toBeTruthy());
+    await rtlWaitFor(() => expect(screen.getByText('Erreur lors de la mise à jour du taux de vente')).toBeInTheDocument());
     fetchSpy.mockRestore();
   }, 10000);
 
-  it('ttfSetting without value skips useEffect (line 564 false branch)', () => {
+  it('ttfSetting without a value skips the ttfRate-overwrite useEffect', () => {
     // When ttfSetting?.value is falsy, the useEffect body does not run
     mockUseSystemSetting.mockReturnValue({ data: undefined, isError: false });
     render(<GlobalConfigPage />);
     // Default ttfRate is '0.40' (not overwritten since ttfSetting?.value is undefined)
-    expect(screen.getByText(/Produits et frais financiers/i)).toBeTruthy();
+    expect(screen.getByText(/Produits et frais financiers/i)).toBeInTheDocument();
   });
 
-  it('handleSave catch with non-Error uses "Valeur invalide" fallback (line 164 false branch)', async () => {
+  it('handleSave catch with a non-Error rejection uses "Valeur invalide" fallback', async () => {
     // Throw a non-Error object to cover e instanceof Error ? e.message : 'Valeur invalide'
     const fetchSpy = vi.spyOn(window, 'fetch').mockRejectedValueOnce({ code: 42 });
     const user = userEvent.setup({ delay: null });
@@ -1260,7 +1260,7 @@ describe('GlobalConfigPage — additional branch coverage', () => {
     await user.click(screen.getByText('Commission'));
     const saveBtns = screen.getAllByText('Enregistrer');
     await user.click(saveBtns[1]); // index 0 = TTF card's save button, index 1 = Commission panel's
-    await rtlWaitFor(() => expect(screen.getByText('Valeur invalide')).toBeTruthy());
+    await rtlWaitFor(() => expect(screen.getByText('Valeur invalide')).toBeInTheDocument());
     fetchSpy.mockRestore();
   }, 10000);
 });

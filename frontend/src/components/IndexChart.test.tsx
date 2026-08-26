@@ -129,12 +129,12 @@ describe('IndexChart', () => {
 
   it('renders the performance chart card', () => {
     render(<IndexChart {...defaultProps} />);
-    expect(screen.getByText(/Indice de performance/i)).toBeTruthy();
+    expect(screen.getByText(/Indice de performance/i)).toBeInTheDocument();
   });
 
   it('shows reset zoom button when isManuallyZoomed is true', () => {
     render(<IndexChart {...defaultProps} isManuallyZoomed={true} />);
-    expect(screen.getByText(/↺ Réinitialiser zoom/i)).toBeTruthy();
+    expect(screen.getByText(/↺ Réinitialiser zoom/i)).toBeInTheDocument();
   });
 
   it('does not show reset zoom button when isManuallyZoomed is false', () => {
@@ -153,10 +153,10 @@ describe('IndexChart', () => {
 
   it('renders strategie toggle buttons', () => {
     render(<IndexChart {...defaultProps} />);
-    expect(screen.getByTestId('toggle-Total')).toBeTruthy();
-    expect(screen.getByTestId('toggle-Offensif / Défensif')).toBeTruthy();
-    expect(screen.getByTestId('toggle-Pools')).toBeTruthy();
-    expect(screen.getByTestId('toggle-Positions')).toBeTruthy();
+    expect(screen.getByTestId('toggle-Total')).toBeInTheDocument();
+    expect(screen.getByTestId('toggle-Offensif / Défensif')).toBeInTheDocument();
+    expect(screen.getByTestId('toggle-Pools')).toBeInTheDocument();
+    expect(screen.getByTestId('toggle-Positions')).toBeInTheDocument();
   });
 
   it('click on strategie toggle calls setIndexView', () => {
@@ -361,8 +361,8 @@ describe('IndexChart', () => {
     const chartDiv = document.querySelector('[style*="user-select: none"]') as HTMLElement;
     // Move to a position within the plot area (left=50..790)
     fireEvent.mouseMove(chartDiv, { clientX: 300, clientY: 100 });
-    expect(document.querySelector('[data-testid="crosshair-line"]')).toBeTruthy();
-    expect(document.querySelector('[data-testid="crosshair-tooltip"]')).toBeTruthy();
+    expect(document.querySelector('[data-testid="crosshair-line"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-testid="crosshair-tooltip"]')).toBeInTheDocument();
   });
 
   it('crosshair shows date and value in tooltip (total view)', () => {
@@ -377,7 +377,7 @@ describe('IndexChart', () => {
     render(<IndexChart {...defaultProps} indexView="total" zoomIndex={undefined} />);
     const chartDiv = document.querySelector('[style*="user-select: none"]') as HTMLElement;
     fireEvent.mouseMove(chartDiv, { clientX: 300, clientY: 100 });
-    expect(document.querySelector('[data-testid="crosshair-line"]')).toBeTruthy();
+    expect(document.querySelector('[data-testid="crosshair-line"]')).toBeInTheDocument();
     fireEvent.mouseLeave(chartDiv);
     expect(document.querySelector('[data-testid="crosshair-line"]')).toBeNull();
   });
@@ -403,7 +403,7 @@ describe('IndexChart', () => {
     render(<IndexChart {...defaultProps} indexView="total" zoomIndex={zoom} />);
     const chartDiv = document.querySelector('[style*="user-select: none"]') as HTMLElement;
     fireEvent.mouseMove(chartDiv, { clientX: 300, clientY: 100 });
-    expect(document.querySelector('[data-testid="crosshair-tooltip"]')).toBeTruthy();
+    expect(document.querySelector('[data-testid="crosshair-tooltip"]')).toBeInTheDocument();
   });
 
   it('crosshair hidden when brush is active (no crosshair during drag)', () => {
@@ -502,8 +502,8 @@ describe('IndexChart', () => {
 
   it('strategie view: shows Offensif/Défensif legend buttons', () => {
     render(<IndexChart {...defaultProps} indexView="strategie" />);
-    expect(screen.getByText('Offensif')).toBeTruthy();
-    expect(screen.getByText('Défensif')).toBeTruthy();
+    expect(screen.getByText('Offensif')).toBeInTheDocument();
+    expect(screen.getByText('Défensif')).toBeInTheDocument();
   });
 
   it('strategie view: toggle Offensif button calls setVisibleStrats', () => {
@@ -515,7 +515,7 @@ describe('IndexChart', () => {
 
   it('strategie view: shows "↺ Tout afficher" when some strats are hidden', () => {
     render(<IndexChart {...defaultProps} indexView="strategie" visibleStrats={new Set(['Offensif'])} />);
-    expect(screen.getByText(/↺ Tout afficher/i)).toBeTruthy();
+    expect(screen.getByText(/↺ Tout afficher/i)).toBeInTheDocument();
   });
 
   it('strategie view: clicking "↺ Tout afficher" resets visibleStrats', () => {
@@ -527,8 +527,8 @@ describe('IndexChart', () => {
 
   it('pools view: shows pool legend buttons', () => {
     render(<IndexChart {...defaultProps} indexView="pools" />);
-    expect(screen.getByText('Asie')).toBeTruthy();
-    expect(screen.getByText('Energie')).toBeTruthy();
+    expect(screen.getByText('Asie')).toBeInTheDocument();
+    expect(screen.getByText('Energie')).toBeInTheDocument();
   });
 
   it('pools view: toggle pool button calls setVisiblePools', () => {
@@ -540,7 +540,7 @@ describe('IndexChart', () => {
 
   it('pools view: shows "↺ Tout afficher" when a pool is hidden', () => {
     render(<IndexChart {...defaultProps} indexView="pools" visiblePools={new Set(['Asie'])} />);
-    expect(screen.getByText(/↺ Tout afficher/i)).toBeTruthy();
+    expect(screen.getByText(/↺ Tout afficher/i)).toBeInTheDocument();
   });
 
   it('pools view: clicking "↺ Tout afficher" resets visiblePools', () => {
@@ -552,7 +552,7 @@ describe('IndexChart', () => {
 
   it('positions view: shows ticker legend buttons', () => {
     render(<IndexChart {...defaultProps} indexView="positions" />);
-    expect(screen.getByText('CW8.PA')).toBeTruthy();
+    expect(screen.getByText('CW8.PA')).toBeInTheDocument();
   });
 
   it('positions view: toggle position button calls setVisibleHoldings', () => {
@@ -564,7 +564,7 @@ describe('IndexChart', () => {
 
   it('positions view: shows "↺ Tout afficher" when a position is hidden', () => {
     render(<IndexChart {...defaultProps} indexView="positions" visibleHoldings={new Set()} />);
-    expect(screen.getByText(/↺ Tout afficher/i)).toBeTruthy();
+    expect(screen.getByText(/↺ Tout afficher/i)).toBeInTheDocument();
   });
 
   it('positions view: clicking "↺ Tout afficher" resets visiblePositions', () => {
@@ -576,7 +576,7 @@ describe('IndexChart', () => {
 
   it('positions view: shows TWRR disclaimer', () => {
     render(<IndexChart {...defaultProps} indexView="positions" />);
-    expect(screen.getByText(/insensible aux flux externes/i)).toBeTruthy();
+    expect(screen.getByText(/insensible aux flux externes/i)).toBeInTheDocument();
   });
 
   it('total view: does not show TWRR disclaimer', () => {
@@ -632,7 +632,7 @@ describe('IndexChart', () => {
     const chartDiv = document.querySelector('[style*="user-select: none"]') as HTMLElement;
     fireEvent.mouseMove(chartDiv, { clientX: 200, clientY: 100 });
     const tooltip = document.querySelector('[data-testid="crosshair-tooltip"]');
-    expect(tooltip).toBeTruthy();
+    expect(tooltip).toBeInTheDocument();
   });
 
   // ── Pools view: second pool sets hoverDate branch ─────────────────────────

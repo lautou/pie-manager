@@ -243,7 +243,7 @@ describe('formatUnitPrice', () => {
     expect(result).toContain('181')
   })
 
-  it('formats non-EUR values with currency code (lines 83-84)', () => {
+  it('formats non-EUR values with currency code instead of €', () => {
     const result = formatUnitPrice(150.5, 'USD')
     // Non-EUR path: appends currency code, not €
     expect(result).toContain('USD')

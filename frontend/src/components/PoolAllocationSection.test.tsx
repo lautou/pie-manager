@@ -2,6 +2,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import '@testing-library/jest-dom';
 import { pfCoreStubs, pfTableStubs } from '../../tests/utils/patternfly-mocks';
 
 const mockUsePoolAllocation = vi.fn();
@@ -52,8 +53,8 @@ describe('PoolAllocationSection', () => {
       },
     });
     render(<PoolAllocationSection portfolioId={1} poolId={1} />);
-    expect(screen.getByTestId('chart-donut')).toBeTruthy();
-    expect(screen.getByText(/Énergie/)).toBeTruthy();
+    expect(screen.getByTestId('chart-donut')).toBeInTheDocument();
+    expect(screen.getByText(/Énergie/)).toBeInTheDocument();
   });
 
   it('switches to the company tab and shows the merged TotalEnergies line plus OTHER and unclassified rows', async () => {
@@ -72,8 +73,8 @@ describe('PoolAllocationSection', () => {
     });
     render(<PoolAllocationSection portfolioId={1} poolId={1} />);
     await user.click(screen.getByText('Par entreprise'));
-    expect(screen.getByText('TotalEnergies SE')).toBeTruthy();
-    expect(screen.getByText('Autres non détaillés')).toBeTruthy();
-    expect(screen.getByText('Non classé (pas encore synchronisé)')).toBeTruthy();
+    expect(screen.getByText('TotalEnergies SE')).toBeInTheDocument();
+    expect(screen.getByText('Autres non détaillés')).toBeInTheDocument();
+    expect(screen.getByText('Non classé (pas encore synchronisé)')).toBeInTheDocument();
   });
 });

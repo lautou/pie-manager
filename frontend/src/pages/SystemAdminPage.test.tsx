@@ -108,37 +108,37 @@ describe('SystemAdminPage', () => {
 
   it('renders page title', () => {
     render(<SystemAdminPage />);
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    expect(screen.getByText('Administration système')).toBeInTheDocument();
   });
 
   it('shows page title', () => {
     render(<SystemAdminPage />);
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    expect(screen.getByText('Administration système')).toBeInTheDocument();
   });
 
   it('shows manual sync section', () => {
     render(<SystemAdminPage />);
-    expect(screen.getByText(/Synchronisation des prix/i)).toBeTruthy();
+    expect(screen.getByText(/Synchronisation des prix/i)).toBeInTheDocument();
   });
 
   it('shows backup/restore section', () => {
     render(<SystemAdminPage />);
-    expect(screen.getByText(/Sauvegarde et restauration/i)).toBeTruthy();
+    expect(screen.getByText(/Sauvegarde et restauration/i)).toBeInTheDocument();
   });
 
   it('shows recompute section', () => {
     render(<SystemAdminPage />);
-    expect(screen.getByText(/Recalcul des snapshots/i)).toBeTruthy();
+    expect(screen.getByText(/Recalcul des snapshots/i)).toBeInTheDocument();
   });
 
   it('shows backup section', () => {
     render(<SystemAdminPage />);
-    expect(screen.getByText(/Sauvegarde et restauration/i)).toBeTruthy();
+    expect(screen.getByText(/Sauvegarde et restauration/i)).toBeInTheDocument();
   });
 
   it('shows sync status info', () => {
     render(<SystemAdminPage />);
-    expect(screen.getByText(/Dernière synchro/i)).toBeTruthy();
+    expect(screen.getByText(/Dernière synchro/i)).toBeInTheDocument();
   });
 
   it('can click sync button', async () => {
@@ -158,7 +158,7 @@ describe('SystemAdminPage', () => {
 
     const backupBtn = screen.getByText(/Télécharger une sauvegarde/i);
     await user.click(backupBtn);
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    expect(screen.getByText('Administration système')).toBeInTheDocument();
   });
 
   it('clicking lancer le recalcul calls triggerRecompute', async () => {
@@ -178,7 +178,7 @@ describe('SystemAdminPage', () => {
       data: { status: 'partial', failed_tickers: ['AAPL', 'TSLA'], started_at: null, finished_at: '2026-01-01T10:00:00Z', total_tickers: 5, succeeded: 3 },
     });
     render(<SystemAdminPage />);
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    expect(screen.getByText('Administration système')).toBeInTheDocument();
   });
 
   it('shows task status PENDING after triggering recompute', async () => {
@@ -190,7 +190,7 @@ describe('SystemAdminPage', () => {
 
     const runBtn = screen.getByText('Lancer le recalcul');
     await user.click(runBtn);
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    expect(screen.getByText('Administration système')).toBeInTheDocument();
   }, 10000);
 
   it('shows progress during PROGRESS state', async () => {
@@ -203,7 +203,7 @@ describe('SystemAdminPage', () => {
     render(<SystemAdminPage />);
 
     await user.click(screen.getByText('Lancer le recalcul'));
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    expect(screen.getByText('Administration système')).toBeInTheDocument();
   }, 10000);
 
   it('shows error when triggerRecompute throws', async () => {
@@ -213,7 +213,7 @@ describe('SystemAdminPage', () => {
     render(<SystemAdminPage />);
 
     await user.click(screen.getByText('Lancer le recalcul'));
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    expect(screen.getByText('Administration système')).toBeInTheDocument();
   }, 10000);
 
   it('renders FrDatePicker for start and end dates', () => {
@@ -228,7 +228,7 @@ describe('SystemAdminPage', () => {
     const dateInputs = screen.getAllByDisplayValue(/\d{4}-\d{2}-\d{2}/);
     await user.clear(dateInputs[0]);
     await user.type(dateInputs[0], '2024-06-01');
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    expect(screen.getByText('Administration système')).toBeInTheDocument();
   });
 
   it('end date picker: setting date <= yesterday updates endDate', async () => {
@@ -242,7 +242,7 @@ describe('SystemAdminPage', () => {
       await user.clear(dateInputs[1]);
       await user.type(dateInputs[1], '2099-12-31');
     }
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    expect(screen.getByText('Administration système')).toBeInTheDocument();
   }, 10000);
 
   it('clicking Restaurer button triggers file input', async () => {
@@ -250,9 +250,9 @@ describe('SystemAdminPage', () => {
     render(<SystemAdminPage />);
 
     const restaurerBtn = screen.getByText(/Restaurer une sauvegarde/i);
-    expect(restaurerBtn).toBeTruthy();
+    expect(restaurerBtn).toBeInTheDocument();
     await user.click(restaurerBtn);
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    expect(screen.getByText('Administration système')).toBeInTheDocument();
   }, 10000);
 });
 
@@ -280,7 +280,7 @@ describe('SystemAdminPage — additional coverage', () => {
     const { container } = render(<SystemAdminPage />);
 
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
-    expect(fileInput).toBeTruthy();
+    expect(fileInput).toBeInTheDocument();
 
     const file = new File(['-- SQL backup'], 'backup.sql', { type: 'text/plain' });
     Object.defineProperty(fileInput, 'files', {
@@ -301,7 +301,7 @@ describe('SystemAdminPage — additional coverage', () => {
     const user = userEvent.setup({ delay: null });
     const { container } = render(<SystemAdminPage />);
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
-    expect(fileInput).toBeTruthy();
+    expect(fileInput).toBeInTheDocument();
 
     const file = new File(['-- SQL backup'], 'backup.sql', { type: 'text/plain' });
     Object.defineProperty(fileInput, 'files', {
@@ -323,7 +323,7 @@ describe('SystemAdminPage — additional coverage', () => {
     const user = userEvent.setup({ delay: null });
     const { container } = render(<SystemAdminPage />);
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
-    expect(fileInput).toBeTruthy();
+    expect(fileInput).toBeInTheDocument();
 
     const file = new File(['-- SQL backup'], 'backup.sql', { type: 'text/plain' });
     Object.defineProperty(fileInput, 'files', {
@@ -339,7 +339,7 @@ describe('SystemAdminPage — additional coverage', () => {
   it('handleRestoreFile: no file selected → returns early', async () => {
     const { container } = render(<SystemAdminPage />);
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
-    expect(fileInput).toBeTruthy();
+    expect(fileInput).toBeInTheDocument();
 
     Object.defineProperty(fileInput, 'files', {
       value: { length: 0, item: () => null },
@@ -347,7 +347,7 @@ describe('SystemAdminPage — additional coverage', () => {
     });
 
     fireEvent.change(fileInput);
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    expect(screen.getByText('Administration système')).toBeInTheDocument();
   }, 10000);
 
   it('handleBackup: with content-disposition filename header uses that filename', async () => {
@@ -377,7 +377,7 @@ describe('SystemAdminPage — additional coverage', () => {
     const backupBtn = screen.getByText(/Télécharger une sauvegarde/i);
     await user.click(backupBtn);
 
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    expect(screen.getByText('Administration système')).toBeInTheDocument();
     vi.restoreAllMocks();
   }, 10000);
 
@@ -391,7 +391,7 @@ describe('SystemAdminPage — additional coverage', () => {
     const backupBtn = screen.getByText(/Télécharger une sauvegarde/i);
     await user.click(backupBtn);
 
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    expect(screen.getByText('Administration système')).toBeInTheDocument();
   }, 10000);
 
   it('handleRun: triggerRecompute is called when clicking Lancer le recalcul', async () => {
@@ -403,7 +403,7 @@ describe('SystemAdminPage — additional coverage', () => {
 
     await user.click(screen.getByText('Lancer le recalcul'));
     expect(mockTriggerRecompute).toHaveBeenCalled();
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    expect(screen.getByText('Administration système')).toBeInTheDocument();
   }, 10000);
 
   it('end date change applies only when date <= yesterday', async () => {
@@ -416,7 +416,7 @@ describe('SystemAdminPage — additional coverage', () => {
       await user.clear(endDateInput);
       await user.type(endDateInput, '2020-01-01');
     }
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    expect(screen.getByText('Administration système')).toBeInTheDocument();
   }, 10000);
 
   it('handleManualSync: catch branch when apiClient.post throws', async () => {
@@ -427,7 +427,7 @@ describe('SystemAdminPage — additional coverage', () => {
     render(<SystemAdminPage />);
 
     await user.click(screen.getByText('Synchroniser maintenant'));
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    expect(screen.getByText('Administration système')).toBeInTheDocument();
   }, 10000);
 
   it('handleRun error with non-Error value uses String(e) fallback', async () => {
@@ -437,7 +437,7 @@ describe('SystemAdminPage — additional coverage', () => {
     render(<SystemAdminPage />);
 
     await user.click(screen.getByText('Lancer le recalcul'));
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    expect(screen.getByText('Administration système')).toBeInTheDocument();
   }, 10000);
 
   it('pct is 0 when taskStatus has no total', async () => {
@@ -448,7 +448,7 @@ describe('SystemAdminPage — additional coverage', () => {
     render(<SystemAdminPage />);
 
     await user.click(screen.getByText('Lancer le recalcul'));
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    expect(screen.getByText('Administration système')).toBeInTheDocument();
   }, 10000);
 
   it('shows SUCCESS alert after successful task', async () => {
@@ -459,7 +459,7 @@ describe('SystemAdminPage — additional coverage', () => {
     const { container } = render(<SystemAdminPage />);
 
     await user.click(screen.getByText('Lancer le recalcul'));
-    expect(container).toBeTruthy();
+    expect(container).toBeInTheDocument();
   }, 10000);
 
   it('shows FAILURE alert after failed task', async () => {
@@ -470,13 +470,13 @@ describe('SystemAdminPage — additional coverage', () => {
     const { container } = render(<SystemAdminPage />);
 
     await user.click(screen.getByText('Lancer le recalcul'));
-    expect(container).toBeTruthy();
+    expect(container).toBeInTheDocument();
   }, 10000);
 
   it('fileInputRef is created — covers useRef init', () => {
     const { container } = render(<SystemAdminPage />);
     const fileInput = container.querySelector('input[type="file"]');
-    expect(fileInput).toBeTruthy();
+    expect(fileInput).toBeInTheDocument();
   });
 
   it('restore file catch branch: post throws with plain Error → uses String(err) fallback', async () => {
@@ -544,11 +544,11 @@ describe('SystemAdminPage — direct state rendering coverage', () => {
 
     // PROGRESS state set → renders "Traitement :  (5/10)" (date=null → '' → two spaces)
     // Template: `Traitement : ${null ?? ''} (5/10)` = "Traitement :  (5/10)"
-    expect(screen.queryByText(/Traitement :.*\(5\/10\)/)).toBeTruthy();
+    expect(screen.queryByText(/Traitement :.*\(5\/10\)/)).toBeInTheDocument();
 
     vi.useRealTimers();
     // Clean up pending timers from the next poll cycle
-    await waitForRtl(() => expect(screen.getByText('Administration système')).toBeTruthy(), { timeout: 1000 });
+    await waitForRtl(() => expect(screen.getByText('Administration système')).toBeInTheDocument(), { timeout: 1000 });
   }, 10000);
 
   it('task state SUCCESS: SUCCESS block rendered, FAILURE block not shown', async () => {
@@ -578,7 +578,7 @@ describe('SystemAdminPage — direct state rendering coverage', () => {
     vi.useRealTimers();
 
     await waitForRtl(() => {
-      expect(screen.getByText(/Recalcul terminé avec succès/)).toBeTruthy();
+      expect(screen.getByText(/Recalcul terminé avec succès/)).toBeInTheDocument();
     }, { timeout: 5000 });
     expect(screen.queryByText(/Erreur :/)).toBeNull();
   }, 10000);
@@ -605,7 +605,7 @@ describe('SystemAdminPage — direct state rendering coverage', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText(/Erreur : DB crash/)).toBeTruthy();
+    expect(screen.getByText(/Erreur : DB crash/)).toBeInTheDocument();
     expect(screen.queryByText(/Recalcul terminé avec succès/)).toBeNull();
 
     vi.useRealTimers();
@@ -614,7 +614,7 @@ describe('SystemAdminPage — direct state rendering coverage', () => {
 
 // ── handleManualSync setTimeout callback (lines 54-55) ───────────────────────
 
-describe('SystemAdminPage — handleManualSync setTimeout (lines 54-55)', () => {
+describe('SystemAdminPage — handleManualSync setTimeout callback resets sync state', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseSyncStatus.mockReturnValue({ data: { status: 'success', failed_tickers: [], started_at: null, finished_at: null, total_tickers: 5, succeeded: 5 } });
@@ -645,7 +645,7 @@ describe('SystemAdminPage — handleManualSync setTimeout (lines 54-55)', () => 
     });
 
     // After the timeout, isSyncing should be false (button no longer disabled)
-    expect(screen.getByText('Administration système')).toBeTruthy();
+    expect(screen.getByText('Administration système')).toBeInTheDocument();
 
     vi.useRealTimers();
   }, 10000);
@@ -653,7 +653,7 @@ describe('SystemAdminPage — handleManualSync setTimeout (lines 54-55)', () => 
 
 // ── PENDING state text coverage (line 284 true branch) ───────────────────────
 
-describe('SystemAdminPage — PENDING state renders "En attente" text (line 284)', () => {
+describe('SystemAdminPage — recompute task PENDING state', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseProducts.mockReturnValue({ data: [], refetch: vi.fn() });
@@ -667,7 +667,7 @@ describe('SystemAdminPage — PENDING state renders "En attente" text (line 284)
     vi.useRealTimers();
   });
 
-  it('shows "En attente de démarrage" when taskStatus.state is PENDING (line 284 true branch)', async () => {
+  it('shows "En attente de démarrage" while the recompute task status is PENDING', async () => {
     const { act: actRtl } = await import('@testing-library/react');
 
     mockTriggerRecompute.mockResolvedValue('task-pending-test');
@@ -696,7 +696,7 @@ describe('SystemAdminPage — PENDING state renders "En attente" text (line 284)
     });
 
     // taskStatus.state=PENDING → renders "En attente de démarrage…" (line 284 true branch)
-    expect(screen.queryByText(/En attente de démarrage/) ?? screen.getByText('Administration système')).toBeTruthy();
+    expect(screen.queryByText(/En attente de démarrage/) ?? screen.getByText('Administration système')).toBeInTheDocument();
 
     vi.useRealTimers();
   }, 15000);
@@ -704,7 +704,7 @@ describe('SystemAdminPage — PENDING state renders "En attente" text (line 284)
 
 // ── PROGRESS with non-null date (line 286 true branch of date ?? '') ─────────
 
-describe('SystemAdminPage — PROGRESS with non-null date covers date ?? "" true branch (line 286)', () => {
+describe('SystemAdminPage — recompute task PROGRESS state with a date', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseProducts.mockReturnValue({ data: [], refetch: vi.fn() });
@@ -718,7 +718,7 @@ describe('SystemAdminPage — PROGRESS with non-null date covers date ?? "" true
     vi.useRealTimers();
   });
 
-  it('PROGRESS with date string covers taskStatus.date ?? "" true branch (line 286)', async () => {
+  it('shows the recompute progress with its date when taskStatus.date is provided', async () => {
     const { act: actRtl } = await import('@testing-library/react');
 
     mockTriggerRecompute.mockResolvedValue('task-progress-date');
@@ -748,7 +748,7 @@ describe('SystemAdminPage — PROGRESS with non-null date covers date ?? "" true
     });
 
     // The date is non-null → template uses date directly (true branch of ?? '')
-    expect(screen.queryByText(/Traitement :.*2024-06-15.*\(3\/10\)/) ?? screen.getByText('Administration système')).toBeTruthy();
+    expect(screen.queryByText(/Traitement :.*2024-06-15.*\(3\/10\)/) ?? screen.getByText('Administration système')).toBeInTheDocument();
 
     vi.useRealTimers();
   }, 15000);

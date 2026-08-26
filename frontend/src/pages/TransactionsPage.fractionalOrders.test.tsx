@@ -113,7 +113,7 @@ import TransactionsPage from './TransactionsPage';
 
 // ─── Coverage for uncovered lines 854-885 (additional_executions) and 933-964 (courtage/TTF/isRevolutFX) ───
 
-describe('TransactionsPage — fractional order executions (lines 854-885)', () => {
+describe('TransactionsPage — fractional order executions, operation type switches, and Attribution grants', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
@@ -134,8 +134,8 @@ describe('TransactionsPage — fractional order executions (lines 854-885)', () 
     const fractionalCheckbox = document.getElementById('tx-fractional');
     if (fractionalCheckbox) {
       await user.click(fractionalCheckbox);
-      expect(screen.getByText(/1ère exec\./i)).toBeTruthy();
-      expect(screen.getByText(/\+ Ajouter une exécution/i)).toBeTruthy();
+      expect(screen.getByText(/1ère exec\./i)).toBeInTheDocument();
+      expect(screen.getByText(/\+ Ajouter une exécution/i)).toBeInTheDocument();
     }
   }, 10000);
 
@@ -169,7 +169,7 @@ describe('TransactionsPage — fractional order executions (lines 854-885)', () 
       if (delBtns.length > 0) {
         await user.click(delBtns[0]);
         // Page still renders fine
-        expect(screen.getByText('Transactions')).toBeTruthy();
+        expect(screen.getByText('Transactions')).toBeInTheDocument();
       }
     }
   }, 10000);
@@ -205,7 +205,7 @@ describe('TransactionsPage — fractional order executions (lines 854-885)', () 
     }
   }, 10000);
 
-  it('additional execution row: changing date input calls onChange (line 806-808)', async () => {
+  it('changing any execution row\'s date input triggers its onChange handler', async () => {
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
 
@@ -224,12 +224,12 @@ describe('TransactionsPage — fractional order executions (lines 854-885)', () 
         dateInputs.forEach(inp => {
           fireEvent.change(inp, { target: { value: '2024-06-15' } });
         });
-        expect(screen.getByText('Transactions')).toBeTruthy();
+        expect(screen.getByText('Transactions')).toBeInTheDocument();
       }
     }
   }, 10000);
 
-  it('additional execution row: changing quantity input calls onChange (line 835-838)', async () => {
+  it('changing the quantity input in an added execution row triggers its onChange handler', async () => {
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
 
@@ -246,12 +246,12 @@ describe('TransactionsPage — fractional order executions (lines 854-885)', () 
       // Just fire change on a number input to trigger the onChange handler
       if (numberInputs.length > 0) {
         fireEvent.change(numberInputs[numberInputs.length - 1], { target: { value: '5' } });
-        expect(screen.getByText('Transactions')).toBeTruthy();
+        expect(screen.getByText('Transactions')).toBeInTheDocument();
       }
     }
   }, 10000);
 
-  it('additional execution row: changing unit_price input calls onChange (line 850-852)', async () => {
+  it('firing change and focus events on the execution rows\' number inputs triggers their onChange and onFocus handlers', async () => {
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
 
@@ -267,11 +267,11 @@ describe('TransactionsPage — fractional order executions (lines 854-885)', () 
         fireEvent.focus(inp);   // covers onFocus handlers (lines 819/834/848)
         fireEvent.change(inp, { target: { value: '10' } }); // covers onChange handlers
       });
-      expect(screen.getByText('Transactions')).toBeTruthy();
+      expect(screen.getByText('Transactions')).toBeInTheDocument();
     }
   }, 10000);
 
-  it('additional execution row: onFocus triggers select on all exec inputs (lines 819, 834, 848)', async () => {
+  it('focusing each execution number input calls the onFocus handler that selects its text', async () => {
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
 
@@ -290,7 +290,7 @@ describe('TransactionsPage — fractional order executions (lines 854-885)', () 
         fireEvent.focus(el);
         // Don't assert — just verify the spy was created (function called doesn't throw)
       });
-      expect(screen.getByText('Transactions')).toBeTruthy();
+      expect(screen.getByText('Transactions')).toBeInTheDocument();
     }
   }, 10000);
 
@@ -303,11 +303,11 @@ describe('TransactionsPage — fractional order executions (lines 854-885)', () 
     const fractionalCheckbox = document.getElementById('tx-fractional');
     if (fractionalCheckbox) {
       await user.click(fractionalCheckbox);
-      expect(screen.getByText(/1 courtage pour l'ensemble/i)).toBeTruthy();
+      expect(screen.getByText(/1 courtage pour l'ensemble/i)).toBeInTheDocument();
     }
   }, 10000);
 
-  it('switching type to Actif from Frais calls setOperationType("achat") (line 357)', async () => {
+  it('switching the transaction type back to Actif from Frais resets the operation type to Achat', async () => {
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
@@ -318,10 +318,10 @@ describe('TransactionsPage — fractional order executions (lines 854-885)', () 
     await user.selectOptions(typeSelect, 'Frais');
     // Then switch back to Actif → triggers: if (value === 'Actif') setOperationType('achat'); (line 357)
     await user.selectOptions(typeSelect, 'Actif');
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('clicking Achat button when already in achat mode (line 543 — setOperationType("achat"))', async () => {
+  it('clicking the Achat toggle button while already in Achat mode does not break the form', async () => {
     const user = userEvent.setup({ delay: null });
     render(<TransactionsPage />);
 
@@ -329,7 +329,7 @@ describe('TransactionsPage — fractional order executions (lines 854-885)', () 
     // Default operationType is 'achat'. Click the Achat button to trigger onClick handler (line 543)
     const achatBtn = screen.queryByText(/📉.*Achat/i);
     if (achatBtn) await user.click(achatBtn as HTMLElement);
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
   it('clicking Attribution button switches to grant mode, defaults price to 0 but keeps it editable, and locks courtage/TTF to 0', async () => {
@@ -379,7 +379,7 @@ describe('TransactionsPage — fractional order executions (lines 854-885)', () 
     expect(courtageInput.value).toBe('');
   }, 10000);
 
-  it('handleSubmit: Attribution grant submits with operation="Attribution" (line 434 grant branch)', async () => {
+  it('submitting an Attribution grant transaction sends operation="Attribution" with the entered unit price', async () => {
     const mockCreate = vi.fn().mockResolvedValue({ id: 102, portfolio_id: 1 });
     mockUseCreateTransaction.mockReturnValue({ mutateAsync: mockCreate, isPending: false });
     mockUseTransactions.mockReturnValue({ data: [], isLoading: false, isError: false });
@@ -430,11 +430,11 @@ describe('TransactionsPage — fractional order executions (lines 854-885)', () 
 
     expect(screen.queryByText('Dépôt')).toBeNull();
     expect(screen.queryByText('Retrait')).toBeNull();
-    expect(screen.getByText(/Revenu positif/i)).toBeTruthy();
-    expect(document.getElementById('tx-quantity')).toBeTruthy();
+    expect(screen.getByText(/Revenu positif/i)).toBeInTheDocument();
+    expect(document.getElementById('tx-quantity')).toBeInTheDocument();
   }, 10000);
 
-  it('filteredProducts: account with allowed_tickers filters products (lines 313-314)', async () => {
+  it('selecting an account with allowed_tickers filters the ticker options accordingly', async () => {
     // Account with allowed_tickers set → filteredProducts uses allowedSet (lines 313-314)
     // filteredProducts is computed inside TransactionModal when selectedAccount.allowed_tickers is set
     const accountWithAllowed = { id: 1, portfolio_id: 1, name: 'Degiro', currency: 'EUR',
@@ -463,10 +463,10 @@ describe('TransactionsPage — fractional order executions (lines 854-885)', () 
       }
     }
 
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 
-  it('submit with fractional_order=true and additional execution (line 410 — map additional executions)', async () => {
+  it('submitting a fractional-order transaction with an added execution row completes without error', async () => {
     const mockCreate = vi.fn().mockResolvedValue({ id: 100, portfolio_id: 1 });
     mockUseCreateTransaction.mockReturnValue({ mutateAsync: mockCreate, isPending: false });
 
@@ -489,6 +489,6 @@ describe('TransactionsPage — fractional order executions (lines 854-885)', () 
     const submitBtn = Array.from(modal.querySelectorAll('button')).find(b => b.textContent === 'Ajouter');
     if (submitBtn) await user.click(submitBtn as HTMLElement);
 
-    expect(screen.getByText('Transactions')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeInTheDocument();
   }, 10000);
 });

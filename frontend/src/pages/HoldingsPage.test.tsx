@@ -150,42 +150,42 @@ describe('HoldingsPage', () => {
     mockUseDashboard.mockReturnValue({ data: undefined, isLoading: true, isError: false });
     mockUseHoldings.mockReturnValue({ data: undefined, isLoading: true, isError: false });
     render(<HoldingsPage />);
-    expect(screen.getByTestId('spinner')).toBeTruthy();
+    expect(screen.getByTestId('spinner')).toBeInTheDocument();
   });
 
   it('shows error message when dashboard errors', () => {
     mockUseDashboard.mockReturnValue({ data: undefined, isLoading: false, isError: true });
     mockUseHoldings.mockReturnValue({ data: [], isLoading: false, isError: false });
     render(<HoldingsPage />);
-    expect(screen.getByText(/Erreur lors du chargement des positions/i)).toBeTruthy();
+    expect(screen.getByText(/Erreur lors du chargement des positions/i)).toBeInTheDocument();
   });
 
   it('shows error message when positions errors', () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseHoldings.mockReturnValue({ data: undefined, isLoading: false, isError: true });
     render(<HoldingsPage />);
-    expect(screen.getByText(/Erreur lors du chargement des positions/i)).toBeTruthy();
+    expect(screen.getByText(/Erreur lors du chargement des positions/i)).toBeInTheDocument();
   });
 
   it('renders page title with data', () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseHoldings.mockReturnValue({ data: mockPositions, isLoading: false, isError: false });
     render(<HoldingsPage />);
-    expect(screen.getByText('Positions actuelles')).toBeTruthy();
+    expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
   });
 
   it('renders pool name with positions', () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseHoldings.mockReturnValue({ data: mockPositions, isLoading: false, isError: false });
     render(<HoldingsPage />);
-    expect(screen.getByText('Asie')).toBeTruthy();
+    expect(screen.getByText('Asie')).toBeInTheDocument();
   });
 
   it('renders liquidity card', () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseHoldings.mockReturnValue({ data: [], isLoading: false, isError: false });
     render(<HoldingsPage />);
-    expect(screen.getByText('Liquidités disponibles')).toBeTruthy();
+    expect(screen.getByText('Liquidités disponibles')).toBeInTheDocument();
   });
 
   it('clicking a composable ticker opens the composition modal, and closing it clears the state', async () => {
@@ -197,7 +197,7 @@ describe('HoldingsPage', () => {
     render(<HoldingsPage />);
 
     await user.click(screen.getByText('AAPL'));
-    expect(screen.getByTestId('modal')).toBeTruthy();
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
 
     await user.click(screen.getByTestId('modal-close'));
     expect(screen.queryByTestId('modal')).toBeNull();
@@ -208,7 +208,7 @@ describe('HoldingsPage', () => {
     const manualPositions = [{ ...mockPositions[0], last_price_source: 'manual' }];
     mockUseHoldings.mockReturnValue({ data: manualPositions, isLoading: false, isError: false });
     render(<HoldingsPage />);
-    expect(screen.getByText('manual')).toBeTruthy();
+    expect(screen.getByText('manual')).toBeInTheDocument();
   });
 
   it('renders pool summary cards', () => {
@@ -225,7 +225,7 @@ describe('HoldingsPage', () => {
     mockUseHoldings.mockReturnValue({ data: unassignedPositions, isLoading: false, isError: false });
     render(<HoldingsPage />);
     // Page should still render
-    expect(screen.getByText('Positions actuelles')).toBeTruthy();
+    expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
   });
 
   it('Manuel category: shows "—" for Quantité and Dernier prix, date under Total EUR', () => {
@@ -238,7 +238,7 @@ describe('HoldingsPage', () => {
     const dashes = screen.getAllByText('—');
     expect(dashes.length).toBeGreaterThanOrEqual(2);
     // Date under Total EUR
-    expect(screen.getByText('2026-05-16')).toBeTruthy();
+    expect(screen.getByText('2026-05-16')).toBeInTheDocument();
   });
 
   // ── StalePriceBadge in PositionsPage table ───────────────────────────────
@@ -270,7 +270,7 @@ describe('HoldingsPage', () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseHoldings.mockReturnValue({ data: [nullDatePosition], isLoading: false, isError: false });
     render(<HoldingsPage />);
-    expect(screen.getByText('Prix inconnu')).toBeTruthy();
+    expect(screen.getByText('Prix inconnu')).toBeInTheDocument();
   });
 
   it('StalePriceBadge: shows no badge for manual source even if date is old', () => {
@@ -301,8 +301,8 @@ describe('HoldingsPage', () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseHoldings.mockReturnValue({ data: mockPositions, isLoading: false, isError: false });
     render(<HoldingsPage />);
-    expect(screen.getByText('PV latente')).toBeTruthy();
-    expect(screen.getByText('PV latente %')).toBeTruthy();
+    expect(screen.getByText('PV latente')).toBeInTheDocument();
+    expect(screen.getByText('PV latente %')).toBeInTheDocument();
   });
 
   it('shows PV latente value for a position in the pvMap', () => {
@@ -328,7 +328,7 @@ describe('HoldingsPage', () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseHoldings.mockReturnValue({ data: mockPositions, isLoading: false, isError: false });
     render(<HoldingsPage />);
-    expect(screen.getByText('Sous-total pool')).toBeTruthy();
+    expect(screen.getByText('Sous-total pool')).toBeInTheDocument();
   });
 
   it('shows no pool PV subtotal when no positions match pvMap', () => {
@@ -345,7 +345,7 @@ describe('HoldingsPage', () => {
     mockUseHoldings.mockReturnValue({ data: mockPositions, isLoading: false, isError: false });
     render(<HoldingsPage />);
     // Should render without crash; no subtotal row since pvMap is empty
-    expect(screen.getByText('Positions actuelles')).toBeTruthy();
+    expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
     expect(screen.queryByText('Sous-total pool')).toBeNull();
   });
 });
@@ -367,7 +367,7 @@ describe('StalePriceBadge unit', () => {
 
   it('shows "Prix inconnu" for null date and non-manual source', () => {
     render(<StalePriceBadge lastPriceDate={null} source="yahoo" />);
-    expect(screen.getByText('Prix inconnu')).toBeTruthy();
+    expect(screen.getByText('Prix inconnu')).toBeInTheDocument();
   });
 
   it('shows no badge for a date 1 day ago', () => {
@@ -385,12 +385,12 @@ describe('StalePriceBadge unit', () => {
   it('shows badge for a date 3 days ago', () => {
     const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     render(<StalePriceBadge lastPriceDate={threeDaysAgo} source="yahoo" />);
-    expect(screen.getByText('Prix : 3j')).toBeTruthy();
+    expect(screen.getByText('Prix : 3j')).toBeInTheDocument();
   });
 
   it('shows badge with correct day count for a date 10 days ago', () => {
     const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     render(<StalePriceBadge lastPriceDate={tenDaysAgo} source="yahoo" />);
-    expect(screen.getByText('Prix : 10j')).toBeTruthy();
+    expect(screen.getByText('Prix : 10j')).toBeInTheDocument();
   });
 });

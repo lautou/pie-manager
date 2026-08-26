@@ -157,17 +157,17 @@ describe('GlobalConfigPage — EquityPremiumManager (Premium action)', () => {
 
   it('renders the equity premium section with the country list', () => {
     render(<GlobalConfigPage />);
-    expect(screen.getByText(/Premium action/i)).toBeTruthy();
-    expect(screen.getByText('de')).toBeTruthy();
-    expect(screen.getByText('Allemagne')).toBeTruthy();
-    expect(screen.getByText('EWG')).toBeTruthy();
-    expect(screen.getByText('EXX6.DE')).toBeTruthy();
+    expect(screen.getByText(/Premium action/i)).toBeInTheDocument();
+    expect(screen.getByText('de')).toBeInTheDocument();
+    expect(screen.getByText('Allemagne')).toBeInTheDocument();
+    expect(screen.getByText('EWG')).toBeInTheDocument();
+    expect(screen.getByText('EXX6.DE')).toBeInTheDocument();
   });
 
   it('shows "Aucun pays" when there are no countries', () => {
     mockUseEquityPremiumConfigs.mockReturnValue({ data: [], refetch: vi.fn() });
     render(<GlobalConfigPage />);
-    expect(screen.getByText('Aucun pays')).toBeTruthy();
+    expect(screen.getByText('Aucun pays')).toBeInTheDocument();
   });
 
   it('saving without a code shows validation error', async () => {
@@ -177,7 +177,7 @@ describe('GlobalConfigPage — EquityPremiumManager (Premium action)', () => {
     await user.type(screen.getByLabelText('Nom'), 'Espagne');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(/Le code est requis/i)).toBeTruthy();
+    expect(screen.getByText(/Le code est requis/i)).toBeInTheDocument();
   }, 10000);
 
   it('saving without a label shows validation error', async () => {
@@ -187,7 +187,7 @@ describe('GlobalConfigPage — EquityPremiumManager (Premium action)', () => {
     await user.type(screen.getByLabelText('Code'), 'es');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(/Le nom est requis/i)).toBeTruthy();
+    expect(screen.getByText(/Le nom est requis/i)).toBeInTheDocument();
   }, 10000);
 
   it('saving without an equity ticker shows validation error', async () => {
@@ -198,7 +198,7 @@ describe('GlobalConfigPage — EquityPremiumManager (Premium action)', () => {
     await user.type(screen.getByLabelText('Nom'), 'Espagne');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(/Le ticker actions est requis/i)).toBeTruthy();
+    expect(screen.getByText(/Le ticker actions est requis/i)).toBeInTheDocument();
   }, 10000);
 
   it('saving without a bond ticker shows validation error', async () => {
@@ -210,7 +210,7 @@ describe('GlobalConfigPage — EquityPremiumManager (Premium action)', () => {
     await user.type(screen.getByLabelText('Ticker actions (ETF pays)'), 'EWP');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(/Le ticker obligations est requis/i)).toBeTruthy();
+    expect(screen.getByText(/Le ticker obligations est requis/i)).toBeInTheDocument();
   }, 10000);
 
   it('saving without an equity label shows validation error', async () => {
@@ -223,7 +223,7 @@ describe('GlobalConfigPage — EquityPremiumManager (Premium action)', () => {
     await user.type(screen.getByLabelText('Ticker obligations (ETF gouvernemental)'), 'IS0P.DE');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(/Le nom des actions est requis/i)).toBeTruthy();
+    expect(screen.getByText(/Le nom des actions est requis/i)).toBeInTheDocument();
   }, 10000);
 
   it('saving without a bond label shows validation error', async () => {
@@ -237,7 +237,7 @@ describe('GlobalConfigPage — EquityPremiumManager (Premium action)', () => {
     await user.type(screen.getByLabelText('Nom actions'), 'Actions espagnoles (EWP)');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(/Le nom des obligations est requis/i)).toBeTruthy();
+    expect(screen.getByText(/Le nom des obligations est requis/i)).toBeInTheDocument();
   }, 10000);
 
   it('can create a country with valid data', async () => {
@@ -282,7 +282,7 @@ describe('GlobalConfigPage — EquityPremiumManager (Premium action)', () => {
     await user.type(screen.getByLabelText('Ticker obligations (ETF gouvernemental)'), 'EXX6.DE');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    await rtlWaitFor(() => expect(screen.getByText(/already exists/i)).toBeTruthy());
+    await rtlWaitFor(() => expect(screen.getByText(/already exists/i)).toBeInTheDocument());
   }, 10000);
 
   it('create country API error without detail uses fallback message', async () => {
@@ -299,14 +299,14 @@ describe('GlobalConfigPage — EquityPremiumManager (Premium action)', () => {
     await user.type(screen.getByLabelText('Ticker obligations (ETF gouvernemental)'), 'IS0P.DE');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de l'enregistrement/i)).toBeTruthy());
+    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de l'enregistrement/i)).toBeInTheDocument());
   }, 10000);
 
   it('shows edit modal with the code locked when clicking edit for a country', async () => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByRole('button', { name: /Modifier prime de/i }));
-    expect(screen.getByText(/Modifier la prime — de/i)).toBeTruthy();
+    expect(screen.getByText(/Modifier la prime — de/i)).toBeInTheDocument();
     const codeInput = screen.getByLabelText('Code');
     expect((codeInput as HTMLInputElement).disabled).toBe(true);
     expect((codeInput as HTMLInputElement).value).toBe('de');
@@ -353,7 +353,7 @@ describe('GlobalConfigPage — EquityPremiumManager (Premium action)', () => {
     render(<GlobalConfigPage />);
     await user.click(screen.getByRole('button', { name: /Supprimer prime ch/i }));
     await user.click(screen.getByText('Supprimer'));
-    await rtlWaitFor(() => expect(screen.getByText(/Cannot delete the last remaining equity premium country/i)).toBeTruthy());
+    await rtlWaitFor(() => expect(screen.getByText(/Cannot delete the last remaining equity premium country/i)).toBeInTheDocument());
   }, 10000);
 
   it('delete error without detail shows fallback message', async () => {
@@ -363,6 +363,6 @@ describe('GlobalConfigPage — EquityPremiumManager (Premium action)', () => {
     render(<GlobalConfigPage />);
     await user.click(screen.getByRole('button', { name: /Supprimer prime ch/i }));
     await user.click(screen.getByText('Supprimer'));
-    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de la suppression/i)).toBeTruthy());
+    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de la suppression/i)).toBeInTheDocument());
   }, 10000);
 });

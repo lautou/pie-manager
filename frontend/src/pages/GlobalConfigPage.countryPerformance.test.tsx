@@ -176,18 +176,18 @@ describe('GlobalConfigPage — MarketCountryManager (Performance des actions)', 
 
   it('renders the market performance section with the country list and top-N setting', () => {
     render(<GlobalConfigPage />);
-    expect(screen.getByText(/Performance des actions/i)).toBeTruthy();
-    expect(screen.getByText('jp')).toBeTruthy();
-    expect(screen.getByText('Japon')).toBeTruthy();
-    expect(screen.getByText('^N225')).toBeTruthy();
-    expect(screen.getByText('JPY')).toBeTruthy();
-    expect(screen.getByLabelText('Nombre de pays affichés (Top N)')).toBeTruthy();
+    expect(screen.getByText(/Performance des actions/i)).toBeInTheDocument();
+    expect(screen.getByText('jp')).toBeInTheDocument();
+    expect(screen.getByText('Japon')).toBeInTheDocument();
+    expect(screen.getByText('^N225')).toBeInTheDocument();
+    expect(screen.getByText('JPY')).toBeInTheDocument();
+    expect(screen.getByLabelText('Nombre de pays affichés (Top N)')).toBeInTheDocument();
   });
 
   it('shows "Aucun pays" when there are no countries', () => {
     mockUseCountryPerfConfigs.mockReturnValue({ data: [], refetch: vi.fn() });
     render(<GlobalConfigPage />);
-    expect(screen.getByText('Aucun pays')).toBeTruthy();
+    expect(screen.getByText('Aucun pays')).toBeInTheDocument();
   });
 
   it.each(COUNTRY_LIKE_VALIDATION_STEPS)('saving without %s shows validation error', async (_missing, labels, values, errorPattern) => {
@@ -199,7 +199,7 @@ describe('GlobalConfigPage — MarketCountryManager (Performance des actions)', 
     }
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(errorPattern)).toBeTruthy();
+    expect(screen.getByText(errorPattern)).toBeInTheDocument();
   }, 10000);
 
   it('can create a country with valid data', async () => {
@@ -244,7 +244,7 @@ describe('GlobalConfigPage — MarketCountryManager (Performance des actions)', 
     await user.type(screen.getByLabelText('Devise'), 'EUR');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    await rtlWaitFor(() => expect(screen.getByText(/already exists/i)).toBeTruthy());
+    await rtlWaitFor(() => expect(screen.getByText(/already exists/i)).toBeInTheDocument());
   }, 10000);
 
   it('create country API error without detail uses fallback message', async () => {
@@ -260,14 +260,14 @@ describe('GlobalConfigPage — MarketCountryManager (Performance des actions)', 
     await user.type(screen.getByLabelText('Devise'), 'EUR');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de l'enregistrement/i)).toBeTruthy());
+    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de l'enregistrement/i)).toBeInTheDocument());
   }, 10000);
 
   it('shows edit modal with the code locked when clicking edit for a country', async () => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByRole('button', { name: /Modifier pays jp/i }));
-    expect(screen.getByText(/Modifier le pays — jp/i)).toBeTruthy();
+    expect(screen.getByText(/Modifier le pays — jp/i)).toBeInTheDocument();
     const codeInput = screen.getByLabelText('Code');
     expect((codeInput as HTMLInputElement).disabled).toBe(true);
     expect((codeInput as HTMLInputElement).value).toBe('jp');
@@ -323,6 +323,6 @@ describe('GlobalConfigPage — MarketCountryManager (Performance des actions)', 
     render(<GlobalConfigPage />);
     await user.click(screen.getByRole('button', { name: /Supprimer pays gb/i }));
     await user.click(screen.getByText('Supprimer'));
-    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de la suppression/i)).toBeTruthy());
+    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de la suppression/i)).toBeInTheDocument());
   }, 10000);
 });

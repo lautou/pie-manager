@@ -117,7 +117,7 @@ describe('useAutoRefresh', () => {
     expect(qc.invalidateQueries).toHaveBeenCalled();
   });
 
-  it('silently swallows apiClient.post rejection in midnight check (line 28 .catch(() => {}))', async () => {
+  it('silently swallows a rejected fill-missing-snapshots request during the midnight check', async () => {
     const apiClient = (await import('../api/client')).default;
     // Make apiClient.post REJECT so the .catch(() => {}) callback fires
     vi.mocked(apiClient.post).mockRejectedValueOnce(new Error('Network error'));
@@ -209,7 +209,7 @@ describe('useAutoRefresh', () => {
       expect(qc.invalidateQueries).not.toHaveBeenCalled();
     });
 
-    it('re-running the effect for another reason (portfolioId change) with an unchanged finished_at does not invalidate (line 60 false branch)', async () => {
+    it('does not invalidate when the effect re-runs for a portfolioId change but finished_at is unchanged', async () => {
       const apiClient = (await import('../api/client')).default;
       vi.mocked(apiClient.get).mockResolvedValue(syncStatusResponse('2026-01-01T10:00:00Z'));
 

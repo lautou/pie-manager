@@ -177,19 +177,19 @@ describe('DashboardPage', () => {
   it('shows spinner when loading', () => {
     mockUseDashboard.mockReturnValue({ data: undefined, isLoading: true, isError: false });
     render(<DashboardPage />);
-    expect(screen.getByTestId('spinner')).toBeTruthy();
+    expect(screen.getByTestId('spinner')).toBeInTheDocument();
   });
 
   it('shows error message when isError', () => {
     mockUseDashboard.mockReturnValue({ data: undefined, isLoading: false, isError: true });
     render(<DashboardPage />);
-    expect(screen.getByText(/Erreur lors du chargement du dashboard/i)).toBeTruthy();
+    expect(screen.getByText(/Erreur lors du chargement du dashboard/i)).toBeInTheDocument();
   });
 
   it('shows onboarding empty state when no data', () => {
     mockUseDashboard.mockReturnValue({ data: undefined, isLoading: false, isError: false });
     render(<DashboardPage />);
-    expect(screen.getByText(/n'est pas encore configuré/i)).toBeTruthy();
+    expect(screen.getByText(/n'est pas encore configuré/i)).toBeInTheDocument();
   });
 
   it('shows onboarding empty state when pools is empty, and navigates from its CTAs', async () => {
@@ -200,7 +200,7 @@ describe('DashboardPage', () => {
       isError: false,
     });
     render(<DashboardPage />);
-    expect(screen.getByText(/n'est pas encore configuré/i)).toBeTruthy();
+    expect(screen.getByText(/n'est pas encore configuré/i)).toBeInTheDocument();
 
     await user.click(screen.getByText('Configurer le portefeuille'));
     expect(mockNavigate).toHaveBeenCalledWith('/portfolio/1/admin');
@@ -212,21 +212,21 @@ describe('DashboardPage', () => {
   it('renders dashboard with data', () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     render(<DashboardPage />);
-    expect(screen.getByText('Dashboard')).toBeTruthy();
-    expect(screen.getByText('Total portefeuille')).toBeTruthy();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    expect(screen.getByText('Total portefeuille')).toBeInTheDocument();
   });
 
   it('renders pool table rows', () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     render(<DashboardPage />);
-    expect(screen.getByText('Asie')).toBeTruthy();
-    expect(screen.getByText('Or')).toBeTruthy();
+    expect(screen.getByText('Asie')).toBeInTheDocument();
+    expect(screen.getByText('Or')).toBeInTheDocument();
   });
 
   it('shows snapshot date when last_updated is set', () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     render(<DashboardPage />);
-    expect(screen.getByText(/Snapshot/i)).toBeTruthy();
+    expect(screen.getByText(/Snapshot/i)).toBeInTheDocument();
   });
 
   it('clicking a pool row opens modal', async () => {
@@ -238,9 +238,9 @@ describe('DashboardPage', () => {
     const rows = screen.getAllByRole('row');
     // Find the row containing 'Asie'
     const asieRow = rows.find(r => r.textContent?.includes('Asie'));
-    expect(asieRow).toBeTruthy();
+    expect(asieRow).toBeInTheDocument();
     await user.click(asieRow!);
-    expect(screen.getByTestId('modal')).toBeTruthy();
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
   });
 
   it('modal can be closed', async () => {
@@ -269,7 +269,7 @@ describe('DashboardPage', () => {
     const rows = screen.getAllByRole('row');
     const asieRow = rows.find(r => r.textContent?.includes('Asie'));
     await user.click(asieRow!);
-    expect(screen.getByText(/Aucune position dans ce pool/i)).toBeTruthy();
+    expect(screen.getByText(/Aucune position dans ce pool/i)).toBeInTheDocument();
   });
 
   it('filters out Legacy pool when current_value_eur is 0', () => {
@@ -284,7 +284,7 @@ describe('DashboardPage', () => {
     render(<DashboardPage />);
     // Legacy should not appear in the table when current_value_eur is 0
     // They might not appear in the rows since it's filtered
-    expect(screen.getByText('Dashboard')).toBeTruthy();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
   });
 
   it('shows last_updated when it is null (no snapshot date shown)', () => {
@@ -295,26 +295,26 @@ describe('DashboardPage', () => {
     });
     render(<DashboardPage />);
     // Snapshot section should not crash
-    expect(screen.getByText('Dashboard')).toBeTruthy();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
   });
 
   it('shows chart-donut (pool donut chart)', () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     render(<DashboardPage />);
-    expect(screen.getByTestId('chart-donut')).toBeTruthy();
+    expect(screen.getByTestId('chart-donut')).toBeInTheDocument();
   });
 
   it('shows treemap chart', () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseHoldings.mockReturnValue({ data: mockPositions });
     render(<DashboardPage />);
-    expect(screen.getByTestId('treemap')).toBeTruthy();
+    expect(screen.getByTestId('treemap')).toBeInTheDocument();
   });
 
   it('shows sync badge', () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     render(<DashboardPage />);
-    expect(screen.getByTestId('sync-badge')).toBeTruthy();
+    expect(screen.getByTestId('sync-badge')).toBeInTheDocument();
   });
 
   it('shows pool with non-zero gap_pct', () => {
@@ -326,7 +326,7 @@ describe('DashboardPage', () => {
     };
     mockUseDashboard.mockReturnValue({ data: dashWithGap, isLoading: false, isError: false });
     render(<DashboardPage />);
-    expect(screen.getByText('Asie')).toBeTruthy();
+    expect(screen.getByText('Asie')).toBeInTheDocument();
   });
 
   it('modal shows positions when pool has data', async () => {
@@ -340,7 +340,7 @@ describe('DashboardPage', () => {
     await user.click(asieRow!);
 
     // Should show AAPL in the modal
-    expect(screen.getByText('AAPL')).toBeTruthy();
+    expect(screen.getByText('AAPL')).toBeInTheDocument();
   });
 
   it('renders total_eur value on dashboard', () => {
@@ -353,7 +353,7 @@ describe('DashboardPage', () => {
 });
 
 // Coverage-boosting tests for DashboardPage uncovered branches
-describe('DashboardPage — coverage for uncovered branches', () => {
+describe('DashboardPage — pool modal, donut/treemap, and stale-price warning edge cases', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseHoldings.mockReturnValue({ data: [] });
@@ -362,7 +362,7 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     mockUseCapitalGains.mockReturnValue({ data: mockCapitalGains, isLoading: false });
   });
 
-  it('TreemapContent renders with positions — covers lines 44-91', () => {
+  it('renders the treemap and donut chart when a pool holds multiple positions', () => {
     // Render without mocking recharts (use real Treemap stub but pass positions)
     // The TreemapContent component is used directly via recharts Treemap content prop
     // We test it by rendering DashboardPage with positions so the treemapData has children
@@ -380,9 +380,9 @@ describe('DashboardPage — coverage for uncovered branches', () => {
       ],
     });
     render(<DashboardPage />);
-    expect(screen.getByText('Dashboard')).toBeTruthy();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
     // The treemap and donut should render
-    expect(screen.getByTestId('treemap')).toBeTruthy();
+    expect(screen.getByTestId('treemap')).toBeInTheDocument();
   });
 
   it('shows pool with zero total_eur (total_eur = 0 branch)', () => {
@@ -395,7 +395,7 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     mockUseDashboard.mockReturnValue({ data: dashZeroTotal, isLoading: false, isError: false });
     render(<DashboardPage />);
     // offPct / defPct fall to '0,0 %' branch
-    expect(screen.getByText('Dashboard')).toBeTruthy();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
   });
 
   it('shows Legacy pool with positive value (not filtered)', () => {
@@ -409,7 +409,7 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     mockUseDashboard.mockReturnValue({ data: dashWithLegacyActive, isLoading: false, isError: false });
     render(<DashboardPage />);
     // Legacy appears because current_value_eur > 0
-    expect(screen.getByText('Legacy')).toBeTruthy();
+    expect(screen.getByText('Legacy')).toBeInTheDocument();
   });
 
   it('modal shows positions pct of pool (poolTotal > 0 branch)', async () => {
@@ -482,7 +482,7 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     };
     mockUseDashboard.mockReturnValue({ data: dashWithLargeGap, isLoading: false, isError: false });
     render(<DashboardPage />);
-    expect(screen.getByText('Asie')).toBeTruthy();
+    expect(screen.getByText('Asie')).toBeInTheDocument();
   });
 
   it('treemapData with pool having no positions uses fallback node', () => {
@@ -495,10 +495,10 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     mockUseDashboard.mockReturnValue({ data: dashNoPositions, isLoading: false, isError: false });
     mockUseHoldings.mockReturnValue({ data: [] }); // No positions → fallback node used
     render(<DashboardPage />);
-    expect(screen.getByTestId('treemap')).toBeTruthy();
+    expect(screen.getByTestId('treemap')).toBeInTheDocument();
   });
 
-  it('clicking donut segment opens pool modal (onClick event handler, lines 233-236)', async () => {
+  it('clicking a donut segment opens the pool modal for that segment', async () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseHoldings.mockReturnValue({ data: [] });
 
@@ -510,11 +510,11 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     if (segments.length > 0) {
       await user.click(segments[0]);
       // Modal should open for the selected pool
-      expect(screen.getByTestId('modal')).toBeTruthy();
+      expect(screen.getByTestId('modal')).toBeInTheDocument();
     }
   });
 
-  it('hovering donut segment triggers onMouseOver and onMouseOut (lines 238-239)', async () => {
+  it('hovering a donut segment triggers its onMouseOver and onMouseOut handlers', async () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseHoldings.mockReturnValue({ data: [] });
 
@@ -526,7 +526,7 @@ describe('DashboardPage — coverage for uncovered branches', () => {
       await user.hover(segments[0]);
       await user.unhover(segments[0]);
       // Page should still render
-      expect(screen.getByText('Dashboard')).toBeTruthy();
+      expect(screen.getByText('Dashboard')).toBeInTheDocument();
     }
   });
 
@@ -544,11 +544,11 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     const asieRow = rows.find(row => row.textContent?.includes('Asie'));
     if (asieRow) {
       await user.click(asieRow);
-      expect(screen.getByTestId('modal')).toBeTruthy();
+      expect(screen.getByTestId('modal')).toBeInTheDocument();
     }
   });
 
-  it('modal opens for pool with gap_pct < -2 → danger color on line 375', async () => {
+  it('modal opens for a pool with a large negative gap_pct, shown in the danger color', async () => {
     // Need gap_pct < -2 to trigger the danger color branch in the poolInfo display
     const dashNegGap = {
       ...mockDashboard,
@@ -572,11 +572,11 @@ describe('DashboardPage — coverage for uncovered branches', () => {
       await user.click(asieRow);
       // gap_pct=-15: Math.abs(-15) <= 2 is false; -15 > 0 is false → danger color
       const modal = screen.getByTestId('modal');
-      expect(modal).toBeTruthy();
+      expect(modal).toBeInTheDocument();
     }
   });
 
-  it('modal position with null currency uses EUR fallback (line 358 || branch)', async () => {
+  it('modal falls back to EUR when a position has an empty currency', async () => {
     // pos.currency is null/empty → || 'EUR' fallback
     const dashForModal = {
       ...mockDashboard,
@@ -600,11 +600,11 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     if (asieRow) {
       await user.click(asieRow);
       // pos.currency is '' → falls back to 'EUR'; modal renders
-      expect(screen.getByTestId('modal')).toBeTruthy();
+      expect(screen.getByTestId('modal')).toBeInTheDocument();
     }
   });
 
-  it('modal with poolTotal === 0 renders — in % column (line 366 false branch)', async () => {
+  it('modal shows the position percentage and falls back to EUR for a null-currency position', async () => {
     // This branch is actually unreachable in normal flow because positions with value_eur=0
     // are filtered out, so poolTotal > 0 always when there are positions.
     // We cover the structural branch by rendering positions and verifying rendering.
@@ -629,12 +629,12 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     const asieRow = rows.find(row => row.textContent?.includes('Asie'));
     if (asieRow) {
       await user.click(asieRow);
-      expect(screen.getByTestId('modal')).toBeTruthy();
+      expect(screen.getByTestId('modal')).toBeInTheDocument();
       // poolTotal=100 > 0 → shows percentage; null currency → || 'EUR' fallback
     }
   });
 
-  it('chart onClick with undefined datum.x does not set pool (line 236 else branch)', async () => {
+  it('clicking a donut segment with an undefined datum does not open the pool modal', async () => {
     // When props.datum?.x is undefined, poolName is undefined → `if (poolName)` is false → no setSelectedPool
     // This covers the "else" branch of the onClick handler
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
@@ -648,10 +648,10 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     await user.click(nullSegment);
     // No modal should open since poolName is undefined
     expect(screen.queryByTestId('modal')).toBeNull();
-    expect(screen.getByText('Dashboard')).toBeTruthy();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
   });
 
-  it('events target data property is evaluated (line 231) — events array literal', async () => {
+  it('clicking every donut segment in turn opens and closes the pool modal without error', async () => {
     // The events array object { target: 'data', ... } is evaluated when ChartDonut renders.
     // Our mock ChartDonut receives the events prop and calls onClick.
     // Clicking a donut segment exercises the onClick handler which evaluates line 231's object.
@@ -669,10 +669,10 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     // Close modal if opened
     const closeBtn = screen.queryByTestId('modal-close');
     if (closeBtn) await user.click(closeBtn);
-    expect(screen.getByText('Dashboard')).toBeTruthy();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
   });
 
-  it('modal positions with 2+ items covers .sort() comparator on line 324', async () => {
+  it('modal renders multiple positions sorted by value, largest first', async () => {
     // 2 positions so the sort comparator (a, b) => b.value_eur - a.value_eur runs
     const positions = [
       { ticker: 'AAPL', product_name: 'Apple', pool_id: 1, pool_name: 'Asie', quantity: 10, last_price: 150, last_price_date: '2024-01-01', last_price_source: 'yahoo', value_eur: 1500, currency: 'USD' },
@@ -690,9 +690,9 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     if (asieRow) {
       await user.click(asieRow);
       const modal = screen.getByTestId('modal');
-      expect(modal).toBeTruthy();
+      expect(modal).toBeInTheDocument();
       // 3 positions with different values → sort comparator runs multiple times
-      expect(screen.getByText('GOOG')).toBeTruthy();
+      expect(screen.getByText('GOOG')).toBeInTheDocument();
     }
   });
 
@@ -706,8 +706,8 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     // Empty prices array → no latestDate → isStale = true
     mockUsePrices.mockReturnValue({ data: [] });
     render(<DashboardPage />);
-    expect(screen.getByTestId('alert-warning')).toBeTruthy();
-    expect(screen.getByText(/Or physique/)).toBeTruthy();
+    expect(screen.getByTestId('alert-warning')).toBeInTheDocument();
+    expect(screen.getByText(/Or physique/)).toBeInTheDocument();
   });
 
   it('shows stale-price warning when a Manuel product price is older than 30 days', () => {
@@ -718,7 +718,7 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     // Price dated 2024-01-01 is well over 30 days ago
     mockUsePrices.mockReturnValue({ data: [{ id: 1, ticker: 'GOLD', date: '2024-01-01', price: 1800, currency: 'EUR', source: 'manual' }] });
     render(<DashboardPage />);
-    expect(screen.getByTestId('alert-warning')).toBeTruthy();
+    expect(screen.getByTestId('alert-warning')).toBeInTheDocument();
   });
 
   it('does not show stale-price warning when Manuel product price is recent', () => {
@@ -800,7 +800,7 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     mockUsePrices.mockReturnValue({ data: [] });
     const { rerender } = render(<DashboardPage />);
     // Warning alert should be visible (name is in staleNames)
-    expect(screen.getByTestId('alert-warning')).toBeTruthy();
+    expect(screen.getByTestId('alert-warning')).toBeInTheDocument();
 
     // Second: fresh prices (today's date → isStale = false → onFresh fires)
     // handleFresh calls setStaleNames(prev => prev.filter(n => n !== name))
@@ -818,7 +818,7 @@ describe('DashboardPage — coverage for uncovered branches', () => {
     // products undefined → manuelProducts = [] → StalePriceWarning not rendered
     mockUseProducts.mockReturnValue({ data: undefined });
     render(<DashboardPage />);
-    expect(screen.getByText('Dashboard')).toBeTruthy();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
     expect(screen.queryByTestId('alert-warning')).toBeNull();
   });
 });
@@ -847,7 +847,7 @@ describe('DashboardPage — PV KPI cards', () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseCapitalGains.mockReturnValue({ data: mockCapitalGains, isLoading: false });
     render(<DashboardPage />);
-    expect(screen.getByText('PV latente')).toBeTruthy();
+    expect(screen.getByText('PV latente')).toBeInTheDocument();
     // 1234.56 formatted → "+1234.56 €"
     const body = document.body.textContent ?? '';
     expect(body).toContain('+1234.56 €');
@@ -857,7 +857,7 @@ describe('DashboardPage — PV KPI cards', () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseCapitalGains.mockReturnValue({ data: mockCapitalGains, isLoading: false });
     render(<DashboardPage />);
-    expect(screen.getByText('PV réalisée')).toBeTruthy();
+    expect(screen.getByText('PV réalisée')).toBeInTheDocument();
     const body = document.body.textContent ?? '';
     expect(body).toContain('+500.00 €');
   });
@@ -896,7 +896,7 @@ describe('DashboardPage — PV KPI cards', () => {
 
   // ── Treemap onClick + ticker popup (lines 429, 552-569) ───────────────────────
 
-  it('clicking treemap fires onClick with depth=2 and opens ticker popup (line 429)', async () => {
+  it('clicking a treemap leaf node opens the ticker detail popup', async () => {
     const user = userEvent.setup({ delay: null });
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseHoldings.mockReturnValue({ data: mockPositions }); // has AAPL
@@ -907,10 +907,10 @@ describe('DashboardPage — PV KPI cards', () => {
     const treemap = screen.getByTestId('treemap');
     await user.click(treemap);
     // The ticker popup modal opens with the ticker name
-    expect(screen.getByTestId('modal')).toBeTruthy();
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
   }, 10000);
 
-  it('ticker popup shows position data (lines 552-569 - pos found branch)', async () => {
+  it('ticker popup shows position data when the ticker is found in current holdings', async () => {
     const user = userEvent.setup({ delay: null });
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseHoldings.mockReturnValue({ data: mockPositions }); // has AAPL
@@ -955,7 +955,7 @@ describe('DashboardPage — PV KPI cards', () => {
     await user.click(screen.getByTestId('treemap'));
     // Modal opens but pos is undefined → shows "not found" message
     const modal = screen.getByTestId('modal');
-    expect(modal).toBeTruthy();
+    expect(modal).toBeInTheDocument();
   }, 10000);
 
   it('ticker popup with gains data shows pvPct (non-zero cost basis branch)', async () => {
@@ -976,7 +976,7 @@ describe('DashboardPage — PV KPI cards', () => {
     expect(modal.textContent).toContain('AAPL');
   }, 10000);
 
-  it('ticker popup: null pool_name uses "—" fallback, null currency uses "EUR" (lines 577, 594 branches)', async () => {
+  it('ticker popup falls back to a dash for a null pool name and EUR for a null currency', async () => {
     const user = userEvent.setup({ delay: null });
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseHoldings.mockReturnValue({
@@ -992,10 +992,10 @@ describe('DashboardPage — PV KPI cards', () => {
     await user.click(screen.getByTestId('treemap'));
     // With null pool_name → shows '—'; null currency → 'EUR' fallback
     const modal = screen.getByTestId('modal');
-    expect(modal).toBeTruthy();
+    expect(modal).toBeInTheDocument();
   }, 10000);
 
-  it('ticker popup: null poolInfo (no matching pool) covers empty strategy branch (line 577 empty poolInfo)', async () => {
+  it('ticker popup omits the strategy suffix when the position pool no longer exists', async () => {
     const user = userEvent.setup({ delay: null });
     // Dashboard has no matching pool for 'AAPL's pool
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
@@ -1010,7 +1010,7 @@ describe('DashboardPage — PV KPI cards', () => {
     await user.click(screen.getByTestId('treemap'));
     // poolInfo = undefined → poolInfo ? ` (${poolInfo.strategy})` : '' → ''
     const modal = screen.getByTestId('modal');
-    expect(modal).toBeTruthy();
+    expect(modal).toBeInTheDocument();
   }, 10000);
 
   it('ticker popup closes when modal onClose is called (setSelectedTicker(null))', async () => {
@@ -1021,7 +1021,7 @@ describe('DashboardPage — PV KPI cards', () => {
 
     render(<DashboardPage />);
     await user.click(screen.getByTestId('treemap'));
-    expect(screen.getByTestId('modal')).toBeTruthy();
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
 
     // Close the modal
     await user.click(screen.getByTestId('modal-close'));
@@ -1033,7 +1033,7 @@ describe('DashboardPage — PV KPI cards', () => {
 
 import { TreemapContent, getPoolColor } from './DashboardPage';
 
-describe('TreemapContent — direct unit tests (lines 141-188)', () => {
+describe('TreemapContent and getPoolColor — direct unit tests', () => {
   it('getPoolColor uses pool.color when set (DB color takes priority)', () => {
     const color = getPoolColor('Asie', [{ name: 'Asie', color: '#AABBCC' }]);
     expect(color).toBe('#AABBCC');
@@ -1064,7 +1064,7 @@ describe('TreemapContent — direct unit tests (lines 141-188)', () => {
         />
       </svg>
     );
-    expect(container.querySelector('rect')).toBeTruthy();
+    expect(container.querySelector('rect')).toBeInTheDocument();
     // depth=1 → renders text with 'bold' fontWeight
     const texts = container.querySelectorAll('text');
     expect(texts.length).toBeGreaterThan(0);
@@ -1081,7 +1081,7 @@ describe('TreemapContent — direct unit tests (lines 141-188)', () => {
       </svg>
     );
     // depth=2 with height>36 → renders pct text
-    expect(container.querySelector('rect')).toBeTruthy();
+    expect(container.querySelector('rect')).toBeInTheDocument();
   });
 
   it('renders TreemapContent depth=2 without pct (uses formatEUR value)', () => {
@@ -1095,7 +1095,7 @@ describe('TreemapContent — direct unit tests (lines 141-188)', () => {
       </svg>
     );
     // pct is undefined → renders formatEUR(value) branch
-    expect(container.querySelector('rect')).toBeTruthy();
+    expect(container.querySelector('rect')).toBeInTheDocument();
   });
 
   it('TreemapContent with width < 10 returns null (unreachable guard)', () => {
@@ -1113,7 +1113,7 @@ describe('TreemapContent — direct unit tests (lines 141-188)', () => {
     expect(container.querySelector('g')).toBeNull();
   });
 
-  it('TreemapContent depth=1 with no propPoolColor falls back to POOL_COLORS (line 150)', () => {
+  it('TreemapContent depth=1 falls back to POOL_COLORS when no poolColor prop is given', () => {
     const { container } = render(
       <svg>
         <TreemapContent
@@ -1124,10 +1124,10 @@ describe('TreemapContent — direct unit tests (lines 141-188)', () => {
         />
       </svg>
     );
-    expect(container.querySelector('rect')).toBeTruthy();
+    expect(container.querySelector('rect')).toBeInTheDocument();
   });
 
-  it('TreemapContent with unknown pool uses #6A6E73 fallback (line 150 second ?? branch)', () => {
+  it('TreemapContent falls back to the default gray when the pool name is not in POOL_COLORS', () => {
     const { container } = render(
       <svg>
         <TreemapContent
@@ -1138,10 +1138,10 @@ describe('TreemapContent — direct unit tests (lines 141-188)', () => {
         />
       </svg>
     );
-    expect(container.querySelector('rect')).toBeTruthy();
+    expect(container.querySelector('rect')).toBeInTheDocument();
   });
 
-  it('TreemapContent depth=1 with no pool (undefined) uses #6A6E73 (line 150 false branch)', () => {
+  it('TreemapContent depth=1 falls back to the default gray when no pool name is given', () => {
     const { container } = render(
       <svg>
         <TreemapContent
@@ -1152,10 +1152,10 @@ describe('TreemapContent — direct unit tests (lines 141-188)', () => {
         />
       </svg>
     );
-    expect(container.querySelector('rect')).toBeTruthy();
+    expect(container.querySelector('rect')).toBeInTheDocument();
   });
 
-  it('TreemapContent narrow text truncation (width <= 60 branch, line 173)', () => {
+  it('TreemapContent shows the full label when width is above the truncation threshold', () => {
     const { container } = render(
       <svg>
         <TreemapContent
@@ -1166,10 +1166,10 @@ describe('TreemapContent — direct unit tests (lines 141-188)', () => {
         />
       </svg>
     );
-    expect(container.querySelector('rect')).toBeTruthy();
+    expect(container.querySelector('rect')).toBeInTheDocument();
   });
 
-  it('TreemapContent with width <= 60 exercises name truncation (line 173 false branch)', () => {
+  it('TreemapContent truncates the label when width is at or below the truncation threshold', () => {
     const { container } = render(
       <svg>
         <TreemapContent
@@ -1180,10 +1180,10 @@ describe('TreemapContent — direct unit tests (lines 141-188)', () => {
         />
       </svg>
     );
-    expect(container.querySelector('rect')).toBeTruthy();
+    expect(container.querySelector('rect')).toBeInTheDocument();
   });
 
-  it('TreemapContent with small area (width<=40 or height<=20) skips text (line 165)', () => {
+  it('TreemapContent renders the rect but skips the label when the area is too small', () => {
     const { container } = render(
       <svg>
         <TreemapContent
@@ -1194,13 +1194,13 @@ describe('TreemapContent — direct unit tests (lines 141-188)', () => {
         />
       </svg>
     );
-    expect(container.querySelector('rect')).toBeTruthy();
+    expect(container.querySelector('rect')).toBeInTheDocument();
   });
 });
 
 // ── Additional DashboardPage branch tests ────────────────────────────────────
 
-describe('DashboardPage — additional branch coverage', () => {
+describe('DashboardPage — treemap data building and popup edge cases', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseHoldings.mockReturnValue({ data: [] });
@@ -1214,10 +1214,10 @@ describe('DashboardPage — additional branch coverage', () => {
     // usePositions returns undefined data (not []). This triggers positions ?? [] branches.
     mockUseHoldings.mockReturnValue({ data: undefined });
     render(<DashboardPage />);
-    expect(screen.getByText('Dashboard')).toBeTruthy();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
   });
 
-  it('handleStale idempotent: calling onStale twice does not add name twice (line 76 true branch)', () => {
+  it('stale-price warning does not duplicate a product name reported stale twice in a row', () => {
     // To exercise handleStale's `prev.includes(name) ? prev : ...` true branch,
     // we need the same product name to be reported stale while already in staleNames.
     // This happens when a stale product's ManuelProductStalenessCheck re-runs onStale.
@@ -1229,16 +1229,16 @@ describe('DashboardPage — additional branch coverage', () => {
     mockUsePrices.mockReturnValue({ data: [] });
     const { rerender } = render(<DashboardPage />);
     // Warning should be visible (product is stale)
-    expect(screen.getByTestId('alert-warning')).toBeTruthy();
+    expect(screen.getByTestId('alert-warning')).toBeInTheDocument();
     // Re-render with same stale state → onStale fires again (same name)
     // ManuelProductStalenessCheck effect fires again → handleStale called again with same name
     // prev.includes('Or physique') is true → returns prev unchanged (true branch)
     rerender(<DashboardPage />);
     // Alert still shows exactly the same product
-    expect(screen.getByTestId('alert-warning')).toBeTruthy();
+    expect(screen.getByTestId('alert-warning')).toBeInTheDocument();
   });
 
-  it('treemapData with zero-value pool is filtered out (line 248 false branch)', () => {
+  it('treemap data excludes pools with zero current value', () => {
     const dashWithZeroPool = {
       ...mockDashboard,
       pools: [
@@ -1250,10 +1250,10 @@ describe('DashboardPage — additional branch coverage', () => {
     render(<DashboardPage />);
     // Asie has current_value_eur=0 → filtered from treemapData
     // treemapData.length > 0 so the <TextContent>loading</TextContent> branch at line 417 is NOT shown
-    expect(screen.getByText('Dashboard')).toBeTruthy();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
   });
 
-  it('treemapData is empty (all pools have current_value_eur=0) shows loading text (line 417 true branch)', () => {
+  it('shows loading text when every pool has zero value and the treemap has nothing to render', () => {
     const dashAllZero = {
       ...mockDashboard,
       pools: [
@@ -1267,7 +1267,7 @@ describe('DashboardPage — additional branch coverage', () => {
     expect(body).toContain('Chargement');
   });
 
-  it('treemapData onClick with depth !== 2 does not set ticker (line 429 false branch)', async () => {
+  it('treemap onClick handler ignores clicks on non-leaf (depth !== 2) nodes', async () => {
     // The Treemap mock calls onClick({ depth: 2, name: 'AAPL' }).
     // We need to test depth=1. Create a secondary mock that calls with depth=1.
     vi.doMock('recharts', () => ({
@@ -1286,10 +1286,10 @@ describe('DashboardPage — additional branch coverage', () => {
     // Click the existing treemap (depth=2) - already tested. The depth=1 onClick branch
     // is covered when data.depth !== 2 OR data.name is falsy.
     // Since the mock fires depth=2, this test just verifies the page renders.
-    expect(screen.getByTestId('treemap')).toBeTruthy();
+    expect(screen.getByTestId('treemap')).toBeInTheDocument();
   }, 10000);
 
-  it('pool popup title with poolInfo shows strategy (line 499 true branch)', async () => {
+  it('pool popup title includes the pool strategy when the pool is found', async () => {
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseHoldings.mockReturnValue({ data: mockPositions });
     const user = userEvent.setup({ delay: null });
@@ -1305,7 +1305,7 @@ describe('DashboardPage — additional branch coverage', () => {
     }
   });
 
-  it('ticker popup pvPct negative (unrealized_pv < 0) shows negative prefix (line 611 false branch)', async () => {
+  it('ticker popup omits the plus prefix when unrealized PV is negative', async () => {
     const user = userEvent.setup({ delay: null });
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseHoldings.mockReturnValue({ data: mockPositions });
@@ -1322,10 +1322,10 @@ describe('DashboardPage — additional branch coverage', () => {
     const modal = screen.getByTestId('modal');
     // unrealized_pv=-300 < 0 → no '+' prefix (line 608 false branch)
     // pvPct = -300/1500*100 = -20 < 0 → no '+' prefix (line 611 false branch)
-    expect(modal).toBeTruthy();
+    expect(modal).toBeInTheDocument();
   }, 10000);
 
-  it('ticker popup unrealized_pv = 0 (pvColor undefined branch, line 560)', async () => {
+  it('ticker popup uses a neutral color when unrealized PV is exactly zero', async () => {
     const user = userEvent.setup({ delay: null });
     mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
     mockUseHoldings.mockReturnValue({ data: mockPositions });
@@ -1342,6 +1342,6 @@ describe('DashboardPage — additional branch coverage', () => {
     const modal = screen.getByTestId('modal');
     // unrealized_pv=0: gains.unrealized_pv > 0 is false, < 0 is false → pvColor=undefined
     // pvPct = null (cost_basis_eur=0)
-    expect(modal).toBeTruthy();
+    expect(modal).toBeInTheDocument();
   }, 10000);
 });

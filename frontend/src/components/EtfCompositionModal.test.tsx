@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import '@testing-library/jest-dom';
 import { pfCoreStubs, pfTableStubs } from '../../tests/utils/patternfly-mocks';
 
 const mockUseEtfComposition = vi.fn();
@@ -23,7 +24,7 @@ describe('EtfCompositionModal', () => {
   it('shows a spinner while loading', () => {
     mockUseEtfComposition.mockReturnValue({ data: undefined, isLoading: true });
     render(<EtfCompositionModal ticker="FLXC.DE" onClose={vi.fn()} />);
-    expect(screen.getByTestId('spinner')).toBeTruthy();
+    expect(screen.getByTestId('spinner')).toBeInTheDocument();
   });
 
   it('shows the no-data message when composition has no holdings and no sectors', () => {
@@ -35,7 +36,7 @@ describe('EtfCompositionModal', () => {
       isLoading: false,
     });
     render(<EtfCompositionModal ticker="XJSE.DE" onClose={vi.fn()} />);
-    expect(screen.getByText(/Aucune donnée de composition/)).toBeTruthy();
+    expect(screen.getByText(/Aucune donnée de composition/)).toBeInTheDocument();
   });
 
   it('renders top holdings, sector weightings, and freshness when data is present', () => {
@@ -53,11 +54,11 @@ describe('EtfCompositionModal', () => {
       isLoading: false,
     });
     render(<EtfCompositionModal ticker="FLXC.DE" onClose={vi.fn()} />);
-    expect(screen.getByText('0700.HK')).toBeTruthy();
-    expect(screen.getByText('Tencent Holdings Ltd')).toBeTruthy();
-    expect(screen.getByText('9988.HK')).toBeTruthy();
-    expect(screen.getByText(/Consommation cyclique/)).toBeTruthy();
-    expect(screen.getByText(/Dernière mise à jour/)).toBeTruthy();
+    expect(screen.getByText('0700.HK')).toBeInTheDocument();
+    expect(screen.getByText('Tencent Holdings Ltd')).toBeInTheDocument();
+    expect(screen.getByText('9988.HK')).toBeInTheDocument();
+    expect(screen.getByText(/Consommation cyclique/)).toBeInTheDocument();
+    expect(screen.getByText(/Dernière mise à jour/)).toBeInTheDocument();
   });
 
   it('renders bond duration/maturity when present and "never updated" when holdings_updated_at is null', () => {
@@ -72,9 +73,9 @@ describe('EtfCompositionModal', () => {
       isLoading: false,
     });
     render(<EtfCompositionModal ticker="XJSE.DE" onClose={vi.fn()} />);
-    expect(screen.getByText(/1.32/)).toBeTruthy();
-    expect(screen.getByText(/8.57/)).toBeTruthy();
-    expect(screen.getByText('Jamais synchronisé')).toBeTruthy();
+    expect(screen.getByText(/1.32/)).toBeInTheDocument();
+    expect(screen.getByText(/8.57/)).toBeInTheDocument();
+    expect(screen.getByText('Jamais synchronisé')).toBeInTheDocument();
   });
 
   it('falls back to the raw sector key when no i18n translation exists', () => {
@@ -88,6 +89,6 @@ describe('EtfCompositionModal', () => {
       isLoading: false,
     });
     render(<EtfCompositionModal ticker="WEIRD.DE" onClose={vi.fn()} />);
-    expect(screen.getByText('not_a_real_sector')).toBeTruthy();
+    expect(screen.getByText('not_a_real_sector')).toBeInTheDocument();
   });
 });

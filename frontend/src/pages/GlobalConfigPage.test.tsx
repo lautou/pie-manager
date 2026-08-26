@@ -156,7 +156,7 @@ describe('GlobalConfigPage — ProductManager', () => {
 
   it('renders the Produits section heading', () => {
     render(<GlobalConfigPage />);
-    expect(screen.getByText(/Produits et frais financiers/i)).toBeTruthy();
+    expect(screen.getByText(/Produits et frais financiers/i)).toBeInTheDocument();
   });
 
   it('clicking a composable ticker (instrument_type=Action) opens the composition modal, and closing it clears the state', async () => {
@@ -170,7 +170,7 @@ describe('GlobalConfigPage — ProductManager', () => {
     await user.click(screen.getByText('Close modal'));
   });
 
-  it('TTF rate save button — clicking saves and shows ✓ (line 601 — ttfSaved=true branch)', async () => {
+  it('clicking the TTF rate save button triggers the update mutation', async () => {
     const mockMutateAsync = vi.fn().mockResolvedValue({});
     mockUseSetSystemSetting.mockReturnValue({ mutateAsync: mockMutateAsync, isPending: false });
 
@@ -189,34 +189,34 @@ describe('GlobalConfigPage — ProductManager', () => {
       // After save, ttfSaved=true renders '✓ Enregistrer' (line 601 ttfSaved branch)
       // We can't easily wait for setTimeout(2000) to reset, just verify it was called
     }
-    expect(screen.getByText(/Produits et frais financiers/i)).toBeTruthy();
+    expect(screen.getByText(/Produits et frais financiers/i)).toBeInTheDocument();
   }, 10000);
 
-  it('TTF rate save button — isPending branch (line 601 — isPending=true)', () => {
+  it('TTF rate save button shows a pending label while the save mutation is in flight', () => {
     // When isPending=true, button shows 'Enregistrer…'
     mockUseSetSystemSetting.mockReturnValue({ mutateAsync: vi.fn(), isPending: true });
     render(<GlobalConfigPage />);
     // The button should show 'Enregistrer…'
     expect(document.body.textContent).toContain('Enregistrer');
-    expect(screen.getByText(/Produits et frais financiers/i)).toBeTruthy();
+    expect(screen.getByText(/Produits et frais financiers/i)).toBeInTheDocument();
   });
 
   it('shows product count', () => {
     render(<GlobalConfigPage />);
-    expect(screen.getByText(/2 produit\(s\)/i)).toBeTruthy();
+    expect(screen.getByText(/2 produit\(s\)/i)).toBeInTheDocument();
   });
 
   it('lists products in the table', () => {
     render(<GlobalConfigPage />);
     expect(screen.getAllByText('AAPL').length).toBeGreaterThan(0);
-    expect(screen.getByText('Apple Inc')).toBeTruthy();
+    expect(screen.getByText('Apple Inc')).toBeInTheDocument();
     expect(screen.getAllByText('Or Physique').length).toBeGreaterThan(0);
   });
 
   it('shows Nouveau produit button', () => {
     render(<GlobalConfigPage />);
     const btns = screen.getAllByRole('button');
-    expect(btns.find(b => b.textContent?.includes('Nouveau produit'))).toBeTruthy();
+    expect(btns.find(b => b.textContent?.includes('Nouveau produit'))).toBeInTheDocument();
   });
 
   it('clicking Nouveau produit opens a modal', async () => {
@@ -225,7 +225,7 @@ describe('GlobalConfigPage — ProductManager', () => {
     const newBtn = screen.getAllByRole('button').find(b => b.textContent?.includes('Nouveau produit'));
     if (newBtn) {
       await user.click(newBtn);
-      expect(screen.getByTestId('modal')).toBeTruthy();
+      expect(screen.getByTestId('modal')).toBeInTheDocument();
     }
   }, 10000);
 
@@ -236,7 +236,7 @@ describe('GlobalConfigPage — ProductManager', () => {
     if (newBtn) {
       await user.click(newBtn);
       const modal = screen.getByTestId('modal');
-      expect(within(modal).getByText('Enregistrer')).toBeTruthy();
+      expect(within(modal).getByText('Enregistrer')).toBeInTheDocument();
       expect(screen.getAllByText('Annuler').length).toBeGreaterThan(0);
     }
   }, 10000);
@@ -260,7 +260,7 @@ describe('GlobalConfigPage — ProductManager', () => {
     if (newBtn) {
       await user.click(newBtn);
       const modal = screen.getByTestId('modal'); await user.click(within(modal).getByText('Enregistrer'));
-      expect(screen.getByText(/Le ticker est requis/i)).toBeTruthy();
+      expect(screen.getByText(/Le ticker est requis/i)).toBeInTheDocument();
     }
   }, 10000);
 
@@ -273,7 +273,7 @@ describe('GlobalConfigPage — ProductManager', () => {
       const modal = screen.getByTestId('modal');
       await user.type(within(modal).getByRole('textbox', { name: /ticker/i }), 'TEST');
       await user.click(within(modal).getByText('Enregistrer'));
-      expect(screen.getByText(/Le nom est requis/i)).toBeTruthy();
+      expect(screen.getByText(/Le nom est requis/i)).toBeInTheDocument();
     }
   }, 10000);
 
@@ -288,7 +288,7 @@ describe('GlobalConfigPage — ProductManager', () => {
       await user.type(within(modal).getByRole('textbox', { name: /nom/i }), 'Test Product');
       await user.clear(within(modal).getByRole('textbox', { name: /devise/i }));
       await user.click(within(modal).getByText('Enregistrer'));
-      expect(screen.getByText(/La devise est requise/i)).toBeTruthy();
+      expect(screen.getByText(/La devise est requise/i)).toBeInTheDocument();
     }
   }, 10000);
 
@@ -417,8 +417,8 @@ describe('GlobalConfigPage — ProductManager', () => {
       refetch: vi.fn(),
     });
     render(<GlobalConfigPage />);
-    expect(screen.getByText('Courtage')).toBeTruthy();
-    expect(screen.getByText('—')).toBeTruthy();
+    expect(screen.getByText('Courtage')).toBeInTheDocument();
+    expect(screen.getByText('—')).toBeInTheDocument();
   });
 
   it('editing a product without instrument_type/fee_type pre-fills empty selects', async () => {
@@ -438,7 +438,7 @@ describe('GlobalConfigPage — ProductManager', () => {
     render(<GlobalConfigPage />);
     const editBtn = screen.getByRole('button', { name: /Modifier AAPL/i });
     await user.click(editBtn);
-    expect(screen.getByText(/Modifier — AAPL/i)).toBeTruthy();
+    expect(screen.getByText(/Modifier — AAPL/i)).toBeInTheDocument();
   }, 10000);
 
   it('edit modal shows ticker as read-only', async () => {
@@ -475,7 +475,7 @@ describe('GlobalConfigPage — ProductManager', () => {
       await user.type(within(modal).getByRole('textbox', { name: /ticker/i }), 'AAPL');
       await user.type(within(modal).getByRole('textbox', { name: /nom/i }), 'Apple');
       await user.click(within(modal).getByText('Enregistrer'));
-      await rtlWaitFor(() => expect(screen.getByText(/Ticker already exists/i)).toBeTruthy());
+      await rtlWaitFor(() => expect(screen.getByText(/Ticker already exists/i)).toBeInTheDocument());
     }
   }, 10000);
 
@@ -491,7 +491,7 @@ describe('GlobalConfigPage — ProductManager', () => {
       await user.type(within(modal).getByRole('textbox', { name: /ticker/i }), 'TST');
       await user.type(within(modal).getByRole('textbox', { name: /nom/i }), 'Test');
       await user.click(within(modal).getByText('Enregistrer'));
-      await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de l'enregistrement/i)).toBeTruthy());
+      await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de l'enregistrement/i)).toBeInTheDocument());
     }
   }, 10000);
 
@@ -520,7 +520,7 @@ describe('GlobalConfigPage — ProductManager', () => {
     render(<GlobalConfigPage />);
     await user.click(screen.getByRole('button', { name: /Supprimer AAPL/i }));
     await user.click(screen.getByText('Supprimer'));
-    await rtlWaitFor(() => expect(screen.getByText(/Ce produit est utilisé dans 3 transaction/i)).toBeTruthy());
+    await rtlWaitFor(() => expect(screen.getByText(/Ce produit est utilisé dans 3 transaction/i)).toBeInTheDocument());
   }, 10000);
 
   it('delete error without detail shows fallback message', async () => {
@@ -530,7 +530,7 @@ describe('GlobalConfigPage — ProductManager', () => {
     render(<GlobalConfigPage />);
     await user.click(screen.getByRole('button', { name: /Supprimer AAPL/i }));
     await user.click(screen.getByText('Supprimer'));
-    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de la suppression/i)).toBeTruthy());
+    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de la suppression/i)).toBeInTheDocument());
   }, 10000);
 
   it('delete error without any response shows fallback message', async () => {
@@ -540,13 +540,13 @@ describe('GlobalConfigPage — ProductManager', () => {
     render(<GlobalConfigPage />);
     await user.click(screen.getByRole('button', { name: /Supprimer AAPL/i }));
     await user.click(screen.getByText('Supprimer'));
-    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de la suppression/i)).toBeTruthy());
+    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de la suppression/i)).toBeInTheDocument());
   }, 10000);
 
   it('shows "Aucun produit" when product list is empty', () => {
     mockUseProducts.mockReturnValue({ data: [], refetch: vi.fn() });
     render(<GlobalConfigPage />);
-    expect(screen.getByText('Aucun produit')).toBeTruthy();
+    expect(screen.getByText('Aucun produit')).toBeInTheDocument();
   });
 
   it('shows category badge in product table row', () => {
@@ -584,7 +584,7 @@ describe('GlobalConfigPage — ProductManager', () => {
     const ths = Array.from(container.querySelectorAll('th'));
     const categorieTh = ths.find(th => th.textContent?.includes('Catégorie'));
     if (categorieTh) await user.click(categorieTh);
-    expect(screen.getByText(/Produits et frais financiers/i)).toBeTruthy();
+    expect(screen.getByText(/Produits et frais financiers/i)).toBeInTheDocument();
   }, 10000);
 
   it('toggleSort: clicking Devise header', async () => {
@@ -593,10 +593,10 @@ describe('GlobalConfigPage — ProductManager', () => {
     const ths = Array.from(container.querySelectorAll('th'));
     const deviseTh = ths.find(th => th.textContent?.includes('Devise'));
     if (deviseTh) await user.click(deviseTh);
-    expect(screen.getByText(/Produits et frais financiers/i)).toBeTruthy();
+    expect(screen.getByText(/Produits et frais financiers/i)).toBeInTheDocument();
   }, 10000);
 
-  it('TTF checkbox onChange calls updateProduct (line 506)', async () => {
+  it('checking the TTF-eligible checkbox for a product calls updateProduct', async () => {
     const { updateProduct } = await import('../api/queries');
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
@@ -606,7 +606,7 @@ describe('GlobalConfigPage — ProductManager', () => {
     expect(updateProduct).toHaveBeenCalledWith('AAPL', { is_ttf_eligible: true });
   }, 10000);
 
-  it('all product table column headers clickable (line 490 — Devise sort)', async () => {
+  it('clicking every product table column header (Ticker, Nom, Catégorie, Devise) triggers sorting without error', async () => {
     const user = userEvent.setup({ delay: null });
     const { container } = render(<GlobalConfigPage />);
     // Click all Th in the products table
@@ -617,6 +617,6 @@ describe('GlobalConfigPage — ProductManager', () => {
         await user.click(th as HTMLElement);
       }
     }
-    expect(screen.getByText(/Produits et frais financiers/i)).toBeTruthy();
+    expect(screen.getByText(/Produits et frais financiers/i)).toBeInTheDocument();
   }, 10000);
 });

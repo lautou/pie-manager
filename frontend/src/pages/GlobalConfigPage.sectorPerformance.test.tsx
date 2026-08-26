@@ -176,10 +176,10 @@ describe("GlobalConfigPage — SectorManager (Performance des classes d'actifs)"
 
   it('renders the sector performance section with the sector list (no Top-N setting)', () => {
     render(<GlobalConfigPage />);
-    expect(screen.getByText(/Performance des classes d'actifs/i)).toBeTruthy();
-    expect(screen.getByText('or')).toBeTruthy();
-    expect(screen.getByText('Or')).toBeTruthy();
-    expect(screen.getByText('GC=F')).toBeTruthy();
+    expect(screen.getByText(/Performance des classes d'actifs/i)).toBeInTheDocument();
+    expect(screen.getByText('or')).toBeInTheDocument();
+    expect(screen.getByText('Or')).toBeInTheDocument();
+    expect(screen.getByText('GC=F')).toBeInTheDocument();
     expect(screen.getAllByText('USD').length).toBeGreaterThan(0);
     expect(screen.queryByLabelText(/Nombre de secteurs/i)).toBeNull();
   });
@@ -187,7 +187,7 @@ describe("GlobalConfigPage — SectorManager (Performance des classes d'actifs)"
   it('shows "Aucun secteur" when there are no sectors', () => {
     mockUseSectorPerfConfigs.mockReturnValue({ data: [], refetch: vi.fn() });
     render(<GlobalConfigPage />);
-    expect(screen.getByText('Aucun secteur')).toBeTruthy();
+    expect(screen.getByText('Aucun secteur')).toBeInTheDocument();
   });
 
   it.each(SECTOR_VALIDATION_STEPS)('saving without %s shows validation error', async (_missing, labels, values, errorPattern) => {
@@ -199,7 +199,7 @@ describe("GlobalConfigPage — SectorManager (Performance des classes d'actifs)"
     }
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    expect(screen.getByText(errorPattern)).toBeTruthy();
+    expect(screen.getByText(errorPattern)).toBeInTheDocument();
   }, 10000);
 
   it('can create a sector with valid data', async () => {
@@ -245,7 +245,7 @@ describe("GlobalConfigPage — SectorManager (Performance des classes d'actifs)"
     await user.type(screen.getByLabelText('Devise'), 'USD');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    await rtlWaitFor(() => expect(screen.getByText(/already exists/i)).toBeTruthy());
+    await rtlWaitFor(() => expect(screen.getByText(/already exists/i)).toBeInTheDocument());
   }, 10000);
 
   it('create sector API error without detail uses fallback message', async () => {
@@ -261,14 +261,14 @@ describe("GlobalConfigPage — SectorManager (Performance des classes d'actifs)"
     await user.type(screen.getByLabelText('Devise'), 'USD');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de l'enregistrement/i)).toBeTruthy());
+    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de l'enregistrement/i)).toBeInTheDocument());
   }, 10000);
 
   it('shows edit modal with the code locked when clicking edit for a sector', async () => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
     await user.click(screen.getByRole('button', { name: /Modifier secteur or/i }));
-    expect(screen.getByText(/Modifier le secteur — or/i)).toBeTruthy();
+    expect(screen.getByText(/Modifier le secteur — or/i)).toBeInTheDocument();
     const codeInput = screen.getByLabelText('Code');
     expect((codeInput as HTMLInputElement).disabled).toBe(true);
     expect((codeInput as HTMLInputElement).value).toBe('or');
@@ -324,6 +324,6 @@ describe("GlobalConfigPage — SectorManager (Performance des classes d'actifs)"
     render(<GlobalConfigPage />);
     await user.click(screen.getByRole('button', { name: /Supprimer secteur petrole/i }));
     await user.click(screen.getByText('Supprimer'));
-    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de la suppression/i)).toBeTruthy());
+    await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de la suppression/i)).toBeInTheDocument());
   }, 10000);
 });

@@ -140,7 +140,7 @@ describe('CapitalGainsPage — sort default branch documentation tests', () => {
     for (const th of ths.slice(0, 9)) {
       await user.click(th);
     }
-    expect(screen.getByText('Plus-values')).toBeTruthy();
+    expect(screen.getByText('Plus-values')).toBeInTheDocument();
   });
 
   // Similarly for sortEvents (line 200 default), colKey fallback is 'date' (a valid case).
@@ -153,6 +153,6 @@ describe('CapitalGainsPage — sort default branch documentation tests', () => {
     for (const th of ths) {
       await user.click(th);
     }
-    expect(screen.getByText('Plus-values')).toBeTruthy();
+    expect(screen.getByText('Plus-values')).toBeInTheDocument();
   });
 });

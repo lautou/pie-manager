@@ -41,7 +41,9 @@ The Go installer (`installer/`) has two categories of functions:
 `githubLatestAssetURL`, `downloadFile`,
 `composePostgresMajor`, `postgresMajorMismatch` (issue #58's PostgreSQL major-version
 mismatch guard — see `.claude/rules/containers-and-backup.md`'s "PostgreSQL major-version
-bumps" section for what this protects against).
+bumps" section for what this protects against),
+`writeInstallConfig`, `selfUpdateBinary`, `shouldRemoveImageTag` (extracted from
+`performInstall`'s own body — see below).
 These pure utility functions all live in `common.go` (no build constraint — shared by
 Linux/macOS, see `.claude/rules/distribution.md`'s "Shared refactor enabling this"
 in the macOS section), tested in `install_test.go`/`common_test.go`.
@@ -50,13 +52,30 @@ in the macOS section), tested in `install_test.go`/`common_test.go`.
 `notify`, `podmanImageExists`, `focusExistingWindow`, `openBrowser`,
 `pgDataVolumeName`, `pgVersionMajor` (both exec `podman` directly, same class as
 `podmanImageExists` — issue #58),
-and all functions in `install_darwin.go`/
+`pullImages`, `removeOldImageVersions` (both exec `podman pull`/`podman images`/`podman rmi`,
+same class), `symlinkBinaryIntoLocalBin` (best-effort OS glue, errors deliberately ignored —
+see its own doc comment), and `performInstall` itself (the orchestrator — every decision it
+makes is already covered by testing the pure functions it calls, see below; the function
+itself is thin sequencing glue, same rationale as `launcher-native/`'s `startupSequence`).
+`checkPostgresUpgradeCompatibility` sits in both buckets: its two no-op branches (fresh
+install, version unchanged) are pure and tested directly, but its real mismatch-detection
+path calls `pgDataVolumeName`/`pgVersionMajor` and is untestable for the same reason those are.
+And all functions in `install_darwin.go`/
 `start_darwin.go`/`main_darwin.go` (Podman `.pkg` install, Podman Machine setup,
 `launchd` agent, `.app` bundle writing). These exec external programs (Podman, browser,
 OS notifications) and require integration-level testing. They are covered
 by the CI smoke test (`go build + ./pie-manager version`). Overall installer coverage is
 necessarily low (check `go test ./... -cover` for the current figure) — expected and
 acceptable for a system-interaction binary.
+
+**`performInstall` was split from one 156-line function mixing ~7 concerns (version-mismatch
+guard, image pulls, four config-file writes, self-binary update, desktop integration,
+image cleanup, with `os.Exit(1)` inlined at 6+ points) into named helpers each returning an
+`error`, with `os.Exit` handling collapsed into `performInstall` itself.** `pullImages` also
+now derives its Postgres image tag from `composePostgresMajor(composeProd)` instead of a
+separate hardcoded `"docker.io/library/postgres:18-alpine"` literal, so a future Postgres
+major-version bump (see `.claude/rules/containers-and-backup.md`) can't silently drift between
+the compose file and this pre-pull step.
 
 **Installer structure:**
 - `common.go` — shared code (no build constraint): `Version`, `defaultPort`, `findAvailablePort`, `readAppPort`

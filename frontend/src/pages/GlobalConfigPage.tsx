@@ -38,6 +38,7 @@ import { computeCommission } from '../utils/commission';
 import { INSTRUMENT_TYPE_GOLD } from '../utils/productConstants';
 import { useBrokerCrud } from '../hooks/useBrokerCrud';
 import { useCommissionEditor, putCommissionSaleRate, putIncludeFeesInCump } from '../hooks/useCommissionEditor';
+import { extractApiErrorMessage } from '../utils/errors';
 
 // ── Broker Manager ─────────────────────────────────────────────────────────
 
@@ -414,8 +415,8 @@ function ProductManager() {
         }
       }
       closeModal(); refetch(); qc.invalidateQueries({ queryKey: ['products'] });
-    } catch (e: any) {
-      setFormError(e?.response?.data?.detail ?? 'Erreur lors de l\'enregistrement');
+    } catch (e) {
+      setFormError(extractApiErrorMessage(e, 'Erreur lors de l\'enregistrement'));
     }
   };
 
@@ -433,8 +434,8 @@ function ProductManager() {
       refetch();
       qc.invalidateQueries({ queryKey: ['products'] });
       setProductDeleteTarget(null);
-    } catch (e: any) {
-      setDeleteError({ ticker: productDeleteTarget.ticker, message: e?.response?.data?.detail ?? 'Erreur lors de la suppression' });
+    } catch (e) {
+      setDeleteError({ ticker: productDeleteTarget.ticker, message: extractApiErrorMessage(e, 'Erreur lors de la suppression') });
     } finally { setIsDeletingProduct(false); }
   };
 

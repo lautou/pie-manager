@@ -12,6 +12,7 @@ from app.core.database import get_db
 from app.core.pgq import get_pgq_queries
 from app.models import Transaction, Broker, PortfolioAccount
 from app.api.deps import get_or_404
+from app.services.price_service import r2
 
 
 def _no_neg_zero(v: float) -> float:
@@ -248,7 +249,7 @@ async def _update_account_cash_balance(
     )
     pa = result.scalar_one_or_none()
     if pa is not None:
-        pa.cash_balance_eur = round((pa.cash_balance_eur or 0.0) + delta, 2)
+        pa.cash_balance_eur = r2((pa.cash_balance_eur or 0.0) + delta)
 
 
 async def _create_fee_transaction(
@@ -277,7 +278,7 @@ async def _create_fee_transaction(
     await db.flush()
     prev_fee_balance = await _prev_balance_eur(db, fee_tx.account_id, fee_tx.portfolio_id, fee_tx.date, fee_tx.id)
     if prev_fee_balance is not None:
-        fee_tx.balance_eur = _no_neg_zero(round(prev_fee_balance - fee_amount, 2))
+        fee_tx.balance_eur = _no_neg_zero(r2(prev_fee_balance - fee_amount))
         fee_tx.balance_currency = fee_tx.balance_eur
     await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, -fee_amount, fee_tx.type, fee_tx.ticker, fee_tx.operation)
     return fee_tx
@@ -350,7 +351,7 @@ async def create_transaction_core(body: TransactionCreate, db: AsyncSession) -> 
     if tx.balance_eur is None and _contributes_to_ledger(tx.operation):
         prev_balance = await _prev_balance_eur(db, tx.account_id, tx.portfolio_id, tx.date, tx.id)
         if prev_balance is not None:
-            tx.balance_eur = _no_neg_zero(round(prev_balance + tx.total_amount_eur, 2))
+            tx.balance_eur = _no_neg_zero(r2(prev_balance + tx.total_amount_eur))
             # For EUR transactions, balance_currency equals balance_eur
             if tx.currency == "EUR" and tx.balance_currency is None:
                 tx.balance_currency = tx.balance_eur
@@ -361,7 +362,7 @@ async def create_transaction_core(body: TransactionCreate, db: AsyncSession) -> 
                     db, tx.account_id, tx.portfolio_id, tx.currency, tx.date, tx.id,
                 )
                 if prev_curr_balance is not None:
-                    tx.balance_currency = _no_neg_zero(round(prev_curr_balance + tx.total_amount, 2))
+                    tx.balance_currency = _no_neg_zero(r2(prev_curr_balance + tx.total_amount))
 
     # Retroactive update: propagate this transaction's amount to all SUBSEQUENT
     # transactions for the same account that have a known balance_eur.
@@ -416,7 +417,7 @@ async def create_transaction_core(body: TransactionCreate, db: AsyncSession) -> 
         if _contributes_to_ledger(sibling.operation):
             prev_sib_balance = await _prev_balance_eur(db, sibling.account_id, sibling.portfolio_id, sibling.date, sibling.id)
             if prev_sib_balance is not None:
-                sibling.balance_eur = _no_neg_zero(round(prev_sib_balance + sibling.total_amount_eur, 2))
+                sibling.balance_eur = _no_neg_zero(r2(prev_sib_balance + sibling.total_amount_eur))
                 if sibling.currency == "EUR":
                     sibling.balance_currency = sibling.balance_eur
                 else:
@@ -424,7 +425,7 @@ async def create_transaction_core(body: TransactionCreate, db: AsyncSession) -> 
                         db, sibling.account_id, sibling.portfolio_id, sibling.currency, sibling.date, sibling.id,
                     )
                     if prev_sib_curr_balance is not None:
-                        sibling.balance_currency = _no_neg_zero(round(prev_sib_curr_balance + sibling.total_amount, 2))
+                        sibling.balance_currency = _no_neg_zero(r2(prev_sib_curr_balance + sibling.total_amount))
         await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, sibling.total_amount_eur, sibling.type, sibling.ticker, sibling.operation)
 
     # Auto-create linked fee transactions (brokerage + TTF) for Actif buys/sells.
@@ -500,7 +501,7 @@ async def update_transaction(
         if _contributes_to_ledger(tx.operation):
             prev_balance = await _prev_balance_eur(db, tx.account_id, tx.portfolio_id, tx.date, tx.id)
             if prev_balance is not None:
-                tx.balance_eur = _no_neg_zero(round(prev_balance + tx.total_amount_eur, 2))
+                tx.balance_eur = _no_neg_zero(r2(prev_balance + tx.total_amount_eur))
                 if tx.currency == "EUR":
                     tx.balance_currency = tx.balance_eur
 
@@ -525,7 +526,7 @@ async def update_transaction(
         if tx.balance_eur is None and _contributes_to_ledger(tx.operation):
             prev_balance = await _prev_balance_eur(db, tx.account_id, tx.portfolio_id, tx.date, tx.id)
             if prev_balance is not None:
-                tx.balance_eur = _no_neg_zero(round(prev_balance + tx.total_amount_eur, 2))
+                tx.balance_eur = _no_neg_zero(r2(prev_balance + tx.total_amount_eur))
                 if tx.currency == "EUR" and tx.balance_currency is None:
                     tx.balance_currency = tx.balance_eur
 
@@ -537,7 +538,7 @@ async def update_transaction(
                 db, tx.account_id, tx.portfolio_id, tx.currency, tx.date, tx.id,
             )
             if prev_curr_balance is not None:
-                tx.balance_currency = _no_neg_zero(round(prev_curr_balance + tx.total_amount, 2))
+                tx.balance_currency = _no_neg_zero(r2(prev_curr_balance + tx.total_amount))
 
         delta = tx.total_amount_eur - old_total_eur
 
@@ -547,7 +548,7 @@ async def update_transaction(
         if delta != 0 and _contributes_to_ledger(tx.operation):
             # Update balance_eur of this transaction itself
             if tx.balance_eur is not None:
-                tx.balance_eur = _no_neg_zero(round(tx.balance_eur + delta, 2))
+                tx.balance_eur = _no_neg_zero(r2(tx.balance_eur + delta))
                 if tx.currency == "EUR":
                     tx.balance_currency = tx.balance_eur
 

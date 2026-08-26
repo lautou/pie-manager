@@ -37,7 +37,7 @@ import type { Broker, CommissionTier, CountryPerfConfig, EquityPremiumConfig, Ma
 import { computeCommission } from '../utils/commission';
 import { INSTRUMENT_TYPE_GOLD } from '../utils/productConstants';
 import { useBrokerCrud } from '../hooks/useBrokerCrud';
-import { useCommissionEditor, putCommissionSaleRate } from '../hooks/useCommissionEditor';
+import { useCommissionEditor, putCommissionSaleRate, putIncludeFeesInCump } from '../hooks/useCommissionEditor';
 
 // ── Broker Manager ─────────────────────────────────────────────────────────
 
@@ -72,7 +72,7 @@ function CommissionManager() {
     openNewBroker, openEditBroker, closeBrokerModal, toggleBrokerPortfolio,
     handleSaveBroker, handleDeleteBroker, handleConfirmDeleteBroker,
   } = brokerCrud;
-  const [saleRateError, setSaleRateError] = useState<string | null>(null);
+  const [rowActionError, setRowActionError] = useState<string | null>(null);
 
   const commissionEditor = useCommissionEditor(allProducts);
   const {
@@ -136,7 +136,7 @@ function CommissionManager() {
       </Modal>
 
       {deleteBrokerError && <Alert variant="danger" title={deleteBrokerError} isInline style={{ marginBottom: '0.75rem' }} />}
-      {saleRateError && <Alert variant="danger" title={saleRateError} isInline style={{ marginBottom: '0.75rem' }} />}
+      {rowActionError && <Alert variant="danger" title={rowActionError} isInline style={{ marginBottom: '0.75rem' }} />}
 
       {/* Top bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
@@ -178,9 +178,9 @@ function CommissionManager() {
                       try {
                         await putCommissionSaleRate(acc.id, parseFloat(e.target.value) || 0);
                         qc.invalidateQueries({ queryKey: ['brokers'] });
-                        setSaleRateError(null);
+                        setRowActionError(null);
                       } catch (err) {
-                        setSaleRateError(err instanceof Error ? err.message : 'Erreur lors de la mise à jour du taux de vente');
+                        setRowActionError(err instanceof Error ? err.message : 'Erreur lors de la mise à jour du taux de vente');
                       }
                     }}
                     style={{ width: '70px', padding: '2px 6px', border: '1px solid #ccc', borderRadius: 4, fontSize: '0.85rem' }}
@@ -196,8 +196,13 @@ function CommissionManager() {
                 <input type="checkbox" checked={acc.include_fees_in_cump}
                   title={acc.include_fees_in_cump ? 'Courtage inclus dans le CUMP' : 'Courtage exclu du CUMP'}
                   onChange={async () => {
-                    await fetch(`/api/brokers/${acc.id}/include-fees`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ include_fees_in_cump: !acc.include_fees_in_cump }) });
-                    qc.invalidateQueries({ queryKey: ['brokers'] });
+                    try {
+                      await putIncludeFeesInCump(acc.id, !acc.include_fees_in_cump);
+                      qc.invalidateQueries({ queryKey: ['brokers'] });
+                      setRowActionError(null);
+                    } catch (err) {
+                      setRowActionError(err instanceof Error ? err.message : 'Erreur lors de la mise à jour du CUMP');
+                    }
                   }}
                   style={{ width: 16, height: 16, cursor: 'pointer' }} />
               </td>

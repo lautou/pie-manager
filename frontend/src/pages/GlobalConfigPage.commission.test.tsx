@@ -996,6 +996,45 @@ describe('GlobalConfigPage — CommissionManager inline features', () => {
     fetchSpy.mockRestore();
   }, 10000);
 
+  it('include_fees_in_cump checkbox: a failed PUT is caught and shown via an Alert, not silently ignored', async () => {
+    const fetchSpy = vi.spyOn(window, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      text: () => Promise.resolve('CUMP update error'),
+    } as any);
+    render(<GlobalConfigPage />);
+    const cumpCheckbox = screen.getAllByRole('checkbox').find((c: HTMLElement) =>
+      c.getAttribute('title')?.includes('CUMP') || c.getAttribute('title')?.includes('Courtage')
+    ) as HTMLElement;
+    expect(cumpCheckbox).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(cumpCheckbox);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await rtlWaitFor(() => expect(screen.getByText('CUMP update error')).toBeTruthy());
+    fetchSpy.mockRestore();
+  }, 10000);
+
+  it('include_fees_in_cump checkbox: non-Error rejection falls back to a generic Alert message', async () => {
+    const fetchSpy = vi.spyOn(window, 'fetch').mockRejectedValueOnce('network down');
+    render(<GlobalConfigPage />);
+    const cumpCheckbox = screen.getAllByRole('checkbox').find((c: HTMLElement) =>
+      c.getAttribute('title')?.includes('CUMP') || c.getAttribute('title')?.includes('Courtage')
+    ) as HTMLElement;
+    expect(cumpCheckbox).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(cumpCheckbox);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await rtlWaitFor(() => expect(screen.getByText('Erreur lors de la mise à jour du CUMP')).toBeTruthy());
+    fetchSpy.mockRestore();
+  }, 10000);
+
   it('commission_sale_rate input onChange calls fetch PUT', async () => {
     const fetchSpy = vi.spyOn(window, 'fetch').mockResolvedValueOnce({ ok: true } as any);
     const user = userEvent.setup({ delay: null });

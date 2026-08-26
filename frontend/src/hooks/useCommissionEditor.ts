@@ -21,6 +21,11 @@ export async function putCommissionSaleRate(accountId: number, rate: number) {
   if (!res.ok) throw new Error(await res.text());
 }
 
+export async function putIncludeFeesInCump(accountId: number, includeFees: boolean) {
+  const res = await fetch(`/api/brokers/${accountId}/include-fees`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ include_fees_in_cump: includeFees }) });
+  if (!res.ok) throw new Error(await res.text());
+}
+
 async function putCommissionSchedule(accountId: number, schedule: CommissionTier[]) {
   const res = await fetch(`/api/brokers/${accountId}/commission`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commission_schedule: schedule }) });
   if (!res.ok) throw new Error(await res.text());

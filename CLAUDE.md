@@ -728,7 +728,10 @@ The repository is intended to be made public — apply this rule from the first 
 is just the map of where tests live and which CI job runs them.)
 
 - Backend: `backend/tests/` (pytest + pytest-asyncio) — run `pytest --collect-only -q` for the current count
-  - `test_transactions.py`, `test_portfolios.py`, `test_accounts_router.py` — CRUD
+  - `test_transactions_crud.py`, `test_transactions_cash_balance.py`,
+    `test_transactions_balance_branches.py`, `test_transactions_fees.py`,
+    `test_transactions_fractional.py` (split by concern from a single former
+    `test_transactions.py`), `test_portfolios.py`, `test_accounts_router.py` — CRUD
   - `test_pv_service.py` — WACOP and capital gains calculation
   - `test_rebalancing_service.py` — rebalancing logic (pure Python, no DB)
   - `test_price_sync.py` — Yahoo Finance price sync (httpx mocks, no DB)

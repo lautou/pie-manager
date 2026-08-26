@@ -4,7 +4,11 @@ paths:
   - "backend/app/services/import_service.py"
   - "backend/app/api/routers/transactions.py"
   - "backend/app/api/routers/holdings.py"
-  - "backend/tests/test_transactions.py"
+  - "backend/tests/test_transactions_crud.py"
+  - "backend/tests/test_transactions_cash_balance.py"
+  - "backend/tests/test_transactions_balance_branches.py"
+  - "backend/tests/test_transactions_fees.py"
+  - "backend/tests/test_transactions_fractional.py"
   - "backend/tests/test_pv_service.py"
   - "backend/tests/test_accounts_router.py"
   - "frontend/src/pages/TransactionImportPage.tsx"
@@ -61,8 +65,8 @@ drives all three, per `SENS_RULES` in `import_service.py`:
 | Frais | Frais | `None` | `category='Frais'` | forcé `-1` | montant du frais | n/a | n/a |
 
 Confirmed against real code/tests before writing this table (not assumed): Attribution's
-`quantity` sign matches Achat's (`test_transactions.py:884-926`, `quantity=-3.0`); Revenu's
-`quantity`/`unit_price` are positive (`test_transactions.py:1153-1160`,
+`quantity` sign matches Achat's (`test_transactions_cash_balance.py:440-481`, `quantity=-3.0`); Revenu's
+`quantity`/`unit_price` are positive (`test_transactions_cash_balance.py:701-707`,
 `test_pv_service.py:255-264`); Or physique's `quantity` is always `±1` with `unit_price`
 holding the total transaction value, never a per-unit price (`test_accounts_router.py:
 209-217`, `holdings.py:122`'s `value_eur = price if instrument_type == "Or physique" else

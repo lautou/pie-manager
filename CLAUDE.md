@@ -391,6 +391,23 @@ never bare `localhost`, or a healthy Vite dev server can look unreachable
     Attribution skip logic, see "Transaction running-balance display" below)
   - `_get_liquidity_eur()` → `SUM(portfolio_accounts.cash_balance_eur) WHERE portfolio_id=X`
 
+**Transaction ledger logic lives in `app/services/transaction_service.py`, not the router.**
+`app/api/routers/transactions.py` used to hold ~450 lines of running-balance/cash-balance/fee
+business logic directly — the one domain in this app without a dedicated service module,
+despite being the most business-critical and highest-risk one (every other domain —
+`pv_service.py`, `rebalancing_service.py`, `snapshot_service.py`, `macro_indicators_service.py`
+— already had one). `create_transaction_core`/`update_transaction_core`/
+`delete_transaction_core` now hold everything each mutating endpoint does up to (not
+including) commit/refresh/snapshot-trigger, mirroring the extraction `create_transaction_core`
+itself pioneered for the bulk-import feature (see `.claude/rules/transaction-import.md`) —
+applied consistently to update/delete too, not just create. The router's own endpoint
+functions are now thin wrappers: fetch-or-404, call the `*_core` function, commit/refresh,
+`trigger_snapshot_recompute`. `TransactionCreate`/`TransactionUpdate` (the request schemas,
+including `TransactionCreate`'s derived-field validator) moved into the service module
+alongside the logic that consumes them, to avoid a router-imports-service /
+service-imports-router cycle; `TransactionOut` (the response schema) stays in the router,
+since it's a pure FastAPI output contract with nothing the service needs.
+
 - `portfolios` — portfolios (Portfolio 1 / Portfolio 2, separate tax households)
 - `transactions` — all transactions (Actif/Frais/Revenu)
   - `account_id` FK → `brokers.id` (column name kept for compatibility)
@@ -441,8 +458,8 @@ etc. all have `category='Actif', instrument_type='Cash'`. There is no separate "
 category value.
 
 **Auto-linked fee transactions use dedicated `FRAIS.*` tickers, not the parent's ticker.**
-`create_transaction`/`update_transaction` in `transactions.py` create linked courtage/TTF
-`Frais` rows with `ticker='FRAIS.COURTAGE.EUR'` / `ticker='FRAIS.TTF.EUR'` (not
+`create_transaction_core`/`update_transaction_core` in `transaction_service.py` create linked
+courtage/TTF `Frais` rows with `ticker='FRAIS.COURTAGE.EUR'` / `ticker='FRAIS.TTF.EUR'` (not
 `ticker=tx.ticker`). This was a regression at some point (git history predates the public
 squash, exact commit unknown) — 2024 production data already used dedicated tickers; a
 window of transactions created after the regression reused the parent asset's ticker.
@@ -526,7 +543,7 @@ used to add `total_amount_eur` to this field for *every* transaction type/curren
 (Revolut, IBKR), `cash_balance_eur` got contaminated the same way `balance_eur` is, and diverged
 from the real EUR cash position.
 
-**Fix (in `_update_account_cash_balance`, `transactions.py`): forex-position transactions
+**Fix (in `_update_account_cash_balance`, `transaction_service.py`): forex-position transactions
 (`ticker` ending in `EUR=X`, e.g. `JPYEUR=X`) no longer touch `cash_balance_eur` at all**, except
 fee transactions (`type='Frais'`) sharing that ticker for product-linkage, which still do (a
 EUR-denominated Revolut FX commission is a real cash cost). Rationale: a forex buy/sell tracks a
@@ -564,7 +581,7 @@ because Degiro is 100% EUR with no forex activity at all, eliminating the ambigu
 do not generalize that approach to any broker with foreign-currency transactions.
 
 **Known historical bug (fixed but not retroactively corrected everywhere):** several
-`balance_eur`/`balance_currency` lookup queries in `transactions.py` filtered only by
+`balance_eur`/`balance_currency` lookup queries in `transaction_service.py` filtered only by
 `account_id`, not `(account_id, portfolio_id)` — since a broker (e.g. Degiro, Revolut, IBKR)
 can be shared by multiple portfolios, this let one portfolio's running balance leak into
 another's "previous balance" lookup. All 10 occurrences were fixed to filter on both columns.

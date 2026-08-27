@@ -34,7 +34,7 @@ async def test_update_cash_balance_account_not_found_is_noop(client, db_session)
 
     We achieve this by calling _update_account_cash_balance directly.
     """
-    from app.api.routers.transactions import _update_account_cash_balance
+    from app.services.transaction_service import _update_account_cash_balance
 
     # account_id 999988 does not exist in the test DB
     # Calling the helper with a missing account must silently return None (no error)

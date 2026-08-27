@@ -14,9 +14,10 @@ Two-phase design, mirroring the API surface (transaction_import.py router):
     conversion for both directions (upload parsing, template generation).
 
 Committing the validated rows (calling `create_transaction_core` row by row inside a single
-atomic DB transaction) lives in the router (transaction_import.py), not here — it needs
-`create_transaction_core`/`_trigger_snapshot_recompute` from app.api.routers.transactions,
-and importing a router module here would invert this module's dependency direction.
+atomic DB transaction) lives in the router (transaction_import.py), not here — kept alongside
+the endpoint's own request/response handling (multipart upload, `include_rows` selection)
+rather than duplicated into a second service module for what is otherwise a thin loop over
+`app.services.transaction_service.create_transaction_core`/`trigger_snapshot_recompute`.
 
 See CLAUDE.md's "Bulk transaction import (Excel)" section for the full Sens table and the
 non-obvious conventions it encodes (Or physique quantity=±1, forex-ticker Devise special case).

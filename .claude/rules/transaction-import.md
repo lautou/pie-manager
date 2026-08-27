@@ -3,6 +3,7 @@ paths:
   - "backend/app/api/routers/transaction_import.py"
   - "backend/app/services/import_service.py"
   - "backend/app/api/routers/transactions.py"
+  - "backend/app/services/transaction_service.py"
   - "backend/app/api/routers/holdings.py"
   - "backend/tests/test_transactions_crud.py"
   - "backend/tests/test_transactions_cash_balance.py"
@@ -40,9 +41,14 @@ rollback impossible once row N+1 fails. Everything up to (not including) commit/
 snapshot-trigger was extracted into `create_transaction_core(body, db) -> Transaction`; the
 route is now a 3-line wrapper around it. The import commit endpoint calls this core function
 once per row inside a single DB transaction, and only commits/triggers-snapshot once at the
-end if every row succeeded.
+end if every row succeeded. `create_transaction_core` (along with the rest of the ledger
+engine — running-balance computation/propagation, account cash-balance updates, auto-linked
+fee handling) now lives in `app/services/transaction_service.py`, not the router — see the
+root `CLAUDE.md`'s "Broker / Account distinction" section for why that move happened and what
+else came with it (`update_transaction`/`delete_transaction` got the same `*_core` extraction
+for consistency, not just create).
 
-**`_trigger_snapshot_recompute(portfolio_id, from_date, queries)` ignores its `portfolio_id`
+**`trigger_snapshot_recompute(portfolio_id, from_date, queries)` ignores its `portfolio_id`
 parameter** — it only enqueues PgQueuer's `compute_daily_snapshots_all_users` (`payload=
 from_date.isoformat().encode()`, see `.claude/rules/background-jobs.md`), which recomputes
 every portfolio from that date forward regardless of which one is passed. The import commit

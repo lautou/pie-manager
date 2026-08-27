@@ -17,9 +17,9 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pgq import get_pgq_queries
-from app.api.routers.transactions import (
+from app.services.transaction_service import (
     TransactionCreate,
-    _trigger_snapshot_recompute,
+    trigger_snapshot_recompute,
     create_transaction_core,
 )
 from app.core.database import get_db
@@ -213,6 +213,6 @@ async def commit_import_file(
 
     if created_ids:
         await db.commit()
-        await _trigger_snapshot_recompute(included[0].resolved.portfolio_id, min(created_dates), queries)
+        await trigger_snapshot_recompute(included[0].resolved.portfolio_id, min(created_dates), queries)
 
     return CommitResponse(status="ok", imported_count=len(created_ids), created_transaction_ids=created_ids)

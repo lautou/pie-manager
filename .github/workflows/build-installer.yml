@@ -606,7 +606,7 @@ jobs:
         # (9PM8GPSMJG0N), see CLAUDE.md. Only runs on a real tag push, never a manual
         # workflow_dispatch test build.
         if: github.event_name == 'push'
-        uses: microsoft/microsoft-store-apppublisher@v1.1
+        uses: microsoft/microsoft-store-apppublisher@v1.4
 
       - name: Configure Microsoft Store Developer CLI
         # Credentials for the "PIE Manager CI Publisher" Entra ID app, registered in its own

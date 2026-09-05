@@ -1,3 +1,9 @@
+# Explicit project name: without it, podman-compose/docker-compose derive the project name
+# from this directory's basename ("pie-manager"), which collides with the production
+# install's own compose-prod.yaml (deployed under a directory sharing that same basename) —
+# see compose-prod.yaml's matching `name:` key and .claude/rules/containers-and-backup.md.
+name: pie-manager-dev
+
 services:
   postgres:
     image: docker.io/library/postgres:18-alpine@sha256:63bdc97d67b5133bf0e5ebd500bec6d046fa851dc81340d838f0347e616107e8

@@ -133,6 +133,30 @@ Backend and frontend containers have no exposed ports — all traffic flows thro
 HAProxy uses `parse-resolv-conf` + `resolve-prefer ipv4` to handle Podman's DNS correctly
 on both Docker (127.0.0.11) and Podman (gateway IP) environments.
 
+### Explicit compose project names — `compose.yaml` vs `compose-prod.yaml`
+
+Both files pin a top-level `name:` (`pie-manager-dev` / `pie-manager`) instead of letting
+`podman-compose`/`docker-compose` derive the project name from the containing directory's
+basename. Without this, the dev checkout (`~/workspace/pie-manager`) and a real production
+install (`~/.local/share/pie-manager`) resolve to the **same** project name ("pie-manager")
+purely because both directories share that basename — meaning the same container names and
+the same named volumes, even though the two compose files live at completely different paths.
+
+**This is not theoretical — it happened.** A `podman-compose build`/`up` run from this dev
+checkout in August 2026 (unreleased code including the migration for issue #123's "Performance
+par secteur" feature) resolved to the same project as the live production install, ran
+`alembic upgrade head` against the **real production Postgres volume**, and left it stamped
+two migrations ahead of whatever image tag production's `.env` was actually pinned to. When
+production's own containers next restarted on the old pinned image, the backend crash-looped
+forever (`Can't locate revision`) — production was down until a real release (bundling the
+unreleased migrations) was cut and installed. See git history around 2026-09-05 for the
+incident; no data was lost (both migrations involved were additive/widening, not destructive),
+but it could have gone the other way.
+
+**Rule:** never remove either `name:` key. If a third throwaway compose stack is ever spun up
+from a directory that could also end up named "pie-manager" (a clone, a copy, a test checkout),
+give it an explicit `name:` too — don't rely on directory basenames staying distinct.
+
 ### Port selection (production)
 
 Default port: **14943** (constant `defaultPort` in `installer/common.go`).

@@ -1,6 +1,12 @@
 # compose-prod.yaml — Production deployment using pre-built images from Quay.io
 # Used by the pie-manager installer binary.
 
+# Explicit project name: without it, podman-compose/docker-compose derive the project name
+# from the install directory's basename ("pie-manager"), which collides with the dev
+# checkout's own compose.yaml if it's ever run from a directory sharing that same basename —
+# see compose.yaml's matching `name:` key and .claude/rules/containers-and-backup.md.
+name: pie-manager
+
 services:
   postgres:
     restart: unless-stopped

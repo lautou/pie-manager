@@ -38,7 +38,7 @@ const SUMMARY_COLS: { key: SummarySortCol; label: string; index: number }[] = [
   { key: 'unrealized_pv',     label: 'PV latente',     index: 5 },
   { key: 'unrealized_pv_pct', label: 'PV latente %',   index: 6 },
   { key: 'realized_pv_total', label: 'PV réalisée',    index: 7 },
-  { key: 'net_pv',            label: 'PV nette',       index: 8 },
+  { key: 'net_pv',            label: 'PV globale',     index: 8 },
 ];
 
 // Sort key for column index

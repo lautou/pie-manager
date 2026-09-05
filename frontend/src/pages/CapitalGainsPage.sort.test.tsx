@@ -187,7 +187,7 @@ describe('CapitalGainsPage — sorting the summary and history tables by every c
     expect(screen.getByText('Plus-values')).toBeInTheDocument();
   });
 
-  it('sorts the summary table by PV nette', async () => {
+  it('sorts the summary table by PV globale', async () => {
     const user = userEvent.setup({ delay: null });
     render(<CapitalGainsPage />);
     const ths = Array.from(document.querySelectorAll('th[data-col-index]'));

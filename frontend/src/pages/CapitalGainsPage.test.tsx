@@ -161,7 +161,7 @@ describe('CapitalGainsPage', () => {
     expect(screen.getByText('PV latente %')).toBeInTheDocument();
     // "PV réalisée" appears in summary col and KPI card
     expect(screen.getAllByText('PV réalisée').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('PV nette')).toBeInTheDocument();
+    expect(screen.getByText('PV globale')).toBeInTheDocument();
   });
 
   it('renders tickers with qty_held > 0 in summary', () => {

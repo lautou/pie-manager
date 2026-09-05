@@ -2,6 +2,20 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.6.0] - 2026-09-05
+
+### Added
+
+- **fiscal:** Per-year capital-gains detail and loss-harvesting candidates
+
+### Fixed
+
+- **compose:** Pin explicit project names to prevent dev/prod volume collision
+
+### Rename
+
+- **frontend:** "PV nette" -> "PV globale" in capital gains summary
+
 ## [1.5.7] - 2026-08-27
 
 ### Added

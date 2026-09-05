@@ -2,6 +2,46 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.5.7] - 2026-08-27
+
+### Added
+
+- **indicators:** Add asset-class performance and equity risk premium tabs (#123)
+
+### Changed
+
+- Collapse code-keyed CRUD duplication (backend + frontend) (#124)
+- Dedup frontend CRUD hooks, FX-rate lookup, and dead code (#125)
+- Dedup transactions.py balance logic + extract TransactionModal hook (#126)
+- Dedup PV color/price badges/formatters, fix PV color bug, merge installer main.go
+- Dedup get_or_404/crud_or_http (backend) and QueryStateGuard/chartZoom reconnect (frontend)
+- Dedup held-quantity sign logic and auto-linked fee-transaction creation
+- Split GlobalConfigPage's 408-line CommissionManager into two hooks
+- Dedup installer runInstall/runStartWithCompose across Linux and macOS
+- Dedup ticker-to-pool lookup in holdings.py
+- Dedup native-currency int formatting via existing formatNativeCurrency
+- Dedup FX spot-rate query in twrr_service via dashboard_service._get_spot_rates
+- Use get_or_404 in transactions.py update/delete
+- Dedup DailySnapshot per-date dedup via snapshot_service.dedupe_snapshots_by_date
+- Dedup pgq_app.py schedule/entrypoint registration boilerplate
+- Dedup latest-price-row lookup via dashboard_service._get_latest_price_rows
+- Dedup PatternFly column-sort boilerplate via useColumnSort
+- Replace native alert() with PatternFly <Alert> across admin/config pages
+- Extract Quay.io image repo constants in installer/common.go
+- **installer:** Drop installDesktopAndIcon's unused hasWebKit parameter
+- **frontend:** Extract shared extractApiErrorMessage helper
+- **installer:** Split performInstall into named, mostly-testable helpers
+- **backend:** Extract transaction ledger logic into transaction_service
+
+### Fixed
+
+- Remove unused HTTPException import in brokers.py/products.py
+- Dedup forex-fee adjustment, closing a latent bug in dashboard_service
+- Compute TaxPage's CURRENT_YEAR from the real date instead of a hardcoded 2026
+- Dedup position-value/held-quantity logic, closing a forex-fee gap in holdings history
+- **frontend:** Handle failed PUT on the "include fees in CUMP" checkbox
+- **backend:** Use r2() financial rounding for transaction balances
+
 ## [1.5.6] - 2026-08-24
 
 ### Fixed

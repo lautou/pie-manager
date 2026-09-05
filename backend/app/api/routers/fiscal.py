@@ -122,10 +122,81 @@ class FiscalPvDetail(BaseModel):
     account_id: int
 
 
+class FiscalLossCandidate(BaseModel):
+    ticker: str
+    product_name: str
+    qty_held: float
+    cump: float
+    current_value_eur: float
+    unrealized_pv: float
+
+
 class FiscalCurrentYearPv(BaseModel):
     year: int
     net_realized_pv: float
     details: list[FiscalPvDetail]
+    loss_harvesting_candidates: list[FiscalLossCandidate]
+
+
+async def _get_loss_harvesting_candidates(
+    db: AsyncSession,
+    portfolio_id: int,
+    cto_ids: set[int],
+) -> list[FiscalLossCandidate]:
+    """
+    Currently-held CTO positions (excl. forex) sitting at an unrealized loss right
+    now — candidates the user could sell before year-end to realize more offsetting
+    moins-values. Reuses compute_capital_gains (CUMP/WACOP) and the same
+    price/FX-conversion helpers pv.py's own endpoint uses, scoped per CTO account
+    (compute_capital_gains aggregates by ticker *within* the accounts it's given —
+    calling it once per CTO account_id, then merging by ticker, keeps a ticker held
+    in both a CTO and a non-CTO account from leaking its non-CTO quantity in).
+    """
+    from app.services.dashboard_service import _get_latest_prices, _get_spot_rates
+    from app.services.price_service import _to_eur, r2
+    from app.services.pv_service import compute_capital_gains
+
+    merged: dict[str, dict] = {}
+    for cto_id in cto_ids:
+        cto_pv = await compute_capital_gains(db, portfolio_id, account_id=cto_id)
+        for t in cto_pv.tickers:
+            if t.ticker in _FISCAL_EXCLUDED_TICKERS or t.qty_held <= 0:
+                continue
+            entry = merged.setdefault(
+                t.ticker, {"product_name": t.product_name, "qty_held": 0.0, "cost_basis_eur": 0.0}
+            )
+            entry["qty_held"] += t.qty_held
+            entry["cost_basis_eur"] += t.cost_basis_eur
+
+    if not merged:
+        return []
+
+    tickers = list(merged.keys())
+    prices = await _get_latest_prices(db, tickers)
+    spot_rates = await _get_spot_rates(db)
+
+    candidates: list[FiscalLossCandidate] = []
+    for ticker, data in merged.items():
+        if ticker not in prices:
+            continue
+        native_price, currency = prices[ticker]
+        price_eur = _to_eur(native_price, currency, spot_rates)
+        current_value_eur = r2(data["qty_held"] * price_eur)
+        unrealized_pv = r2(current_value_eur - data["cost_basis_eur"])
+        if unrealized_pv < 0:
+            # qty_held > 0 guaranteed by the merge loop's own skip above — no zero-division risk.
+            cump = data["cost_basis_eur"] / data["qty_held"]
+            candidates.append(FiscalLossCandidate(
+                ticker=ticker,
+                product_name=data["product_name"],
+                qty_held=round(data["qty_held"], 6),
+                cump=round(cump, 6),
+                current_value_eur=current_value_eur,
+                unrealized_pv=unrealized_pv,
+            ))
+
+    candidates.sort(key=lambda c: c.unrealized_pv)
+    return candidates
 
 
 @router.get("/current-year-pv/", response_model=FiscalCurrentYearPv)
@@ -136,8 +207,9 @@ async def get_current_year_pv(
 ):
     """
     Returns realized net PV for the fiscal year from CTO accounts only,
-    excluding JPYEUR=X and other forex tickers (biens meubles regime).
-    Used to anticipate fiscal impact of current-year sales.
+    excluding JPYEUR=X and other forex tickers (biens meubles regime), plus
+    the list of currently-held CTO positions sitting at an unrealized loss
+    right now (loss-harvesting candidates for year-end tax optimization).
     """
     fiscal_year = year or date.today().year
 
@@ -153,7 +225,9 @@ async def get_current_year_pv(
     cto_ids = {row[0] for row in cto_result.all()}
 
     if not cto_ids:
-        return FiscalCurrentYearPv(year=fiscal_year, net_realized_pv=0.0, details=[])
+        return FiscalCurrentYearPv(
+            year=fiscal_year, net_realized_pv=0.0, details=[], loss_harvesting_candidates=[],
+        )
 
     # Use the PV service — filter events by year and CTO account
     from app.services.pv_service import compute_capital_gains
@@ -179,4 +253,10 @@ async def get_current_year_pv(
     details.sort(key=lambda d: d.date, reverse=True)
 
     net_pv = sum(d.realized_pv for d in details)
-    return FiscalCurrentYearPv(year=fiscal_year, net_realized_pv=round(net_pv, 2), details=details)
+    loss_candidates = await _get_loss_harvesting_candidates(db, portfolio_id, cto_ids)
+    return FiscalCurrentYearPv(
+        year=fiscal_year,
+        net_realized_pv=round(net_pv, 2),
+        details=details,
+        loss_harvesting_candidates=loss_candidates,
+    )

@@ -552,8 +552,10 @@ describe('TaxPage', () => {
       });
 
       render(<TaxPage />);
-      // stockAjuste = -5000 + 2000 = -3000 (negative → no warning)
+      // stockAjuste = -5000 + 2000 = -3000 (negative → available-loss-stock message, no warning)
       expect(screen.getByText(/Simulation fiscale 2026/i)).toBeInTheDocument();
+      expect(screen.getByText(/reportables disponibles/i)).toBeInTheDocument();
+      expect(screen.queryByText(/PV imposables estimées/i)).toBeNull();
     });
 
     it('shows the taxable-gains warning when the adjusted loss stock is non-negative', () => {
@@ -606,6 +608,133 @@ describe('TaxPage', () => {
 
       render(<TaxPage />);
       expect(screen.queryByText(/Simulation fiscale 2026/i)).toBeNull();
+    });
+
+    it('shows the gains/losses breakdown and toggles the per-disposal detail table when disposals exist', () => {
+      const activeEntry2022 = { id: 1, portfolio_id: 1, tax_year: 2022, amount_eur: -5000 };
+      mockUseFiscalCarryForwards.mockReturnValue({
+        data: [activeEntry2022],
+        isLoading: false,
+        isError: false,
+      });
+      mockUseFiscalCurrentYearPv.mockReturnValue({
+        data: {
+          year: 2026,
+          net_realized_pv: 300,
+          details: [
+            { date: '2026-03-10', ticker: 'AAA', product_name: 'Product A', qty_sold: 10, realized_pv: 500, account_id: 1 },
+            { date: '2026-02-05', ticker: 'BBB', product_name: 'Product B', qty_sold: 5, realized_pv: -200, account_id: 1 },
+            { date: '2026-01-01', ticker: 'CCC', product_name: 'Product C', qty_sold: 2, realized_pv: 0, account_id: 1 },
+          ],
+        },
+        isLoading: false,
+      });
+
+      render(<TaxPage />);
+
+      // Gross gains/losses subtotal, always visible once there are disposals
+      expect(screen.getByText(/Plus-values/)).toBeInTheDocument();
+      expect(screen.getByText(/Moins-values/)).toBeInTheDocument();
+      expect(screen.getByText(/500,00/)).toBeInTheDocument(); // sum of positive realized_pv
+      expect(screen.getByText(/-200,00/)).toBeInTheDocument(); // sum of negative realized_pv
+
+      // Detail table hidden by default
+      expect(screen.queryByText('AAA')).toBeNull();
+
+      fireEvent.click(screen.getByText('Voir le détail'));
+      expect(screen.getByText('AAA')).toBeInTheDocument();
+      expect(screen.getByText('BBB')).toBeInTheDocument();
+      expect(screen.getByText('CCC')).toBeInTheDocument();
+      expect(screen.getByText('Product A')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('Masquer le détail'));
+      expect(screen.queryByText('AAA')).toBeNull();
+    });
+
+    it('hides the gains/losses breakdown and detail toggle when there are no disposals for the year', () => {
+      mockUseFiscalCarryForwards.mockReturnValue({ data: [], isLoading: false, isError: false });
+      mockUseFiscalCurrentYearPv.mockReturnValue({
+        data: { year: 2026, net_realized_pv: 0, details: [] },
+        isLoading: false,
+      });
+
+      render(<TaxPage />);
+      expect(screen.queryByText('Voir le détail')).toBeNull();
+      expect(screen.queryByText(/Plus-values/)).toBeNull();
+    });
+
+    it('shows only the realized-losses section when every disposal this year is a loss', () => {
+      mockUseFiscalCarryForwards.mockReturnValue({ data: [], isLoading: false, isError: false });
+      mockUseFiscalCurrentYearPv.mockReturnValue({
+        data: {
+          year: 2026,
+          net_realized_pv: -300,
+          details: [
+            { date: '2026-02-05', ticker: 'ONLYLOSS', product_name: 'Only Loss', qty_sold: 5, realized_pv: -300, account_id: 1 },
+          ],
+        },
+        isLoading: false,
+      });
+
+      render(<TaxPage />);
+      fireEvent.click(screen.getByText('Voir le détail'));
+      expect(screen.getByText('ONLYLOSS')).toBeInTheDocument();
+      expect(screen.queryByText('Plus-values réalisées')).toBeNull();
+      expect(screen.getByText('Moins-values réalisées')).toBeInTheDocument();
+    });
+
+    it('shows only the realized-gains section when every disposal this year is a gain', () => {
+      mockUseFiscalCarryForwards.mockReturnValue({ data: [], isLoading: false, isError: false });
+      mockUseFiscalCurrentYearPv.mockReturnValue({
+        data: {
+          year: 2026,
+          net_realized_pv: 300,
+          details: [
+            { date: '2026-02-05', ticker: 'ONLYGAIN', product_name: 'Only Gain', qty_sold: 5, realized_pv: 300, account_id: 1 },
+          ],
+        },
+        isLoading: false,
+      });
+
+      render(<TaxPage />);
+      fireEvent.click(screen.getByText('Voir le détail'));
+      expect(screen.getByText('ONLYGAIN')).toBeInTheDocument();
+      expect(screen.getByText('Plus-values réalisées')).toBeInTheDocument();
+      expect(screen.queryByText('Moins-values réalisées')).toBeNull();
+    });
+
+    it('shows a message when there is no unrealized-loss candidate', () => {
+      mockUseFiscalCarryForwards.mockReturnValue({ data: [], isLoading: false, isError: false });
+      mockUseFiscalCurrentYearPv.mockReturnValue({
+        data: { year: 2026, net_realized_pv: 0, details: [], loss_harvesting_candidates: [] },
+        isLoading: false,
+      });
+
+      render(<TaxPage />);
+      expect(screen.getByText('Aucune position en moins-value latente actuellement.')).toBeInTheDocument();
+    });
+
+    it('renders the loss-harvesting candidates table when candidates exist', () => {
+      mockUseFiscalCarryForwards.mockReturnValue({ data: [], isLoading: false, isError: false });
+      mockUseFiscalCurrentYearPv.mockReturnValue({
+        data: {
+          year: 2026,
+          net_realized_pv: 0,
+          details: [],
+          loss_harvesting_candidates: [
+            {
+              ticker: 'LOSS.DE', product_name: 'Losing ETF',
+              qty_held: 10, cump: 100, current_value_eur: 800, unrealized_pv: -200,
+            },
+          ],
+        },
+        isLoading: false,
+      });
+
+      render(<TaxPage />);
+      expect(screen.getByText('LOSS.DE')).toBeInTheDocument();
+      expect(screen.getByText('Losing ETF')).toBeInTheDocument();
+      expect(screen.getByText(/-200,00/)).toBeInTheDocument();
     });
   });
 });

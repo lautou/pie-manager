@@ -31,8 +31,9 @@ import {
   useUpdateCarryForward,
   useDeleteCarryForward,
 } from '../api/queries';
-import { formatEUR } from '../utils/format';
+import { formatEUR, formatDate } from '../utils/format';
 import type { FiscalCarryForward } from '../types';
+import type { FiscalPvDetail, FiscalLossCandidate } from '../api/queries';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -310,6 +311,82 @@ function NewRow({
   );
 }
 
+// ── Fiscal-simulation detail sub-tables ────────────────────────────────────────
+
+function DisposalTable({ rows }: { rows: FiscalPvDetail[] }) {
+  const { t } = useTranslation();
+  return (
+    <Table aria-label="Détail des cessions" variant="compact" style={{ marginTop: '0.5rem' }}>
+      <Thead>
+        <Tr>
+          <Th>{t('capitalGains.eventDate')}</Th>
+          <Th>{t('capitalGains.ticker')}</Th>
+          <Th>{t('capitalGains.productNameHistory')}</Th>
+          <Th>{t('capitalGains.eventQtySold')}</Th>
+          <Th>{t('capitalGains.realizedPV')}</Th>
+        </Tr>
+      </Thead>
+      <Tbody>
+        {rows.map((d, idx) => (
+          <Tr key={`${d.date}-${d.ticker}-${idx}`}>
+            <Td>{formatDate(d.date)}</Td>
+            <Td><strong>{d.ticker}</strong></Td>
+            <Td>{d.product_name}</Td>
+            <Td>{d.qty_sold.toLocaleString('fr-FR', { maximumFractionDigits: 4 })}</Td>
+            <Td>
+              <span style={{ color: d.realized_pv >= 0 ? '#137333' : '#c00', fontWeight: 500 }}>
+                {d.realized_pv > 0 ? '+' : ''}{formatEUR(d.realized_pv)}
+              </span>
+            </Td>
+          </Tr>
+        ))}
+      </Tbody>
+    </Table>
+  );
+}
+
+function LossHarvestingSection({ candidates }: { candidates: FiscalLossCandidate[] }) {
+  const { t } = useTranslation();
+  return (
+    <div style={{ marginTop: '1rem' }}>
+      <Title headingLevel="h3" size="md" style={{ marginBottom: '0.4rem' }}>
+        {t('taxation.lossHarvestingTitle')}
+      </Title>
+      {candidates.length === 0 ? (
+        <p style={{ fontSize: '0.85rem', color: '#6A6E73', margin: 0 }}>
+          {t('taxation.lossHarvestingEmpty')}
+        </p>
+      ) : (
+        <Table aria-label="Positions en moins-value latente" variant="compact">
+          <Thead>
+            <Tr>
+              <Th>{t('capitalGains.ticker')}</Th>
+              <Th>{t('capitalGains.productName')}</Th>
+              <Th>{t('taxation.qtyHeld')}</Th>
+              <Th>{t('capitalGains.cump')}</Th>
+              <Th>{t('capitalGains.currentValue')}</Th>
+              <Th>{t('capitalGains.unrealizedPV')}</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {candidates.map((c) => (
+              <Tr key={c.ticker}>
+                <Td><strong>{c.ticker}</strong></Td>
+                <Td>{c.product_name}</Td>
+                <Td>{c.qty_held.toLocaleString('fr-FR', { maximumFractionDigits: 4 })}</Td>
+                <Td>{formatEUR(c.cump)}</Td>
+                <Td>{formatEUR(c.current_value_eur)}</Td>
+                {/* Always a loss — the API only ever returns candidates with unrealized_pv < 0 */}
+                <Td><span style={{ color: '#c00', fontWeight: 500 }}>{formatEUR(c.unrealized_pv)}</span></Td>
+              </Tr>
+            ))}
+          </Tbody>
+        </Table>
+      )}
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function TaxPage() {
@@ -317,6 +394,7 @@ export default function TaxPage() {
   const { portfolioId: portfolioIdStr } = useParams<{ portfolioId: string }>();
   const portfolioId = Number(portfolioIdStr);
   const [addingNew, setAddingNew] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
 
   const { data: entries = [], isLoading, isError } = useFiscalCarryForwards(portfolioIdStr);
   const { data: currentYearPv } = useFiscalCurrentYearPv(portfolioIdStr);
@@ -335,6 +413,19 @@ export default function TaxPage() {
   // Fiscal simulation: MV backlog + current year net PV (CTO, excl. JPYEUR=X)
   const pvNetCurrentYear = currentYearPv?.net_realized_pv ?? null;
   const stockAjuste = pvNetCurrentYear !== null ? totalRemaining + pvNetCurrentYear : null;
+
+  // Per-disposal breakdown behind the net figure (already sorted by date desc by the API)
+  const pvDetails = currentYearPv?.details ?? [];
+  const grossGains = pvDetails.reduce((sum, d) => sum + (d.realized_pv > 0 ? d.realized_pv : 0), 0);
+  const grossLosses = pvDetails.reduce((sum, d) => sum + (d.realized_pv < 0 ? d.realized_pv : 0), 0);
+  // A net-zero disposal counts as a gain/neutral row, not a loss — every row lands in
+  // exactly one of the two sections below.
+  const realizedGainsDetails = pvDetails.filter((d) => d.realized_pv >= 0);
+  const realizedLossesDetails = pvDetails.filter((d) => d.realized_pv < 0);
+
+  // Currently-held CTO positions sitting at an unrealized loss right now — candidates
+  // for year-end tax-loss harvesting. Already sorted worst-first by the API.
+  const lossCandidates = currentYearPv?.loss_harvesting_candidates ?? [];
 
   if (isLoading) {
     return (
@@ -463,6 +554,21 @@ export default function TaxPage() {
                 {pvNetCurrentYear >= 0 ? '+' : ''}{formatEUR(pvNetCurrentYear)}
               </strong>
             </div>
+            {pvDetails.length > 0 && (
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', maxWidth: 420,
+                fontSize: '0.82rem', color: '#6A6E73',
+              }}>
+                <span>
+                  {t('taxation.grossGains')}:{' '}
+                  <strong style={{ color: '#137333' }}>+{formatEUR(grossGains)}</strong>
+                </span>
+                <span>
+                  {t('taxation.grossLosses')}:{' '}
+                  <strong style={{ color: '#c00' }}>{formatEUR(grossLosses)}</strong>
+                </span>
+              </div>
+            )}
             <div style={{
               display: 'flex', justifyContent: 'space-between', maxWidth: 420,
               borderTop: '1px solid #b3d4ff', paddingTop: '0.4rem', marginTop: '0.2rem',
@@ -476,14 +582,53 @@ export default function TaxPage() {
               </strong>
             </div>
           </div>
-          {stockAjuste >= 0 && (
+          {stockAjuste >= 0 ? (
             <div style={{ marginTop: '0.75rem', padding: '0.5rem', background: '#fff3cd', borderRadius: 4, fontSize: '0.85rem', color: '#856404' }}>
               {t('taxation.taxableGainsAlert', { amount: formatEUR(stockAjuste), year: CURRENT_YEAR })}
+            </div>
+          ) : (
+            <div style={{ marginTop: '0.75rem', padding: '0.5rem', background: '#d4edda', borderRadius: 4, fontSize: '0.85rem', color: '#155724' }}>
+              {t('taxation.lossStockAvailableAlert', { amount: formatEUR(Math.abs(stockAjuste)), year: CURRENT_YEAR })}
             </div>
           )}
           <div style={{ marginTop: '0.75rem', fontSize: '0.78rem', color: '#6A6E73' }}>
             {t('taxation.disclaimer')}
           </div>
+
+          <LossHarvestingSection candidates={lossCandidates} />
+
+          {pvDetails.length > 0 && (
+            <div style={{ marginTop: '1rem' }}>
+              <Button
+                variant="link"
+                isInline
+                onClick={() => setShowDetail((s) => !s)}
+                style={{ fontSize: '0.82rem' }}
+              >
+                {showDetail ? t('taxation.hideDetail') : t('taxation.viewDetail')}
+              </Button>
+              {showDetail && (
+                <>
+                  {realizedGainsDetails.length > 0 && (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <strong style={{ fontSize: '0.85rem', color: '#137333' }}>
+                        {t('taxation.realizedGains')}
+                      </strong>
+                      <DisposalTable rows={realizedGainsDetails} />
+                    </div>
+                  )}
+                  {realizedLossesDetails.length > 0 && (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <strong style={{ fontSize: '0.85rem', color: '#c00' }}>
+                        {t('taxation.realizedLosses')}
+                      </strong>
+                      <DisposalTable rows={realizedLossesDetails} />
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
     </PageSection>

@@ -1343,7 +1343,7 @@ describe('api/queries — fiscal carry-forward hooks (lines 470-517)', () => {
 describe('api/queries — useFiscalCurrentYearPv (lines 536-546)', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
-  const mockFiscalPv = { year: 2025, net_realized_pv: 1500, details: [] };
+  const mockFiscalPv = { year: 2025, net_realized_pv: 1500, details: [], loss_harvesting_candidates: [] };
 
   it('GETs /api/fiscal/current-year-pv/ with portfolioId', async () => {
     mockGet.mockResolvedValueOnce({ data: mockFiscalPv } as any);

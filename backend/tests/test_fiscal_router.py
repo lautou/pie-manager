@@ -5,7 +5,7 @@ Integration tests for the fiscal carry-forward router.
 Covers CRUD operations and the unique constraint (portfolio + year).
 """
 import pytest
-from tests.helpers import create_portfolio
+from tests.helpers import create_portfolio, create_product
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -147,6 +147,7 @@ async def test_current_year_pv_no_cto_accounts(client):
     body = r.json()
     assert body["net_realized_pv"] == 0.0
     assert body["details"] == []
+    assert body["loss_harvesting_candidates"] == []
 
 
 async def test_current_year_pv_default_year(client):
@@ -280,3 +281,158 @@ async def test_current_year_pv_excludes_jpyeur(client, db_session):
     # JPYEUR excluded → no details
     assert r.json()["details"] == []
     assert r.json()["net_realized_pv"] == 0.0
+
+
+# ── loss-harvesting candidates ───────────────────────────────────────────────
+
+async def _make_cto_account(client, db_session, portfolio_id: int, name: str) -> int:
+    from sqlalchemy import text
+    from tests.helpers import create_broker
+
+    acc = await create_broker(client, portfolio_id, name=name)
+    acc_id = acc["id"]
+    await db_session.execute(
+        text("UPDATE brokers SET is_cto = TRUE WHERE id = :id"), {"id": acc_id}
+    )
+    return acc_id
+
+
+async def _buy(client, portfolio_id: int, account_id: int, ticker: str,
+                qty: float, unit_price: float) -> None:
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": portfolio_id, "account_id": account_id,
+        "date": "2024-01-15", "type": "Actif", "ticker": ticker,
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -abs(qty), "unit_price": unit_price, "unit_price_eur": unit_price,
+        "total_amount": -abs(qty) * unit_price, "total_amount_eur": -abs(qty) * unit_price,
+    })
+    assert r.status_code == 201, r.text
+
+
+async def _seed_price(db_session, ticker: str, price: float, currency: str = "EUR") -> None:
+    from datetime import date as date_cls
+    from app.models.price import AssetPrice
+
+    db_session.add(AssetPrice(
+        ticker=ticker, date=date_cls(2024, 6, 1), price=price, currency=currency, source="manual",
+    ))
+    await db_session.flush()
+
+
+async def test_loss_harvesting_candidate_appears_for_unrealized_loss(client, db_session):
+    """A currently-held CTO position priced below its CUMP appears as a candidate."""
+    pid = await create_portfolio(client, "Fiscal-Loss-Basic")
+    acc_id = await _make_cto_account(client, db_session, pid, "Degiro")
+    await create_product(client, "LOSS.DE", name="Losing ETF", category="Actif")
+
+    await _buy(client, pid, acc_id, "LOSS.DE", qty=10, unit_price=100.0)
+    await _seed_price(db_session, "LOSS.DE", price=80.0)
+
+    r = await client.get("/api/fiscal/current-year-pv/", params={"portfolio_id": pid})
+    assert r.status_code == 200
+    candidates = r.json()["loss_harvesting_candidates"]
+    assert len(candidates) == 1
+    c = candidates[0]
+    assert c["ticker"] == "LOSS.DE"
+    assert c["qty_held"] == pytest.approx(10.0, abs=1e-6)
+    assert c["cump"] == pytest.approx(100.0, rel=1e-4)
+    assert c["current_value_eur"] == pytest.approx(800.0, abs=0.01)
+    assert c["unrealized_pv"] == pytest.approx(-200.0, abs=0.01)
+
+
+async def test_loss_harvesting_excludes_unrealized_gain(client, db_session):
+    """A currently-held CTO position priced above its CUMP is not a candidate."""
+    pid = await create_portfolio(client, "Fiscal-Loss-Gain")
+    acc_id = await _make_cto_account(client, db_session, pid, "Degiro")
+    await create_product(client, "GAIN.DE", name="Winning ETF", category="Actif")
+
+    await _buy(client, pid, acc_id, "GAIN.DE", qty=10, unit_price=100.0)
+    await _seed_price(db_session, "GAIN.DE", price=120.0)
+
+    r = await client.get("/api/fiscal/current-year-pv/", params={"portfolio_id": pid})
+    assert r.status_code == 200
+    assert r.json()["loss_harvesting_candidates"] == []
+
+
+async def test_loss_harvesting_excludes_non_cto_account(client, db_session):
+    """A losing position held in a non-CTO account is never a candidate."""
+    from tests.helpers import create_broker
+
+    pid = await create_portfolio(client, "Fiscal-Loss-NonCTO")
+    # CTO account exists (required for the endpoint to compute anything at all)
+    await _make_cto_account(client, db_session, pid, "Degiro-CTO")
+    non_cto_acc = await create_broker(client, pid, name="PEA-NonCTO")
+    await create_product(client, "PEALOSS.PA", name="PEA Losing ETF", category="Actif")
+
+    await _buy(client, pid, non_cto_acc["id"], "PEALOSS.PA", qty=10, unit_price=100.0)
+    await _seed_price(db_session, "PEALOSS.PA", price=50.0)
+
+    r = await client.get("/api/fiscal/current-year-pv/", params={"portfolio_id": pid})
+    assert r.status_code == 200
+    assert r.json()["loss_harvesting_candidates"] == []
+
+
+async def test_loss_harvesting_excludes_forex_ticker(client, db_session):
+    """A losing JPYEUR=X forex position is excluded (biens meubles regime)."""
+    pid = await create_portfolio(client, "Fiscal-Loss-Forex")
+    acc_id = await _make_cto_account(client, db_session, pid, "Degiro")
+    await create_product(client, "JPYEUR=X", name="JPY / EUR", category="Actif", instrument_type="Cash")
+
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": pid, "account_id": acc_id,
+        "date": "2024-01-01", "type": "Actif", "ticker": "JPYEUR=X",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": 100000, "unit_price": 0.006, "unit_price_eur": 0.006,
+        "total_amount": 600.0, "total_amount_eur": 600.0,
+    })
+    assert r.status_code == 201
+    await _seed_price(db_session, "JPYEUR=X", price=0.004)
+
+    r = await client.get("/api/fiscal/current-year-pv/", params={"portfolio_id": pid})
+    assert r.status_code == 200
+    assert r.json()["loss_harvesting_candidates"] == []
+
+
+async def test_loss_harvesting_excludes_fully_sold_position(client, db_session):
+    """A fully-closed position (qty_held == 0) is never a candidate."""
+    pid = await create_portfolio(client, "Fiscal-Loss-Closed")
+    acc_id = await _make_cto_account(client, db_session, pid, "Degiro")
+    await create_product(client, "CLOSED.DE", name="Closed ETF", category="Actif")
+
+    await _buy(client, pid, acc_id, "CLOSED.DE", qty=10, unit_price=100.0)
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": pid, "account_id": acc_id,
+        "date": "2024-06-01", "type": "Actif", "ticker": "CLOSED.DE",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": 10, "unit_price": 50.0, "unit_price_eur": 50.0,
+        "total_amount": 500.0, "total_amount_eur": 500.0,
+    })
+    assert r.status_code == 201, r.text
+    await _seed_price(db_session, "CLOSED.DE", price=50.0)
+
+    r = await client.get("/api/fiscal/current-year-pv/", params={"portfolio_id": pid})
+    assert r.status_code == 200
+    assert r.json()["loss_harvesting_candidates"] == []
+
+
+async def test_loss_harvesting_no_transactions_returns_empty(client, db_session):
+    """CTO account exists but has no transactions at all → empty candidates list."""
+    pid = await create_portfolio(client, "Fiscal-Loss-Empty")
+    await _make_cto_account(client, db_session, pid, "Degiro")
+
+    r = await client.get("/api/fiscal/current-year-pv/", params={"portfolio_id": pid})
+    assert r.status_code == 200
+    assert r.json()["loss_harvesting_candidates"] == []
+
+
+async def test_loss_harvesting_skips_ticker_with_no_price(client, db_session):
+    """A held CTO position with no AssetPrice row at all is silently skipped, not crashed on."""
+    pid = await create_portfolio(client, "Fiscal-Loss-NoPrice")
+    acc_id = await _make_cto_account(client, db_session, pid, "Degiro")
+    await create_product(client, "NOPRICE.DE", name="No Price ETF", category="Actif")
+
+    await _buy(client, pid, acc_id, "NOPRICE.DE", qty=10, unit_price=100.0)
+
+    r = await client.get("/api/fiscal/current-year-pv/", params={"portfolio_id": pid})
+    assert r.status_code == 200
+    assert r.json()["loss_harvesting_candidates"] == []

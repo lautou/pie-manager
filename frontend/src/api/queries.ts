@@ -746,10 +746,20 @@ export interface FiscalPvDetail {
   account_id: number;
 }
 
+export interface FiscalLossCandidate {
+  ticker: string;
+  product_name: string;
+  qty_held: number;
+  cump: number;
+  current_value_eur: number;
+  unrealized_pv: number;
+}
+
 export interface FiscalCurrentYearPv {
   year: number;
   net_realized_pv: number;
   details: FiscalPvDetail[];
+  loss_harvesting_candidates: FiscalLossCandidate[];
 }
 
 export function useFiscalCurrentYearPv(portfolioId: number | string | undefined, year?: number) {

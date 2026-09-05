@@ -176,7 +176,7 @@ jobs:
         # it. Every tag from v1.0.22 onward gets an accurate, individually
         # generated entry. See CLAUDE.md and issue #15.
         if: github.event_name == 'push'
-        uses: orhun/git-cliff-action@v4.8.0
+        uses: orhun/git-cliff-action@v4.9.0
         with:
           config: cliff.toml
           args: v1.0.21..
@@ -186,7 +186,7 @@ jobs:
 
       - name: Extract this release's changelog entry for the release notes
         if: github.event_name == 'push'
-        uses: orhun/git-cliff-action@v4.8.0
+        uses: orhun/git-cliff-action@v4.9.0
         with:
           config: cliff.toml
           args: --latest --strip header

@@ -328,7 +328,7 @@
     "unrealizedPV": "PV latente",
     "unrealizedPVPct": "PV latente %",
     "realizedPV": "PV réalisée",
-    "netPV": "PV nette",
+    "netPV": "PV globale",
     "eventDate": "Date",
     "eventType": "Type",
     "eventQuantity": "Quantité",

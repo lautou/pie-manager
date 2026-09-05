@@ -318,7 +318,7 @@
     "unrealizedPV": "Unrealized P&L",
     "unrealizedPVPct": "Unrealized P&L %",
     "realizedPV": "Realized P&L",
-    "netPV": "Net P&L",
+    "netPV": "Overall P&L",
     "eventDate": "Date",
     "eventType": "Type",
     "eventQuantity": "Quantity",

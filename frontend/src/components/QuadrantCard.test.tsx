@@ -8,11 +8,6 @@ import { pfCoreStubs, pfTableStubs } from '../../tests/utils/patternfly-mocks';
 vi.mock('@patternfly/react-core', () => ({ ...pfCoreStubs }));
 vi.mock('@patternfly/react-table', () => ({ ...pfTableStubs }));
 
-const mockUseSearchParams = vi.fn();
-vi.mock('react-router-dom', () => ({
-  useSearchParams: () => mockUseSearchParams(),
-}));
-
 const mockUseQuadrant = vi.fn();
 const mockUseHoldings = vi.fn();
 vi.mock('../api/queries', () => ({
@@ -29,7 +24,6 @@ const holdings = [
 
 describe('QuadrantCard', () => {
   beforeEach(() => {
-    mockUseSearchParams.mockReturnValue([new URLSearchParams(), vi.fn()]);
     mockUseHoldings.mockReturnValue({ data: undefined });
   });
 
@@ -86,39 +80,36 @@ describe('QuadrantCard', () => {
     expect(screen.queryByText(/Confiance/)).not.toBeInTheDocument();
   });
 
-  it('shows a hint and no allocation column when there is no portfolio context', () => {
+  it('shows no allocation column when no portfolioId is given (global page usage)', () => {
     mockUseQuadrant.mockReturnValue({
       data: { quadrant: 'goldilocks', growth_confidence: 0.5, inflation_confidence: 0.5, overall_confidence: 0.5, growth_status: 'above', inflation_status: 'above', latest_date: '2026-08-01' },
       isLoading: false,
     });
     render(<QuadrantCard region="us" regionLabel="États-Unis" />);
-    expect(screen.getByText(/Accède à cette page depuis un portefeuille/)).toBeInTheDocument();
     expect(screen.queryByText('Ton allocation')).not.toBeInTheDocument();
+    expect(mockUseHoldings).toHaveBeenCalledWith(undefined);
   });
 
-  it('shows the allocation column computed from holdings when a portfolio context is present', () => {
-    mockUseSearchParams.mockReturnValue([new URLSearchParams('from=3'), vi.fn()]);
+  it('shows the allocation column computed from holdings when portfolioId is given (Rebalancing page usage)', () => {
     mockUseHoldings.mockReturnValue({ data: holdings });
     mockUseQuadrant.mockReturnValue({
       data: { quadrant: 'goldilocks', growth_confidence: 0.5, inflation_confidence: 0.5, overall_confidence: 0.5, growth_status: 'above', inflation_status: 'above', latest_date: '2026-08-01' },
       isLoading: false,
     });
-    render(<QuadrantCard region="us" regionLabel="États-Unis" />);
+    render(<QuadrantCard region="us" regionLabel="États-Unis" portfolioId="3" />);
     expect(mockUseHoldings).toHaveBeenCalledWith('3');
     expect(screen.getByText('Ton allocation')).toBeInTheDocument();
     expect(screen.getByText('70.0 %')).toBeInTheDocument();
     expect(screen.getByText('30.0 %')).toBeInTheDocument();
-    expect(screen.queryByText(/Accède à cette page depuis un portefeuille/)).not.toBeInTheDocument();
   });
 
   it('shows a placeholder in the allocation column while holdings have not loaded yet', () => {
-    mockUseSearchParams.mockReturnValue([new URLSearchParams('from=3'), vi.fn()]);
     mockUseHoldings.mockReturnValue({ data: undefined });
     mockUseQuadrant.mockReturnValue({
       data: { quadrant: 'goldilocks', growth_confidence: 0.5, inflation_confidence: 0.5, overall_confidence: 0.5, growth_status: 'above', inflation_status: 'above', latest_date: '2026-08-01' },
       isLoading: false,
     });
-    render(<QuadrantCard region="us" regionLabel="États-Unis" />);
+    render(<QuadrantCard region="us" regionLabel="États-Unis" portfolioId="3" />);
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
 });

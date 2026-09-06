@@ -87,11 +87,22 @@ vi.mock('../api/client', () => ({
 
 // Mock API queries
 const mockUseDashboard = vi.fn();
+const mockUseMacroRegions = vi.fn();
 
 vi.mock('../api/queries', () => ({
   useDashboard: (...args: any[]) => mockUseDashboard(...args),
   // No rebalancing.tolerance_* rows saved → components fall back to their defaults (1% / 2%).
   useSystemSetting: () => ({ data: undefined }),
+  useMacroRegions: () => mockUseMacroRegions(),
+}));
+
+// QuadrantCard's own rendering (favorability table, allocation column, etc.) is already
+// covered by QuadrantCard.test.tsx — here we only assert it receives the right region/
+// portfolioId props (Option C: an explicit prop, no more silent URL-`?from=`-param inference).
+vi.mock('../components/QuadrantCard', () => ({
+  default: ({ region, regionLabel, portfolioId }: any) => (
+    <div data-testid="quadrant-card">{region}|{regionLabel}|{String(portfolioId)}</div>
+  ),
 }));
 
 const mockDashboard = {
@@ -108,9 +119,15 @@ const mockDashboard = {
 
 import RebalancingPage from './RebalancingPage';
 
+const macroRegions = [
+  { code: 'us', label: 'États-Unis', equity_ticker: '^SPXEW', bond_ticker: 'GOVT' },
+  { code: 'fr', label: 'France', equity_ticker: '^FCHI', bond_ticker: 'MTE.PA' },
+];
+
 describe('RebalancingPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseMacroRegions.mockReturnValue({ data: macroRegions });
   });
 
   afterEach(() => {
@@ -140,6 +157,33 @@ describe('RebalancingPage', () => {
     render(<RebalancingPage />);
     expect(screen.getByText('Rééquilibrage')).toBeInTheDocument();
     expect(screen.getByTestId('sync-badge')).toBeInTheDocument();
+  });
+
+  it('renders the macro context card, defaulting to the first region and passing the route portfolio ID', () => {
+    mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
+    render(<RebalancingPage />);
+    expect(screen.getByText('Contexte macro-économique')).toBeInTheDocument();
+    // portfolioId comes from useParams (mocked to '1' above) — Option C's explicit prop,
+    // never a silent URL `?from=` param the way the old QuadrantCard used to infer it.
+    expect(screen.getByTestId('quadrant-card')).toHaveTextContent('us|États-Unis|1');
+  });
+
+  it('switching the macro context region combobox updates the QuadrantCard region props', async () => {
+    mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
+    const user = userEvent.setup({ delay: null });
+    render(<RebalancingPage />);
+    expect(screen.getByTestId('quadrant-card')).toHaveTextContent('us|États-Unis|1');
+
+    await user.selectOptions(screen.getByLabelText('Zone'), 'fr');
+    expect(screen.getByTestId('quadrant-card')).toHaveTextContent('fr|France|1');
+  });
+
+  it('does not render the macro context QuadrantCard when the region list is empty', () => {
+    mockUseMacroRegions.mockReturnValue({ data: [] });
+    mockUseDashboard.mockReturnValue({ data: mockDashboard, isLoading: false, isError: false });
+    render(<RebalancingPage />);
+    expect(screen.getByText('Contexte macro-économique')).toBeInTheDocument();
+    expect(screen.queryByTestId('quadrant-card')).not.toBeInTheDocument();
   });
 
   it('renders simulator card with mode toggles', () => {

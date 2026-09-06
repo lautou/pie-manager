@@ -27,6 +27,10 @@ paths:
   - "frontend/src/components/EquityPremiumSection.tsx"
   - "backend/app/services/code_keyed_crud.py"
   - "frontend/src/components/CrudManager.tsx"
+  - "frontend/src/components/QuadrantCard.tsx"
+  - "frontend/src/utils/portfolioAllocation.ts"
+  - "frontend/src/utils/quadrantContent.ts"
+  - "frontend/src/pages/RebalancingPage.tsx"
 ---
 
 ## Shared CRUD abstractions — use these for the next code-keyed universe, don't hand-copy again
@@ -178,6 +182,44 @@ rarely lands exactly on a preset boundary). See `.claude/rules/chart-zoom.md` �
 was found and fixed while responding to live user bug reports against this exact chart, in the
 order: wrong zoom range → native text-selection during drag → duplicate axis year labels →
 missing reset button → verbose Victory-default hover tooltip.
+
+## Growth/inflation quadrant classifier
+
+A read-only classifier layered on top of the growth/inflation ratio charts above — never writes
+to `Pool.target_pct`, never suggests a rebalancing action. `classify_quadrant(growth_status,
+inflation_status)` maps the two ratios' "above/below moving average" status to one of 4 macro
+regimes (`_QUADRANT_BY_STATUS` in `macro_indicators_service.py`); `compute_confidence(ratio,
+moving_avg)` is a self-designed z-score of the ratio-vs-MA deviation over historical volatility,
+squashed via `tanh` into `[-1, +1]` (not a published methodology — an original heuristic).
+`compute_quadrant(db, region_code, ma_years)` ties both together per region; exposed as `GET
+/api/indicators/quadrant?region=...`. `frontend/src/utils/quadrantContent.ts` holds
+`QUADRANT_FAVORABILITY` (an original favorable/unfavorable table per asset class per quadrant —
+not copied from any proprietary source) and `CATEGORY_ORDER`
+(`actions`/`obligations`/`or`/`cash`). `frontend/src/utils/portfolioAllocation.ts`'s
+`computeAllocationByCategory(holdings)` is the reusable piece that turns a `useHoldings()` result
+into those same 4 categories' percentages — kept separate from the quadrant math itself since it
+has nothing to do with macro regimes, only with reading `instrument_type` off real holdings.
+
+**`QuadrantCard.tsx` takes `portfolioId` as an explicit, caller-supplied prop — never inferred
+from the URL.** The global `/indicators` page (`GrowthInflationSection.tsx`) renders it with no
+`portfolioId` at all: a pure macro read (favorable/unfavorable per asset class + confidence
+score), no "Ton allocation" column. `RebalancingPage.tsx` renders a second instance with its own
+route `portfolioId` (that page is already scoped to one portfolio, its name always shown in the
+page header), which turns on the "Ton allocation" column comparing the quadrant's favorability
+against that portfolio's real, current allocation.
+
+This replaced an earlier, confusing design where `QuadrantCard` read a portfolio ID off a
+`?from=<portfolioId>` query-string param that the global page's own nav link silently appended
+(originally added only so the page's "Retour" button could point back at the right portfolio —
+a legitimate, still-present mechanism, see `App.tsx`'s `GlobalLayout`). `QuadrantCard` piggybacked
+on that same param to silently fetch and display one specific portfolio's allocation, with
+nothing on screen naming which portfolio it was — confusing on a page explicitly labeled
+"Global", and would not have scaled past a couple of portfolios (a `?from=`-based "last viewed"
+portfolio has no way to let a user compare against a *different* one, or against several, without
+more URL-param plumbing). The explicit-prop version fixes this by construction: the global page
+structurally cannot show a per-portfolio column (no prop = no column, no ambiguity), and any
+portfolio-scoped page that wants the comparison passes its own already-unambiguous portfolio ID
+directly, no shared URL convention required between pages.
 
 ## Country market performance leaderboard (portfolio-independent)
 

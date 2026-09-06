@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Card, CardBody, CardTitle,
+  FormSelect, FormSelectOption,
   PageSection, PageSectionVariants,
   Title,
   ToggleGroup, ToggleGroupItem,
@@ -10,8 +11,9 @@ import {
 } from '@patternfly/react-core';
 import { useState, useRef, useEffect } from 'react';
 import { formatEUR } from '../utils/format';
-import { useDashboard, useSystemSetting } from '../api/queries';
+import { useDashboard, useMacroRegions, useSystemSetting } from '../api/queries';
 import apiClient from '../api/client';
+import QuadrantCard from '../components/QuadrantCard';
 import SyncBadge from '../components/SyncBadge';
 import { renderLoadingState, renderErrorState } from '../components/QueryStateGuard';
 
@@ -32,6 +34,18 @@ function severityLevel(gapPct: number, okPct: number, warningPct: number): Sever
 export default function RebalancingPage() {
   const { t } = useTranslation();
   const { portfolioId } = useParams<{ portfolioId: string }>();
+  const { data: macroRegions = [] } = useMacroRegions();
+  const [macroRegion, setMacroRegion] = useState<string>('');
+
+  // Default to the first available region once the list loads, same convention as
+  // GrowthInflationSection.tsx (regions are user-managed, no hardcoded default).
+  useEffect(() => {
+    if (!macroRegion && macroRegions.length > 0) setMacroRegion(macroRegions[0].code);
+  }, [macroRegion, macroRegions]);
+
+  const currentMacroRegion = macroRegions.find((r) => r.code === macroRegion);
+  const macroRegionLabel = currentMacroRegion?.label ?? macroRegion;
+
   const [rebalMode, setRebalMode] = useState<'contribution' | 'hybrid' | 'hard'>('contribution');
   const [injection, setInjection] = useState(0);
   const [commissionPct, setCommissionPct] = useState(0);
@@ -102,6 +116,26 @@ export default function RebalancingPage() {
         <Title headingLevel="h1" size="xl">{t('rebalancing.title')}</Title>
         <SyncBadge />
       </div>
+
+      <Card style={{ marginBottom: '1.5rem' }}>
+        <CardTitle>{t('rebalancing.macroContextTitle')}</CardTitle>
+        <CardBody>
+          <div style={{ width: 220, marginBottom: '1rem' }}>
+            <FormSelect
+              value={macroRegion}
+              onChange={(_e, val) => setMacroRegion(val)}
+              aria-label={t('indicators.regionSelectLabel')}
+            >
+              {macroRegions.map((r) => (
+                <FormSelectOption key={r.code} value={r.code} label={r.label} />
+              ))}
+            </FormSelect>
+          </div>
+          {macroRegion && (
+            <QuadrantCard region={macroRegion} regionLabel={macroRegionLabel} portfolioId={portfolioId} />
+          )}
+        </CardBody>
+      </Card>
 
       <Card style={{ marginBottom: '1.5rem', borderTop: '3px solid #0066CC' }}>
         <CardTitle>

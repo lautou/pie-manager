@@ -423,6 +423,7 @@
     "targetAllocation": "Target allocation",
     "delta": "Delta",
     "action": "Action",
+    "macroContextTitle": "Macro-economic context",
     "actions": {
       "buy": "Buy",
       "sell": "Sell",
@@ -629,7 +630,6 @@
     "quadrantAssetColumn": "Asset class",
     "quadrantFavorabilityColumn": "General read",
     "quadrantAllocationColumn": "Your allocation",
-    "quadrantNoPortfolioContext": "Open this page from a portfolio to compare against your own allocation.",
     "quadrant": {
       "goldilocks": "Growth + disinflation (\"Goldilocks\")",
       "overheating": "Growth + inflation (overheating)",

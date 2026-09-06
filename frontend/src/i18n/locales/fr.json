@@ -434,6 +434,7 @@
     "targetAllocation": "Allocation cible",
     "delta": "Écart",
     "action": "Action",
+    "macroContextTitle": "Contexte macro-économique",
     "actions": {
       "buy": "Acheter",
       "sell": "Vendre",
@@ -640,7 +641,6 @@
     "quadrantAssetColumn": "Classe d'actif",
     "quadrantFavorabilityColumn": "Lecture générale",
     "quadrantAllocationColumn": "Ton allocation",
-    "quadrantNoPortfolioContext": "Accède à cette page depuis un portefeuille pour comparer avec ta propre allocation.",
     "quadrant": {
       "goldilocks": "Croissance + désinflation (\"Boucle d'or\")",
       "overheating": "Croissance + inflation (surchauffe)",

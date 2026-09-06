@@ -2,6 +2,17 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.8.0] - 2026-09-06
+
+### Added
+
+- **indicators:** Add 7 more regions to the growth/inflation quadrant
+- **indicators:** Add growth/inflation quadrant classifier
+
+### Fixed
+
+- **installer:** Bump Windows native launcher's PostgreSQL 16.14 to 18.4
+
 ## [1.7.1] - 2026-09-06
 
 ### Fixed

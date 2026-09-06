@@ -27,6 +27,8 @@ interface ConfirmModalProps {
    * modal is still a single confirm/cancel action, just with richer body
    * content than a plain text message. */
   children?: ReactNode;
+  /** Error rendered below `children`, e.g. after a failed onConfirm. */
+  error?: string | null;
 }
 
 export default function ConfirmModal({
@@ -41,6 +43,7 @@ export default function ConfirmModal({
   onConfirm,
   onCancel,
   children,
+  error,
 }: ConfirmModalProps) {
   const { t } = useTranslation();
   const paragraphs = message ? (Array.isArray(message) ? message : [message]) : [];
@@ -66,6 +69,11 @@ export default function ConfirmModal({
           </Content>
         )}
         {children}
+        {error && (
+          <div style={{ color: 'var(--pf-t--global--text--color--status--danger--default)', marginTop: '0.5rem', fontSize: '0.85rem' }}>
+            {error}
+          </div>
+        )}
       </ModalBody>
       <ModalFooter>
         <Button key="confirm" variant={variant} onClick={onConfirm} isLoading={isLoading} isDisabled={isLoading || isConfirmDisabled}>

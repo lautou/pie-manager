@@ -199,13 +199,13 @@ export default function PortfolioSelectPage() {
         variant="primary"
         confirmLabel={t('common.create')}
         isLoading={createPortfolio.isPending}
+        error={error}
         onConfirm={handleCreate}
         onCancel={() => { setCreateOpen(false); setError(''); }}
       >
         <TextInput placeholder="Nom du portefeuille" value={newName}
           onChange={(_e, v) => setNewName(v)}
           onKeyDown={(e) => e.key === 'Enter' && handleCreate()} />
-        {error && <div style={{ color: 'var(--pf-t--global--text--color--status--danger--default)', marginTop: '0.5rem', fontSize: '0.85rem' }}>{error}</div>}
       </ConfirmModal>
 
       {/* Rename modal */}
@@ -215,6 +215,7 @@ export default function PortfolioSelectPage() {
         variant="primary"
         confirmLabel={t('portfolioSelect.rename')}
         isLoading={renamePortfolio.isPending}
+        error={error}
         onConfirm={handleRename}
         onCancel={() => { setRenameTarget(null); setError(''); }}
       >
@@ -224,7 +225,6 @@ export default function PortfolioSelectPage() {
             t => t ? { ...t, name: v } : t,
           )}
           onKeyDown={(e) => e.key === 'Enter' && handleRename()} />
-        {error && <div style={{ color: 'var(--pf-t--global--text--color--status--danger--default)', marginTop: '0.5rem', fontSize: '0.85rem' }}>{error}</div>}
       </ConfirmModal>
 
       {/* Delete confirmation modal — GitHub-style name confirmation */}
@@ -269,11 +269,11 @@ export default function PortfolioSelectPage() {
         variant="primary"
         confirmLabel={t('portfolioSelect.generateDemoConfirm')}
         isLoading={createDemoPortfolio.isPending}
+        error={error}
         onConfirm={handleGenerateDemo}
         onCancel={() => { setDemoOpen(false); setError(''); }}
       >
         <Content component={ContentVariants.p}>{t('portfolioSelect.generateDemoBody')}</Content>
-        {error && <div style={{ color: 'var(--pf-t--global--text--color--status--danger--default)', marginTop: '0.5rem', fontSize: '0.85rem' }}>{error}</div>}
       </ConfirmModal>
     </PageSection>
   );

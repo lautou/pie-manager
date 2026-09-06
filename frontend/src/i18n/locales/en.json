@@ -555,7 +555,11 @@
     "rename": "Rename",
     "noPortfolios": "No portfolios",
     "deleteConfirm": "Delete portfolio \"{{name}}\"?",
-    "deleteConfirmButton": "Delete permanently"
+    "deleteConfirmButton": "Delete permanently",
+    "generateDemo": "Generate a demo portfolio",
+    "generateDemoTitle": "Demo portfolio",
+    "generateDemoBody": "This will create a new portfolio with fictional data: the same brokers already configured, an Offensive/Defensive split, and one example asset per category already present in your catalogue. No real data is changed.",
+    "generateDemoConfirm": "Generate"
   },
   "syncBadge": {
     "syncing": "Syncing…",

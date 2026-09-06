@@ -22,8 +22,10 @@ import {
 	ContentVariants,
 	Title
 } from '@patternfly/react-core';
-import { ImportIcon, PencilAltIcon, PlusCircleIcon, TrashIcon } from '@patternfly/react-icons';
-import { usePortfolios, useCreatePortfolio, useRenamePortfolio, useDeletePortfolio } from '../api/queries';
+import { ImportIcon, MagicIcon, PencilAltIcon, PlusCircleIcon, TrashIcon } from '@patternfly/react-icons';
+import {
+  usePortfolios, useCreatePortfolio, useRenamePortfolio, useDeletePortfolio, useCreateDemoPortfolio,
+} from '../api/queries';
 import { extractApiErrorMessage } from '../utils/errors';
 
 function fmtDate(iso: string | null | undefined): string {
@@ -39,8 +41,10 @@ export default function PortfolioSelectPage() {
   const createPortfolio = useCreatePortfolio();
   const renamePortfolio = useRenamePortfolio();
   const deletePortfolio = useDeletePortfolio();
+  const createDemoPortfolio = useCreateDemoPortfolio();
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [demoOpen, setDemoOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [deleteConfirmName, setDeleteConfirmName] = useState('');
   const [renameTarget, setRenameTarget] = useState<{ id: number; name: string } | null>(null);
@@ -78,6 +82,17 @@ export default function PortfolioSelectPage() {
     setDeleteConfirmName('');
   };
 
+  const handleGenerateDemo = async () => {
+    setError('');
+    try {
+      const demo = await createDemoPortfolio.mutateAsync();
+      setDemoOpen(false);
+      navigate(`/portfolio/${demo.id}/dashboard`);
+    } catch (e) {
+      setError(extractApiErrorMessage(e, 'Erreur'));
+    }
+  };
+
   return (
     <PageSection hasBodyWrapper={false} variant={PageSectionVariants.default}>
       <Content style={{ marginBottom: '2rem', textAlign: 'center' }}>
@@ -107,6 +122,11 @@ export default function PortfolioSelectPage() {
           <Button variant="primary" icon={<PlusCircleIcon />} onClick={() => setCreateOpen(true)}>
             {t('portfolioSelect.createPortfolio')}
           </Button>
+          <div style={{ marginTop: '1rem' }}>
+            <Button variant="secondary" icon={<MagicIcon />} onClick={() => { setDemoOpen(true); setError(''); }}>
+              {t('portfolioSelect.generateDemo')}
+            </Button>
+          </div>
           <div style={{ marginTop: '1rem' }}>
             <Button variant="link" component="a" href="/system">
               Administration système (restaurer une sauvegarde)
@@ -160,9 +180,12 @@ export default function PortfolioSelectPage() {
             ))}
           </div>
 
-          <div style={{ textAlign: 'center' }}>
+          <div style={{ textAlign: 'center', display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
             <Button variant="secondary" icon={<PlusCircleIcon />} onClick={() => { setCreateOpen(true); setError(''); setNewName(''); }}>
               {t('portfolioSelect.newPortfolio')}
+            </Button>
+            <Button variant="secondary" icon={<MagicIcon />} onClick={() => { setDemoOpen(true); setError(''); }}>
+              {t('portfolioSelect.generateDemo')}
             </Button>
           </div>
           <div style={{ textAlign: 'center' }}>
@@ -247,6 +270,22 @@ export default function PortfolioSelectPage() {
             {t('portfolioSelect.deleteConfirmButton')}
           </Button>
           <Button key="cancel" variant="link" onClick={() => { setDeleteTarget(null); setDeleteConfirmName(''); }}>{t('common.cancel')}</Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Generate demo portfolio confirmation modal */}
+      <Modal variant={ModalVariant.small} isOpen={demoOpen}
+        onClose={() => { setDemoOpen(false); setError(''); }}>
+        <ModalHeader title={t('portfolioSelect.generateDemoTitle')} />
+        <ModalBody>
+          <Content component={ContentVariants.p}>{t('portfolioSelect.generateDemoBody')}</Content>
+          {error && <div style={{ color: 'var(--pf-t--global--text--color--status--danger--default)', marginTop: '0.5rem', fontSize: '0.85rem' }}>{error}</div>}
+        </ModalBody>
+        <ModalFooter>
+          <Button key="ok" variant="primary" onClick={handleGenerateDemo} isLoading={createDemoPortfolio.isPending}>
+            {t('portfolioSelect.generateDemoConfirm')}
+          </Button>
+          <Button key="cancel" variant="link" onClick={() => setDemoOpen(false)}>{t('common.cancel')}</Button>
         </ModalFooter>
       </Modal>
     </PageSection>

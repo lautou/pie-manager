@@ -74,6 +74,14 @@ export function useDeletePortfolio() {
   });
 }
 
+export function useCreateDemoPortfolio() {
+  const qc = useQueryClient();
+  return useMutation<User, Error, void>({
+    mutationFn: async () => (await apiClient.post<User>('/api/portfolios/demo')).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['portfolios'] }),
+  });
+}
+
 // ── Brokers ────────────────────────────────────────────────────────────────
 
 export function useBrokers(userId: number | string | undefined) {

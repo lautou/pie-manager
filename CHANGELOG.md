@@ -2,6 +2,23 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.7.0] - 2026-09-06
+
+### Added
+
+- **fiscal:** Tax-loss harvesting recommendation with fee-aware precision
+- **portfolios:** Add demo portfolio generator
+- **indicators:** Add sovereign bond market performance indicator
+
+### Changed
+
+- **frontend:** Migrate PortfolioSelectPage modals onto ConfirmModal
+- **frontend:** Deduplicate error display across ConfirmModal callers
+
+### Fixed
+
+- **fiscal:** Include acquisition/disposal fees and exact proceeds in realized PV
+
 ## [1.6.0] - 2026-09-05
 
 ### Added

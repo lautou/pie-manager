@@ -2,6 +2,12 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.7.1] - 2026-09-06
+
+### Fixed
+
+- **admin:** Stop backup/restore crashing on non-UTF-8 subprocess output
+
 ## [1.7.0] - 2026-09-06
 
 ### Added

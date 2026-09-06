@@ -205,6 +205,24 @@ the compose file and this pre-pull step.
   `isPidRunning`'s own doc comment accepts for Postgres, whose `postmaster.pid` format isn't ours
   to extend the same way.
 
+  **PostgreSQL bumped from 16.14 to 18.4** (`build-installer.yml`'s EDB Windows download URL),
+  matching every other platform at PostgreSQL 18 — triggered by a real, live user-reported
+  cross-platform restore failure this session: a PG18-produced backup (Linux/macOS containers)
+  could never be restored by this launcher's own bundled PG16 `pg_restore.exe` ("version non
+  supportée (1.16) dans le fichier d'en-tête"). The container installer's PGDATA-on-a-fresh-mount
+  concern (`.claude/rules/containers-and-backup.md`'s "PostgreSQL major-version bumps") doesn't
+  apply here — this launcher's data directory is a plain filesystem path under
+  `%USERPROFILE%\PieManager\pgdata`, not a Podman volume mount, so there's no `lost+found`-style
+  non-empty-mount-point issue, only the version-compatibility one. `pg_version_guard.go`'s
+  `checkPostgresUpgradeCompatibility` (new, fully tested) now guards any existing data directory
+  against this bump or any future major bump: it compares the bundled `postgres.exe --version`
+  output against the data directory's own `PG_VERSION` file and refuses to start rather than risk
+  corrupting an incompatible on-disk format — mirroring `installer/common.go`'s equivalent guard
+  on the container-based installer, but with different remediation text, since the Microsoft
+  Store silently replaces the previous package on update (no "reopen the old version and back up
+  first" step is possible here, unlike the container installer where the old image/container is
+  still present when its own guard fires).
+
   **Intentionally untestable** (real process spawns/OS liveness checks, same class as the
   Podman-based installer's own untestable bucket) — `runInitdb`, `stopPostgres`,
   `createAppDatabase`, `startBackend`, `startWorker`, `isPidRunning`, `recoverFromPreviousSession`,
@@ -399,6 +417,19 @@ non-interactive contexts.
 `~/.claude/rules/podman-pasta-dual-stack-networking.md` rule**: use `curl -4`/`127.0.0.1`,
 never bare `localhost`, or a healthy Vite dev server can look unreachable
 (`Connection reset by peer`).
+
+**Never `chown`/change ownership inside a container that has this repo (or any real working
+directory) bind-mounted, under rootless Podman.** Rootless Podman remaps container UIDs to a
+host subuid range (`/proc/self/uid_map`) — a `chown` run *inside* the container against a
+bind-mounted path is not container-local, it's a real host-side chown through that mapping.
+Confirmed live: mounting this repo into a throwaway `golang:1.23-alpine` container to test-run
+Go code (Go isn't installed on this machine) and running `chown -R tester /repo` inside it to
+drop root for a test re-owned all ~93k files on the host to an unrelated subuid, breaking `git`
+outright ("detected dubious ownership") until fixed with `podman unshare chown -R 0:0 <path>`
+(re-enters the same UID mapping, so `0:0` there resolves back to the host user). If a container
+run needs a non-root user against a bind-mounted real directory, either mount a scratch
+copy/tmpfs instead of the real path, or use `--userns=keep-id` so the container's non-root user
+already maps 1:1 to the host caller instead of chowning anything.
 
 ## Key data model
 

@@ -341,11 +341,22 @@ jobs:
         # bin+share+lib must all be staged together with their relative layout preserved —
         # pg_ctl/initdb/postgres.exe locate their own share/lib dependencies relative to their
         # own location, confirmed via #76/#82's earlier proof-of-work poc iterations.
+        #
+        # Bumped from 16.14 to 18.4 (real EDB Windows x64 build, verified to resolve with a
+        # genuine application/zip response before pinning — get.enterprisedb.com returns 403 for
+        # a truly nonexistent version, not a false-positive 200) after a real cross-platform
+        # restore failure this session: every other platform (Linux/macOS, container-based) runs
+        # PostgreSQL 18, so a PG18-produced backup could never be restored on this launcher's own
+        # bundled PG16 pg_restore.exe ("version non supportée (1.16) dans le fichier d'en-tête").
+        # pg_version_guard.go's checkPostgresUpgradeCompatibility now protects any existing
+        # PG16-initialized data directory from this same bump (or any future major bump) —
+        # see its own doc comment for why the container installer's "reopen the old version and
+        # back up first" messaging doesn't transfer to a Store app.
         working-directory: installer/launcher-native
         shell: pwsh
         run: |
           $ProgressPreference = 'SilentlyContinue'
-          $url = "https://get.enterprisedb.com/postgresql/postgresql-16.14-1-windows-x64-binaries.zip"
+          $url = "https://get.enterprisedb.com/postgresql/postgresql-18.4-1-windows-x64-binaries.zip"
           Invoke-WebRequest -Uri $url -OutFile pg.zip
           Expand-Archive -Path pg.zip -DestinationPath pg_extracted -Force
           New-Item -ItemType Directory -Force -Path pgsql | Out-Null

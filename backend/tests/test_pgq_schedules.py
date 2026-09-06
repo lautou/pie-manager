@@ -32,6 +32,7 @@ from app.tasks.pgq_app import (
     CHECK_GITHUB_UPDATE_CRON,
     COMPUTE_DAILY_SNAPSHOTS_CRON,
     COMPUTE_MONTHLY_SNAPSHOTS_CRON,
+    REFRESH_BOND_PERFORMANCE_CRON,
     REFRESH_COUNTRY_PERFORMANCE_CRON,
     REFRESH_EQUITY_PREMIUM_CRON,
     REFRESH_ETF_HOLDINGS_CRON,
@@ -49,6 +50,7 @@ ALL_CRONS = [
     REFRESH_COUNTRY_PERFORMANCE_CRON,
     REFRESH_SECTOR_PERFORMANCE_CRON,
     REFRESH_EQUITY_PREMIUM_CRON,
+    REFRESH_BOND_PERFORMANCE_CRON,
     CHECK_GITHUB_UPDATE_CRON,
 ]
 
@@ -109,6 +111,13 @@ def test_equity_premium_fires_15_minutes_after_sector_performance():
     """05:00/05:15/05:30/05:45 UTC stagger keeps 4 daily Yahoo-hitting jobs from all firing at
     once — see macro_indicators/country_performance/sector_performance/equity_premium."""
     assert REFRESH_EQUITY_PREMIUM_CRON == "45 5 * * *"
+
+
+def test_bond_performance_fires_15_minutes_after_equity_premium():
+    """05:00/05:15/05:30/05:45/06:00 UTC stagger keeps 5 daily Yahoo-hitting jobs from all
+    firing at once — see macro_indicators/country_performance/sector_performance/
+    equity_premium/bond_performance."""
+    assert REFRESH_BOND_PERFORMANCE_CRON == "0 6 * * *"
 
 
 def test_pgqueuer_scheduler_computes_next_run_in_utc_not_local_time():

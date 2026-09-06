@@ -36,3 +36,7 @@ export const useSectorPerfSyncStatus = makeSyncStatusHook(
 export const useEquityPremiumSyncStatus = makeSyncStatusHook(
   '/api/indicators/equity-premium/sync-status', 'equity-premium-sync-status',
 );
+
+export const useBondPerfSyncStatus = makeSyncStatusHook(
+  '/api/indicators/bond-performance/sync-status', 'bond-perf-sync-status',
+);

@@ -38,7 +38,7 @@ dequeue query's `stale` handling — a recovered row transfers ownership of its 
 slot, it doesn't add a second one). Most of the registered tasks have both a schedule and an
 entrypoint (`refresh_prices_live`/`refresh_etf_holdings`/`refresh_macro_indicators`/
 `refresh_country_performance`/`refresh_sector_performance`/`refresh_equity_premium`/
-`compute_daily_snapshots_all_users`) —
+`refresh_bond_performance`/`compute_daily_snapshots_all_users`) —
 `compute_monthly_snapshots_all_users` has no entrypoint to unify onto (nothing to race against,
 see below) and keeps calling `_run_tracked` directly from its schedule handler.
 
@@ -73,6 +73,7 @@ no containers).
 | refresh_country_performance          | hour=7, minute=15                   | 15 5 * * *             |
 | refresh_sector_performance (no Celery equivalent) | —                       | 30 5 * * *             |
 | refresh_equity_premium (no Celery equivalent) | —                          | 45 5 * * *             |
+| refresh_bond_performance (no Celery equivalent) | —                        | 0 6 * * *              |
 | check_github_update (issue #113, no Celery equivalent) | —                  | 0 */6 * * *            |
 
 PgQueuer's `SchedulerManager` computes cron next-run times by seeding `croniter` with
@@ -85,7 +86,8 @@ documented drift — not worth dynamic DST-aware scheduling for a personal singl
 `refresh_sector_performance` has no Celery predecessor to shift from — its `30 5 * * *` was
 chosen purely to stagger 15 minutes after `refresh_country_performance`'s own Yahoo-hitting
 cron, not from any intended Paris wall-clock time. `refresh_equity_premium` continues the same
-stagger one slot further, `45 5 * * *`.
+stagger one slot further, `45 5 * * *`, and `refresh_bond_performance` one slot further still,
+`0 6 * * *`.
 
 One more schedule, `check_github_update` (issue #113), is registered below too — unrelated to
 issue #66's Celery migration above, so it's not part of the "registered tasks" framing this
@@ -109,6 +111,7 @@ from pgqueuer.domain.models import Schedule
 
 from app.core.pgq import asyncpg_dsn as _asyncpg_dsn
 from app.tasks import job_runs
+from app.tasks.bond_performance import _run_bond_performance_refresh
 from app.tasks.country_performance import _run_country_performance_refresh
 from app.tasks.equity_premium import _run_equity_premium_refresh
 from app.tasks.etf_holdings import _run_etf_holdings_refresh
@@ -133,6 +136,7 @@ REFRESH_MACRO_INDICATORS_CRON = "0 5 * * *"
 REFRESH_COUNTRY_PERFORMANCE_CRON = "15 5 * * *"
 REFRESH_SECTOR_PERFORMANCE_CRON = "30 5 * * *"
 REFRESH_EQUITY_PREMIUM_CRON = "45 5 * * *"
+REFRESH_BOND_PERFORMANCE_CRON = "0 6 * * *"
 CHECK_GITHUB_UPDATE_CRON = "0 */6 * * *"
 
 _VALID_ENTRYPOINT_TRIGGERS = {"on_demand", "startup", "schedule"}
@@ -183,6 +187,7 @@ _ENQUEUE_ONTO_ENTRYPOINT_SCHEDULES = (
     ("refresh_country_performance", REFRESH_COUNTRY_PERFORMANCE_CRON),
     ("refresh_sector_performance", REFRESH_SECTOR_PERFORMANCE_CRON),
     ("refresh_equity_premium", REFRESH_EQUITY_PREMIUM_CRON),
+    ("refresh_bond_performance", REFRESH_BOND_PERFORMANCE_CRON),
 )
 
 
@@ -228,6 +233,7 @@ _SIMPLE_TRACKED_ENTRYPOINTS = (
     ("refresh_country_performance", _run_country_performance_refresh.__name__),
     ("refresh_sector_performance", _run_sector_performance_refresh.__name__),
     ("refresh_equity_premium", _run_equity_premium_refresh.__name__),
+    ("refresh_bond_performance", _run_bond_performance_refresh.__name__),
 )
 
 

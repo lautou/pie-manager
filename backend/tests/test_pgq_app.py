@@ -26,6 +26,7 @@ from app.tasks.pgq_app import (
     CHECK_GITHUB_UPDATE_CRON,
     COMPUTE_DAILY_SNAPSHOTS_CRON,
     COMPUTE_MONTHLY_SNAPSHOTS_CRON,
+    REFRESH_BOND_PERFORMANCE_CRON,
     REFRESH_COUNTRY_PERFORMANCE_CRON,
     REFRESH_EQUITY_PREMIUM_CRON,
     REFRESH_ETF_HOLDINGS_CRON,
@@ -48,13 +49,14 @@ EXPECTED_SCHEDULE_REGISTRATIONS = {
     ("refresh_country_performance", REFRESH_COUNTRY_PERFORMANCE_CRON),
     ("refresh_sector_performance", REFRESH_SECTOR_PERFORMANCE_CRON),
     ("refresh_equity_premium", REFRESH_EQUITY_PREMIUM_CRON),
+    ("refresh_bond_performance", REFRESH_BOND_PERFORMANCE_CRON),
     ("check_github_update", CHECK_GITHUB_UPDATE_CRON),
 }
 
 EXPECTED_ENTRYPOINTS = {
     "refresh_prices_live", "refresh_etf_holdings",
     "refresh_macro_indicators", "refresh_country_performance", "refresh_sector_performance",
-    "refresh_equity_premium",
+    "refresh_equity_premium", "refresh_bond_performance",
     "compute_daily_snapshots_all_users", "fill_missing_snapshots", "recompute_snapshots_range",
 }
 
@@ -90,6 +92,7 @@ def test_entrypoints_with_a_matching_schedule_get_concurrency_limit_one():
     limited = {
         "refresh_prices_live", "refresh_etf_holdings", "refresh_macro_indicators",
         "refresh_country_performance", "refresh_sector_performance", "refresh_equity_premium",
+        "refresh_bond_performance",
         "compute_daily_snapshots_all_users",
     }
     for name in limited:
@@ -296,6 +299,17 @@ async def test_refresh_equity_premium_schedule_handler_enqueues_onto_its_entrypo
 
 
 @pytest.mark.asyncio
+async def test_refresh_bond_performance_schedule_handler_enqueues_onto_its_entrypoint():
+    pgq = PgQueuer.in_memory()
+    _register_schedules(pgq)
+    key = next(k for k in pgq.sm.registry if k.entrypoint == "refresh_bond_performance")
+    with patch.object(pgq.queries, "enqueue", new_callable=AsyncMock) as mock_enqueue:
+        await pgq.sm.registry[key].parameters.func(MagicMock())
+
+    mock_enqueue.assert_awaited_once_with("refresh_bond_performance", payload=b"schedule")
+
+
+@pytest.mark.asyncio
 async def test_check_github_update_schedule_handler_calls_the_real_core():
     """No entrypoint to enqueue onto (unlike the tasks above) — this schedule calls
     run_github_update_check directly, matching compute_monthly_snapshots_all_users's shape."""
@@ -394,6 +408,22 @@ async def test_refresh_equity_premium_entrypoint_handler_failure(engine):
         await handler(fake_job)
 
     run = await job_runs.get_latest("refresh_equity_premium")
+    assert run.status == "failed"
+    assert run.error == "network down"
+    assert run.trigger == "on_demand"
+
+
+@pytest.mark.asyncio
+async def test_refresh_bond_performance_entrypoint_handler_failure(engine):
+    pgq = PgQueuer.in_memory()
+    _register_entrypoints(pgq)
+    handler = pgq.qm.entrypoint_registry["refresh_bond_performance"].parameters.func
+    fake_job = MagicMock(id=5, payload=None)
+    with patch("app.tasks.pgq_app._run_bond_performance_refresh",
+               new_callable=AsyncMock, side_effect=RuntimeError("network down")):
+        await handler(fake_job)
+
+    run = await job_runs.get_latest("refresh_bond_performance")
     assert run.status == "failed"
     assert run.error == "network down"
     assert run.trigger == "on_demand"

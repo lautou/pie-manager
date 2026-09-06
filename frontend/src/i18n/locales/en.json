@@ -620,7 +620,8 @@
       "equityLabelRequired": "Equity name is required",
       "bondLabelRequired": "Bond name is required"
     },
-    "tabEquityPremium": "Equity Risk Premium"
+    "tabEquityPremium": "Equity Risk Premium",
+    "tabBondPerformance": "Bond Performance"
   },
   "marketPerformance": {
     "chartTitle": "Top 15 — 1-Year Stock Market Performance (EUR)",
@@ -687,6 +688,28 @@
       "equityTickerRequired": "Equity ticker is required",
       "bondLabelRequired": "Bond name is required",
       "bondTickerRequired": "Bond ticker is required"
+    }
+  },
+  "bondPerformance": {
+    "chartTitle": "Sovereign Bond Market Performance (1-year, EUR)",
+    "sectionTitle": "🏛️ Bond Performance — countries",
+    "sectionDescription": "Country universe tracked for the trailing-1-year, EUR-adjusted sovereign bond market (10-year government bonds) performance chart.",
+    "caveatNote": "⚠️ {{countries}}: the tracked product isn't a pure single-country sovereign product (see the country's entry in configuration) — directionally informative, not strictly comparable to the other bars.",
+    "newCountry": "New bond",
+    "editCountry": "Edit country",
+    "countryCode": "Code",
+    "countryLabel": "Name",
+    "indexLabel": "Bond name",
+    "indexTicker": "Bond ticker",
+    "currency": "Currency",
+    "noCountries": "No countries",
+    "deleteCountryConfirm": "Delete country \"{{name}}\"?",
+    "validation": {
+      "codeRequired": "Code is required",
+      "labelRequired": "Name is required",
+      "indexLabelRequired": "Bond name is required",
+      "indexTickerRequired": "Bond ticker is required",
+      "currencyRequired": "Currency is required"
     }
   }
 }

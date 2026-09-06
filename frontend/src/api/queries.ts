@@ -2,7 +2,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import apiClient from './client';
 import type {
-  Broker, AccountSummary, AssetPrice, CountryPerfConfig, CountryPerformanceEntry, Dashboard,
+  Broker, AccountSummary, AssetPrice, BondPerfConfig, BondPerformanceEntry, CountryPerfConfig,
+  CountryPerformanceEntry, Dashboard,
   DailySnapshot, DailyWithPools, DailyHoldingValues, EquityPremiumConfig, EquityPremiumEntry,
   EtfComposition, FiscalCarryForward,
   MacroRegionConfig, MonthlySnapshot, Pool, PoolAllocation, PortfolioCapitalGains, Holding,
@@ -532,6 +533,25 @@ export const useEquityPremiumConfigs = equityPremiumCrud.useList;
 export const createEquityPremiumConfig = equityPremiumCrud.create;
 export const updateEquityPremiumConfig = equityPremiumCrud.update;
 export const deleteEquityPremiumConfig = equityPremiumCrud.delete;
+
+// ── Sovereign bond market performance (global, portfolio-independent) ───────
+
+export function useBondPerformance() {
+  return useQuery<BondPerformanceEntry[]>({
+    queryKey: ['bond-performance'],
+    queryFn: async () =>
+      (await apiClient.get<BondPerformanceEntry[]>('/api/indicators/bond-performance')).data,
+    staleTime: 60 * 60 * 1000, // refreshed once a day server-side
+  });
+}
+
+const bondPerfCrud = makeCrudHooks<BondPerfConfig>(
+  '/api/indicators/bond-performance/countries', 'bond-perf-configs',
+);
+export const useBondPerfConfigs = bondPerfCrud.useList;
+export const createBondPerfConfig = bondPerfCrud.create;
+export const updateBondPerfConfig = bondPerfCrud.update;
+export const deleteBondPerfConfig = bondPerfCrud.delete;
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
 

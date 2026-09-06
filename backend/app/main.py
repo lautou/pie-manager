@@ -9,6 +9,7 @@ from app.api.routers import holdings, rebalancing, analytics, pv, fiscal, indica
 from app.api.routers import country_performance
 from app.api.routers import sector_performance
 from app.api.routers import equity_premium
+from app.api.routers import bond_performance
 from app.core.config import settings
 from app.frontend import mount_frontend
 
@@ -66,6 +67,13 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass  # Don't block startup if the job queue is unavailable
 
+    # On startup: refresh the sovereign bond performance chart too, rather than waiting up
+    # to a day for the next scheduled PgQueuer run (non-blocking task).
+    try:
+        await get_pgq_queries().enqueue("refresh_bond_performance", payload=b"startup")
+    except Exception:
+        pass  # Don't block startup if the job queue is unavailable
+
     yield
     await close_pgq_pool()
 
@@ -103,6 +111,7 @@ app.include_router(indicators.router, prefix="/api/indicators")
 app.include_router(country_performance.router, prefix="/api/indicators")
 app.include_router(sector_performance.router, prefix="/api/indicators")
 app.include_router(equity_premium.router, prefix="/api/indicators")
+app.include_router(bond_performance.router, prefix="/api/indicators")
 app.include_router(transaction_import.router, prefix="/api/transactions/import")
 
 

@@ -374,6 +374,9 @@ export type CountryPerformanceEntry = PerformanceEntry;
 export type SectorPerfConfig = IndexPerfConfig;
 export type SectorPerformanceEntry = PerformanceEntry;
 
+export type BondPerfConfig = IndexPerfConfig;
+export type BondPerformanceEntry = PerformanceEntry;
+
 export interface EquityPremiumConfig {
   code: string;
   label: string;

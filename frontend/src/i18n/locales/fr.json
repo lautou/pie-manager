@@ -631,7 +631,8 @@
       "equityLabelRequired": "Le nom des actions est requis",
       "bondLabelRequired": "Le nom des obligations est requis"
     },
-    "tabEquityPremium": "Premium action"
+    "tabEquityPremium": "Premium action",
+    "tabBondPerformance": "Performance obligataire"
   },
   "marketPerformance": {
     "chartTitle": "Top 15 — Performance boursière sur 1 an (EUR)",
@@ -698,6 +699,28 @@
       "equityTickerRequired": "Le ticker actions est requis",
       "bondLabelRequired": "Le nom des obligations est requis",
       "bondTickerRequired": "Le ticker obligations est requis"
+    }
+  },
+  "bondPerformance": {
+    "chartTitle": "Performance des marchés obligataires souverains sur 1 an (EUR)",
+    "sectionTitle": "🏛️ Performance obligataire — pays",
+    "sectionDescription": "Univers de pays suivis pour le graphique de performance des marchés obligataires souverains (obligations d'État 10 ans) sur un an glissant, ajustée en EUR.",
+    "caveatNote": "⚠️ {{countries}} : le produit suivi ne représente pas une dette souveraine pure mono-pays (voir la fiche pays dans la configuration) — indicatif, pas strictement comparable aux autres barres.",
+    "newCountry": "Nouvelle obligation",
+    "editCountry": "Modifier le pays",
+    "countryCode": "Code",
+    "countryLabel": "Nom",
+    "indexLabel": "Nom de l'obligation",
+    "indexTicker": "Ticker obligation",
+    "currency": "Devise",
+    "noCountries": "Aucun pays",
+    "deleteCountryConfirm": "Supprimer le pays \"{{name}}\" ?",
+    "validation": {
+      "codeRequired": "Le code est requis",
+      "labelRequired": "Le nom est requis",
+      "indexLabelRequired": "Le nom de l'obligation est requis",
+      "indexTickerRequired": "Le ticker obligation est requis",
+      "currencyRequired": "La devise est requise"
     }
   }
 }

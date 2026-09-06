@@ -40,12 +40,14 @@ const mockUsePortfolios = vi.fn();
 const mockCreatePortfolio = vi.fn();
 const mockRenamePortfolio = vi.fn();
 const mockDeletePortfolio = vi.fn();
+const mockCreateDemoPortfolio = vi.fn();
 
 vi.mock('../api/queries', () => ({
   usePortfolios: () => mockUsePortfolios(),
   useCreatePortfolio: () => ({ mutateAsync: mockCreatePortfolio, isPending: false }),
   useRenamePortfolio: () => ({ mutateAsync: mockRenamePortfolio, isPending: false }),
   useDeletePortfolio: () => ({ mutateAsync: mockDeletePortfolio, isPending: false }),
+  useCreateDemoPortfolio: () => ({ mutateAsync: mockCreateDemoPortfolio, isPending: false }),
 }));
 
 const mockPortfolio = { id: 1, name: 'Portfolio 1', created_at: '2024-01-01T00:00:00Z' };
@@ -158,6 +160,71 @@ describe('PortfolioSelectPage', () => {
     const createBtns = screen.getAllByText('Créer');
     await user.click(createBtns[0]);
     expect(mockCreatePortfolio).toHaveBeenCalledWith({ name: 'Mon Portfolio' });
+  });
+
+  it('can generate a demo portfolio from the empty state and navigates to it', async () => {
+    mockUsePortfolios.mockReturnValue({ data: [], isLoading: false, isError: false });
+    mockCreateDemoPortfolio.mockResolvedValue({ id: 42, name: 'Démo' });
+    const user = userEvent.setup({ delay: null });
+    render(<PortfolioSelectPage />);
+
+    await user.click(screen.getByText('Générer un portefeuille de démonstration'));
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
+    await user.click(screen.getByText('Générer'));
+
+    expect(mockCreateDemoPortfolio).toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenCalledWith('/portfolio/42/dashboard');
+  });
+
+  it('can generate a demo portfolio from the portfolio-list footer', async () => {
+    mockUsePortfolios.mockReturnValue({ data: [mockPortfolio], isLoading: false, isError: false });
+    mockCreateDemoPortfolio.mockResolvedValue({ id: 7, name: 'Démo' });
+    const user = userEvent.setup({ delay: null });
+    render(<PortfolioSelectPage />);
+
+    await user.click(screen.getByText('Générer un portefeuille de démonstration'));
+    await user.click(screen.getByText('Générer'));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/portfolio/7/dashboard');
+  });
+
+  it('can close the demo portfolio modal via its own close control', async () => {
+    mockUsePortfolios.mockReturnValue({ data: [], isLoading: false, isError: false });
+    const user = userEvent.setup({ delay: null });
+    render(<PortfolioSelectPage />);
+
+    await user.click(screen.getByText('Générer un portefeuille de démonstration'));
+    await user.click(screen.getByText('Close'));
+
+    expect(screen.queryByTestId('modal')).toBeNull();
+    expect(mockCreateDemoPortfolio).not.toHaveBeenCalled();
+  });
+
+  it('can cancel the demo portfolio modal without generating anything', async () => {
+    mockUsePortfolios.mockReturnValue({ data: [], isLoading: false, isError: false });
+    const user = userEvent.setup({ delay: null });
+    render(<PortfolioSelectPage />);
+
+    await user.click(screen.getByText('Générer un portefeuille de démonstration'));
+    await user.click(screen.getByText('Annuler'));
+
+    expect(screen.queryByTestId('modal')).toBeNull();
+    expect(mockCreateDemoPortfolio).not.toHaveBeenCalled();
+  });
+
+  it('shows the API error detail message when demo generation fails', async () => {
+    mockUsePortfolios.mockReturnValue({ data: [], isLoading: false, isError: false });
+    mockCreateDemoPortfolio.mockRejectedValueOnce({
+      response: { data: { detail: 'Boom' } },
+    });
+    const user = userEvent.setup({ delay: null });
+    render(<PortfolioSelectPage />);
+
+    await user.click(screen.getByText('Générer un portefeuille de démonstration'));
+    await user.click(screen.getByText('Générer'));
+
+    expect(await screen.findByText('Boom')).toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it('can open rename modal', async () => {

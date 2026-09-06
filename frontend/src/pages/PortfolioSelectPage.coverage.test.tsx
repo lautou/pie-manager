@@ -55,6 +55,7 @@ vi.mock('../api/queries', () => ({
   useCreatePortfolio: () => ({ mutateAsync: mockCreatePortfolio, isPending: false }),
   useRenamePortfolio: () => ({ mutateAsync: mockRenamePortfolio, isPending: false }),
   useDeletePortfolio: () => ({ mutateAsync: mockDeletePortfolio, isPending: false }),
+  useCreateDemoPortfolio: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
 const mockPortfolio = { id: 1, name: 'Portfolio 1', created_at: '2024-01-01T00:00:00Z' };

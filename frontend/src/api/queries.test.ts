@@ -14,6 +14,7 @@ import {
   createProduct, updateProduct, deleteProduct,
   triggerRecompute, getTaskStatus,
   usePortfolios, usePortfolio, useCreatePortfolio, useRenamePortfolio, useDeletePortfolio,
+  useCreateDemoPortfolio,
   useBrokers, useAccountsSummary, useProducts,
   useTransactions, useCreateTransaction, useUpdateTransaction, useDeleteTransaction,
   useValidateImport, useCommitImport,
@@ -238,6 +239,20 @@ describe('api/queries React Query hooks', () => {
 
       await result.current.mutateAsync({ name: 'New' });
       expect(mockPost).toHaveBeenCalledWith('/api/portfolios/', { name: 'New' });
+    });
+  });
+
+  describe('useCreateDemoPortfolio', () => {
+    it('POSTs to /api/portfolios/demo with no body', async () => {
+      const portfolio = { id: 3, name: 'Démo', created_at: null };
+      mockPost.mockResolvedValueOnce({ data: portfolio } as any);
+
+      const wrapper = makeWrapper();
+      const { result } = renderHook(() => useCreateDemoPortfolio(), { wrapper });
+
+      const created = await result.current.mutateAsync();
+      expect(mockPost).toHaveBeenCalledWith('/api/portfolios/demo');
+      expect(created).toEqual(portfolio);
     });
   });
 

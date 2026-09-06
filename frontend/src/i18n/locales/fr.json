@@ -566,7 +566,11 @@
     "rename": "Renommer",
     "noPortfolios": "Aucun portefeuille",
     "deleteConfirm": "Supprimer le portefeuille \"{{name}}\" ?",
-    "deleteConfirmButton": "Supprimer définitivement"
+    "deleteConfirmButton": "Supprimer définitivement",
+    "generateDemo": "Générer un portefeuille de démonstration",
+    "generateDemoTitle": "Portefeuille de démonstration",
+    "generateDemoBody": "Ceci va créer un nouveau portefeuille avec des données fictives : les mêmes courtiers que ceux déjà configurés, une répartition Offensif/Défensif, et un exemple d'actif par catégorie déjà présente dans votre catalogue. Aucune donnée réelle n'est modifiée.",
+    "generateDemoConfirm": "Générer"
   },
   "syncBadge": {
     "syncing": "Synchronisation en cours…",

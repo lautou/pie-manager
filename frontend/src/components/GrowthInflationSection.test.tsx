@@ -15,10 +15,6 @@ import { pfCoreStubs, pfTableStubs } from '../../tests/utils/patternfly-mocks';
 vi.mock('@patternfly/react-core', () => ({ ...pfCoreStubs }));
 vi.mock('@patternfly/react-table', () => ({ ...pfTableStubs }));
 
-vi.mock('react-router-dom', () => ({
-  useSearchParams: () => [new URLSearchParams(), vi.fn()],
-}));
-
 vi.mock('@patternfly/react-charts/victory', () => ({
   Chart: ({ children }: any) => <div data-testid="chart">{children}</div>,
   ChartLine: () => <div data-testid="chart-line" />,

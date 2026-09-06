@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Card, CardBody, CardTitle, Label, Spinner,
@@ -14,16 +13,23 @@ import type { AllocationCategory } from '../utils/portfolioAllocation';
 /**
  * Growth/inflation quadrant classifier — see docs/ROADMAP.md's "Quadrant macro-économique"
  * entry for the full design brief. Purely informational: never writes to Pool.target_pct,
- * never suggests a rebalancing action. Rendered as a card alongside the existing growth/
- * inflation ratio charts in GrowthInflationSection.tsx, sharing its region selection.
+ * never suggests a rebalancing action.
+ *
+ * `portfolioId` is an explicit, caller-supplied prop, never inferred from the URL — the
+ * global `/indicators` page (GrowthInflationSection.tsx) omits it entirely (pure macro
+ * read, no per-portfolio comparison), while RebalancingPage.tsx passes its own route
+ * portfolio ID (a page already scoped to one portfolio, name shown in its header). See
+ * .claude/rules/macro-indicators.md's "Quadrant" section for why the previous
+ * URL-`?from=`-param approach (silently comparing against whichever portfolio the user
+ * last viewed, with nothing on screen naming it) was replaced.
  */
-export default function QuadrantCard({ region, regionLabel }: { region: string; regionLabel: string }) {
+export default function QuadrantCard({ region, regionLabel, portfolioId }: {
+  region: string; regionLabel: string; portfolioId?: number | string;
+}) {
   const { t } = useTranslation();
-  const [searchParams] = useSearchParams();
-  const fromPortfolioId = searchParams.get('from');
 
   const { data: quadrant, isLoading } = useQuadrant(region);
-  const { data: holdings } = useHoldings(fromPortfolioId ?? undefined);
+  const { data: holdings } = useHoldings(portfolioId);
 
   const allocation = holdings ? computeAllocationByCategory(holdings) : null;
 
@@ -61,7 +67,7 @@ export default function QuadrantCard({ region, regionLabel }: { region: string; 
                 <Tr>
                   <Th>{t('indicators.quadrantAssetColumn')}</Th>
                   <Th>{t('indicators.quadrantFavorabilityColumn')}</Th>
-                  {fromPortfolioId && <Th>{t('indicators.quadrantAllocationColumn')}</Th>}
+                  {portfolioId && <Th>{t('indicators.quadrantAllocationColumn')}</Th>}
                 </Tr>
               </Thead>
               <Tbody>
@@ -75,7 +81,7 @@ export default function QuadrantCard({ region, regionLabel }: { region: string; 
                           {t(`indicators.quadrantFavorability.${favorability}`)}
                         </Label>
                       </Td>
-                      {fromPortfolioId && (
+                      {portfolioId && (
                         <Td>{allocation ? `${allocation[category].toFixed(1)} %` : '—'}</Td>
                       )}
                     </Tr>
@@ -83,12 +89,6 @@ export default function QuadrantCard({ region, regionLabel }: { region: string; 
                 })}
               </Tbody>
             </Table>
-
-            {!fromPortfolioId && (
-              <p style={{ fontSize: '0.8rem', color: 'var(--pf-t--global--text--color--subtle)', marginTop: '0.75rem' }}>
-                {t('indicators.quadrantNoPortfolioContext')}
-              </p>
-            )}
           </>
         )}
       </CardBody>

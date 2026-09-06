@@ -97,3 +97,13 @@ Actuel/Après bars (shared by both, since the target doesn't change between them
 per-row `Écart actuel` / `Écart cible` label next to each bar instead of one combined line at
 the bottom — the combined line used to sit far from the "Actuel" row it partly described.
 
+## Rebalancing — "Contexte macro-économique" card
+
+The card at the top of the page (region selector + `QuadrantCard`, defaulting to the first
+`useMacroRegions()` entry) is the portfolio-scoped half of the growth/inflation quadrant
+feature — see `.claude/rules/macro-indicators.md`'s "Growth/inflation quadrant classifier"
+section for the full feature (classifier math, the global `/indicators` page's own
+quadrant-only instance, and why this page passes an explicit `portfolioId` instead of the
+`?from=` URL param the feature used to rely on). Purely informational, same as the rest of this
+feature — never feeds into any rebalancing calculation on this page.
+

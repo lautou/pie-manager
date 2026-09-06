@@ -9,11 +9,6 @@ import {
 	CardTitle,
 	EmptyState,
 	EmptyStateBody,
-	Modal,
-	ModalBody,
-	ModalFooter,
-	ModalHeader,
-	ModalVariant,
 	PageSection,
 	PageSectionVariants,
 	Spinner,
@@ -27,6 +22,7 @@ import {
   usePortfolios, useCreatePortfolio, useRenamePortfolio, useDeletePortfolio, useCreateDemoPortfolio,
 } from '../api/queries';
 import { extractApiErrorMessage } from '../utils/errors';
+import ConfirmModal from '../components/ConfirmModal';
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '';
@@ -197,26 +193,31 @@ export default function PortfolioSelectPage() {
       )}
 
       {/* Create modal */}
-      <Modal variant={ModalVariant.small} isOpen={createOpen}
-        onClose={() => { setCreateOpen(false); setError(''); }}>
-        <ModalHeader title={t('portfolioSelect.newPortfolio')} />
-        <ModalBody>
+      <ConfirmModal
+        isOpen={createOpen}
+        title={t('portfolioSelect.newPortfolio')}
+        variant="primary"
+        confirmLabel={t('common.create')}
+        isLoading={createPortfolio.isPending}
+        onConfirm={handleCreate}
+        onCancel={() => { setCreateOpen(false); setError(''); }}
+      >
         <TextInput placeholder="Nom du portefeuille" value={newName}
           onChange={(_e, v) => setNewName(v)}
           onKeyDown={(e) => e.key === 'Enter' && handleCreate()} />
         {error && <div style={{ color: 'var(--pf-t--global--text--color--status--danger--default)', marginTop: '0.5rem', fontSize: '0.85rem' }}>{error}</div>}
-        </ModalBody>
-        <ModalFooter>
-          <Button key="ok" variant="primary" onClick={handleCreate} isLoading={createPortfolio.isPending}>{t('common.create')}</Button>
-          <Button key="cancel" variant="link" onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button>
-        </ModalFooter>
-      </Modal>
+      </ConfirmModal>
 
       {/* Rename modal */}
-      <Modal variant={ModalVariant.small} isOpen={!!renameTarget}
-        onClose={() => { setRenameTarget(null); setError(''); }}>
-        <ModalHeader title={t('portfolioSelect.editPortfolio')} />
-        <ModalBody>
+      <ConfirmModal
+        isOpen={!!renameTarget}
+        title={t('portfolioSelect.editPortfolio')}
+        variant="primary"
+        confirmLabel={t('portfolioSelect.rename')}
+        isLoading={renamePortfolio.isPending}
+        onConfirm={handleRename}
+        onCancel={() => { setRenameTarget(null); setError(''); }}
+      >
         <TextInput value={renameTarget?.name ?? ''}
           onChange={(_e, v) => setRenameTarget(
             /* v8 ignore next -- @preserve */
@@ -224,70 +225,56 @@ export default function PortfolioSelectPage() {
           )}
           onKeyDown={(e) => e.key === 'Enter' && handleRename()} />
         {error && <div style={{ color: 'var(--pf-t--global--text--color--status--danger--default)', marginTop: '0.5rem', fontSize: '0.85rem' }}>{error}</div>}
-        </ModalBody>
-        <ModalFooter>
-          <Button key="ok" variant="primary" onClick={handleRename} isLoading={renamePortfolio.isPending}>{t('portfolioSelect.rename')}</Button>
-          <Button key="cancel" variant="link" onClick={() => setRenameTarget(null)}>{t('common.cancel')}</Button>
-        </ModalFooter>
-      </Modal>
+      </ConfirmModal>
 
       {/* Delete confirmation modal — GitHub-style name confirmation */}
-      <Modal variant={ModalVariant.small}
+      <ConfirmModal
         isOpen={!!deleteTarget}
-        onClose={() => { setDeleteTarget(null); setDeleteConfirmName(''); }}>
-        <ModalHeader title={<span style={{ color: 'var(--pf-t--global--text--color--status--danger--default)' }}>⚠ Supprimer le portefeuille</span>} />
-        <ModalBody>
-        <div>
-          <Content component={ContentVariants.p}>
-            Cette action est <strong>irréversible</strong>. Toutes les transactions,
-            snapshots et données associées au portefeuille{' '}
-            <strong>{deleteTarget?.name}</strong> seront définitivement supprimés.
-          </Content>
-          <div style={{ marginTop: '1.25rem' }}>
-            <div style={{ fontSize: '0.85rem', marginBottom: '0.4rem', color: '#6A6E73' }}>
-              Saisissez <strong>{deleteTarget?.name}</strong> pour confirmer :
-            </div>
-            <TextInput
-              value={deleteConfirmName}
-              onChange={(_e, v) => setDeleteConfirmName(v)}
-              onPaste={(e) => e.preventDefault()}
-              placeholder={deleteTarget?.name}
-              validated={deleteConfirmName === deleteTarget?.name ? 'success' : deleteConfirmName ? 'error' : 'default'}
-              aria-label="Confirmer le nom du portefeuille"
-              autoComplete="off"
-            />
-            <div style={{ fontSize: '0.75rem', color: '#6A6E73', marginTop: '0.3rem' }}>
-              Le copier-coller est désactivé dans ce champ.
-            </div>
+        title="Supprimer le portefeuille"
+        variant="danger"
+        confirmLabel={t('portfolioSelect.deleteConfirmButton')}
+        isLoading={deletePortfolio.isPending}
+        isConfirmDisabled={deleteConfirmName !== deleteTarget?.name}
+        onConfirm={handleDelete}
+        onCancel={() => { setDeleteTarget(null); setDeleteConfirmName(''); }}
+      >
+        <Content component={ContentVariants.p}>
+          Cette action est <strong>irréversible</strong>. Toutes les transactions,
+          snapshots et données associées au portefeuille{' '}
+          <strong>{deleteTarget?.name}</strong> seront définitivement supprimés.
+        </Content>
+        <div style={{ marginTop: '1.25rem' }}>
+          <div style={{ fontSize: '0.85rem', marginBottom: '0.4rem', color: '#6A6E73' }}>
+            Saisissez <strong>{deleteTarget?.name}</strong> pour confirmer :
+          </div>
+          <TextInput
+            value={deleteConfirmName}
+            onChange={(_e, v) => setDeleteConfirmName(v)}
+            onPaste={(e) => e.preventDefault()}
+            placeholder={deleteTarget?.name}
+            validated={deleteConfirmName === deleteTarget?.name ? 'success' : deleteConfirmName ? 'error' : 'default'}
+            aria-label="Confirmer le nom du portefeuille"
+            autoComplete="off"
+          />
+          <div style={{ fontSize: '0.75rem', color: '#6A6E73', marginTop: '0.3rem' }}>
+            Le copier-coller est désactivé dans ce champ.
           </div>
         </div>
-        </ModalBody>
-        <ModalFooter>
-          <Button key="ok" variant="danger"
-            isDisabled={deleteConfirmName !== deleteTarget?.name}
-            onClick={handleDelete}
-            isLoading={deletePortfolio.isPending}>
-            {t('portfolioSelect.deleteConfirmButton')}
-          </Button>
-          <Button key="cancel" variant="link" onClick={() => { setDeleteTarget(null); setDeleteConfirmName(''); }}>{t('common.cancel')}</Button>
-        </ModalFooter>
-      </Modal>
+      </ConfirmModal>
 
       {/* Generate demo portfolio confirmation modal */}
-      <Modal variant={ModalVariant.small} isOpen={demoOpen}
-        onClose={() => { setDemoOpen(false); setError(''); }}>
-        <ModalHeader title={t('portfolioSelect.generateDemoTitle')} />
-        <ModalBody>
-          <Content component={ContentVariants.p}>{t('portfolioSelect.generateDemoBody')}</Content>
-          {error && <div style={{ color: 'var(--pf-t--global--text--color--status--danger--default)', marginTop: '0.5rem', fontSize: '0.85rem' }}>{error}</div>}
-        </ModalBody>
-        <ModalFooter>
-          <Button key="ok" variant="primary" onClick={handleGenerateDemo} isLoading={createDemoPortfolio.isPending}>
-            {t('portfolioSelect.generateDemoConfirm')}
-          </Button>
-          <Button key="cancel" variant="link" onClick={() => setDemoOpen(false)}>{t('common.cancel')}</Button>
-        </ModalFooter>
-      </Modal>
+      <ConfirmModal
+        isOpen={demoOpen}
+        title={t('portfolioSelect.generateDemoTitle')}
+        variant="primary"
+        confirmLabel={t('portfolioSelect.generateDemoConfirm')}
+        isLoading={createDemoPortfolio.isPending}
+        onConfirm={handleGenerateDemo}
+        onCancel={() => { setDemoOpen(false); setError(''); }}
+      >
+        <Content component={ContentVariants.p}>{t('portfolioSelect.generateDemoBody')}</Content>
+        {error && <div style={{ color: 'var(--pf-t--global--text--color--status--danger--default)', marginTop: '0.5rem', fontSize: '0.85rem' }}>{error}</div>}
+      </ConfirmModal>
     </PageSection>
   );
 }

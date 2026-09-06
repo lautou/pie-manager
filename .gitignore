@@ -66,3 +66,6 @@ VERSION
 # Claude Code local settings — personal permission grants (visited domains, approved command
 # patterns), not project-shared config. .claude/rules/ and .claude/CLAUDE.md stay tracked.
 .claude/settings.local.json
+
+# Personal roadmap notes — never committed, kept local-only
+docs/ROADMAP.md

@@ -161,6 +161,33 @@ the compose file and this pre-pull step.
   found" on a real install. Found by reading `admin.py` directly, not assumed — confirmed nothing
   else in this launcher previously set `PATH` at all. Not yet covered by CI (see #114).
 
+  **Follow-up to #83, found live on a real fresh Windows install:** the PATH fix above makes
+  `pg_dump.exe`/`pg_restore.exe` *findable*, but a real user's first "Restaurer une sauvegarde"
+  click still failed, surfacing only a bare, detail-less `AxiosError: Request failed with status
+  code 500`. Two distinct gaps found and fixed, only the second one being this specific report's
+  actual confirmed cause (real `backend.log` traceback, not a guess):
+  1. `admin.py`'s `subprocess.run(["pg_dump"/"pg_restore", ...])` calls had no `except OSError`
+     around them, so any failure to actually *launch* the executable (`FileNotFoundError`/
+     `PermissionError` — e.g. Defender/AV blocking an unsigned, never-before-run binary) would
+     propagate as an unhandled exception instead of this router's own clean
+     `HTTPException(detail=...)` pattern. Fixed defensively (both calls now catch `OSError`) and
+     paired with signing `pg_dump.exe`/`pg_restore.exe` in `build-installer.yml`'s "Sign the
+     bundled PostgreSQL executables" step (previously only `postgres.exe`/`pg_ctl.exe`/
+     `initdb.exe`/`createdb.exe` — these two ship unsigned in EDB's own zip exactly like their
+     four siblings and are just as exposed to Defender/SmartScreen friction on a brand-new
+     machine, despite never needing signing for the *server* to start). This is real
+     defense-in-depth, but was **not** what actually happened in the case below — the process
+     launched fine.
+  2. **The real, confirmed cause**: `result.stderr.decode()` (no `errors=` argument) crashed with
+     `UnicodeDecodeError: 'utf-8' codec can't decode byte 0xe9...` — pg_restore's stderr encoding
+     depends on the OS console codepage, not necessarily UTF-8 (confirmed live: a French-locale
+     Windows install's `pg_restore.exe` emitted an accented character as cp1252, not UTF-8). This
+     crashed the handler *before* it could ever report the real underlying pg_restore error,
+     turning a possibly-fixable/possibly-benign restore issue into an opaque decode crash. Fixed
+     in both `admin.py` decode sites (`pg_dump` and `pg_restore`) with `.decode(errors="replace")`
+     — never raises, worst case a garbled character in the displayed error text instead of a
+     crash that hides the real message entirely.
+
   **Issue #119 (version-aware re-staging for pgsql/the Python interpreter, plus orphan recovery
   for the backend/worker):** `staging.go`'s `stageIfBundleChanged` replaces the old
   exe-presence-only marker with a `bundle-id.txt` manifest `build-installer.yml` computes from

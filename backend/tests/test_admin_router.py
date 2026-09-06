@@ -95,6 +95,35 @@ async def test_backup_pg_dump_failure_returns_500():
 
 
 @pytest.mark.asyncio
+async def test_backup_non_utf8_stderr_does_not_crash():
+    """Same non-UTF-8-stderr class of bug as restore (see test_restore_non_utf8_stderr_does_not_crash),
+    fixed identically in the backup path for consistency even though it wasn't the one confirmed
+    live."""
+    mock_proc = _make_proc(returncode=1, stderr=b"pg_dump: erreur : \xe9chec de connexion")
+
+    with patch("app.api.routers.admin.subprocess.run", return_value=mock_proc):
+        async with _client() as client:
+            r = await client.get("/api/admin/backup")
+
+    assert r.status_code == 500
+    assert "chec de connexion" in r.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_backup_pg_dump_not_found_returns_clean_500():
+    """
+    subprocess.run raising OSError (e.g. pg_dump.exe not launchable — Defender/AV block,
+    missing binary) → a clean HTTPException detail, not an unhandled-exception bare 500.
+    """
+    with patch("app.api.routers.admin.subprocess.run", side_effect=FileNotFoundError("pg_dump")):
+        async with _client() as client:
+            r = await client.get("/api/admin/backup")
+
+    assert r.status_code == 500
+    assert "pg_dump" in r.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_backup_content_disposition_header():
     """Response carries a Content-Disposition attachment header with .dump filename."""
     mock_proc = _make_proc(stdout=b"-- backup\n")
@@ -217,6 +246,45 @@ async def test_restore_transaction_timeout_only_returns_200():
 
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_restore_pg_restore_not_found_returns_clean_500():
+    """
+    subprocess.run raising OSError (e.g. pg_restore.exe not launchable — Defender/AV block,
+    missing binary) → a clean HTTPException detail, not an unhandled-exception bare 500.
+    Confirmed live: this exact gap produced a generic, detail-less AxiosError 500 on a real
+    fresh Windows install's first restore attempt.
+    """
+    sql = b"-- backup\n" + b"x" * 120
+
+    with patch("app.api.routers.admin.subprocess.run", side_effect=FileNotFoundError("pg_restore")):
+        async with _client() as client:
+            r = await client.post("/api/admin/restore", files=[_dump_file(sql)])
+
+    assert r.status_code == 500
+    assert "pg_restore" in r.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_restore_non_utf8_stderr_does_not_crash():
+    """
+    pg_restore's stderr encoding depends on the OS console codepage, not necessarily UTF-8 —
+    a French-locale Windows install emits accented characters as cp1252, not UTF-8. Confirmed
+    live: a real restore attempt crashed with UnicodeDecodeError ("'utf-8' codec can't decode
+    byte 0xe9...") on `result.stderr.decode()`, before this handler could ever report the real
+    underlying pg_restore error — a plain 500 masking a fixable problem behind a decode crash.
+    """
+    sql = b"-- backup\n" + b"x" * 120
+    # 0xe9 is "é" in cp1252/Latin-1 — not a valid standalone UTF-8 continuation byte.
+    mock_proc = _make_proc(returncode=1, stderr=b"pg_restore: erreur : \xe9chec de connexion")
+
+    with patch("app.api.routers.admin.subprocess.run", return_value=mock_proc):
+        async with _client() as client:
+            r = await client.post("/api/admin/restore", files=[_dump_file(sql)])
+
+    assert r.status_code == 500
+    assert "chec de connexion" in r.json()["detail"]
 
 
 @pytest.mark.asyncio

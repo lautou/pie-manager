@@ -495,7 +495,7 @@ jobs:
           Import-Certificate -FilePath $certFile -CertStoreLocation "Cert:\LocalMachine\Root" | Out-Null
 
       - name: Sign the bundled PostgreSQL executables
-        # EDB's official Windows zip ships these four completely unsigned (confirmed by
+        # EDB's official Windows zip ships these six completely unsigned (confirmed by
         # inspecting their PE Security Directory directly, not assumed) — an unsigned database
         # server binary that opens network listeners, sitting inside a Store submission, is a
         # real Defender/SmartScreen reputation weak point on end-user machines, independent of
@@ -503,11 +503,18 @@ jobs:
         # that). Self-signing a third-party redistributable like this is legitimate and gives
         # Defender's heuristics a real signature to build trust against, even unchained to a
         # public CA — same reasoning that already applies to the outer MSIX signature above.
+        # pg_dump.exe/pg_restore.exe are included alongside the server tools: admin.py's
+        # backup/restore endpoints shell out to them directly at runtime (issue #83's PATH
+        # fix only makes them findable, not trusted) — a real user hit a bare, unhandled 500
+        # on Restore on a fresh install, and an unsigned client tool sitting unused until the
+        # first backup/restore click is exactly the kind of thing Defender/AV can quarantine
+        # or block execution of without any error surfacing through subprocess.run cleanly.
         working-directory: installer/launcher-native
         shell: pwsh
         run: |
           & $env:SIGNTOOL sign /fd SHA256 /sha1 $env:THUMBPRINT `
-            pgsql\bin\postgres.exe pgsql\bin\pg_ctl.exe pgsql\bin\initdb.exe pgsql\bin\createdb.exe
+            pgsql\bin\postgres.exe pgsql\bin\pg_ctl.exe pgsql\bin\initdb.exe pgsql\bin\createdb.exe `
+            pgsql\bin\pg_dump.exe pgsql\bin\pg_restore.exe
           if ($LASTEXITCODE -ne 0) {
             Write-Host "::error::signtool sign failed on the bundled PostgreSQL executables with exit code $LASTEXITCODE"
             exit 1

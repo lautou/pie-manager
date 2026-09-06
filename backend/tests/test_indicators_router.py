@@ -115,6 +115,34 @@ async def test_get_inflation_indicator_unknown_region_returns_404(client, db_ses
 
 
 @pytest.mark.asyncio
+async def test_get_quadrant_combines_both_indicators(client, db_session):
+    from datetime import date
+    await _seed_region(db_session, "us", "États-Unis", "^SPXEW", "GOVT", "S&P 500 Equal Weight", "Obligations Trésor")
+    # Growth ratio rising → "above". Inflation ratio (bond/gold) falling → "below" → quadrant
+    # is croissance + inflation = "overheating".
+    await _seed(db_session, "us_equity", {date(2020, 1, 1): 100.0, date(2020, 1, 2): 110.0})
+    await _seed(db_session, "oil", {date(2020, 1, 1): 1.0, date(2020, 1, 2): 1.0})
+    await _seed(db_session, "us_bond", {date(2020, 1, 1): 4.0, date(2020, 1, 2): 3.0})
+    await _seed(db_session, "gold", {date(2020, 1, 1): 1.0, date(2020, 1, 2): 1.0})
+
+    r = await client.get("/api/indicators/quadrant")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["growth_status"] == "above"
+    assert body["inflation_status"] == "below"
+    assert body["quadrant"] == "overheating"
+    assert body["latest_date"] == "2020-01-02"
+    # Only 2 points → not enough history for compute_confidence's 30-point floor.
+    assert body["overall_confidence"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_quadrant_unknown_region_returns_404(client, db_session):
+    r = await client.get("/api/indicators/quadrant", params={"region": "atlantis"})
+    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_refresh_dispatches_via_pgqueuer(client, db_session):
     mock_queries = MagicMock()
     mock_queries.enqueue = AsyncMock(return_value=[9])

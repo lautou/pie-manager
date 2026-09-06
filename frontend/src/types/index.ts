@@ -336,6 +336,18 @@ export interface RatioIndicator {
   denominator_label: string | null;
 }
 
+export type MacroQuadrant = 'goldilocks' | 'overheating' | 'disinflationary_slowdown' | 'stagflation';
+
+export interface QuadrantIndicator {
+  quadrant: MacroQuadrant | null;
+  growth_confidence: number | null;
+  inflation_confidence: number | null;
+  overall_confidence: number | null;
+  growth_status: 'above' | 'below' | null;
+  inflation_status: 'above' | 'below' | null;
+  latest_date: string | null;
+}
+
 export interface SyncStatus {
   status: 'never' | 'running' | 'success' | 'partial' | 'failed';
   started_at: string | null;

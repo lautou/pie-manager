@@ -2,7 +2,7 @@
 """
 Non-regression tests for the macro indicators service (app/services/macro_indicators_service.py).
 """
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -11,7 +11,14 @@ from app.services.macro_indicators_service import (
     DEFAULT_MA_YEARS,
     DEFAULT_TICKER_LABELS,
     DEFAULT_TICKERS,
+    QUADRANT_DISINFL_SLOWDOWN,
+    QUADRANT_GOLDILOCKS,
+    QUADRANT_OVERHEATING,
+    QUADRANT_STAGFLATION,
     _rolling_average,
+    classify_quadrant,
+    compute_confidence,
+    compute_quadrant,
     compute_ratio_indicator,
     create_region,
     delete_region,
@@ -199,3 +206,109 @@ async def test_compute_ratio_indicator_inner_join_clips_to_common_range(db_sessi
 
     assert result["dates"] == ["2020-01-01", "2020-01-02"]
     assert result["ratio"] == pytest.approx([100.0, 200.0])
+
+
+# ---------------------------------------------------------------------------
+# classify_quadrant
+# ---------------------------------------------------------------------------
+
+def test_classify_quadrant_growth_and_disinflation_is_goldilocks():
+    assert classify_quadrant("above", "above") == QUADRANT_GOLDILOCKS
+
+
+def test_classify_quadrant_growth_and_inflation_is_overheating():
+    assert classify_quadrant("above", "below") == QUADRANT_OVERHEATING
+
+
+def test_classify_quadrant_slowdown_and_disinflation():
+    assert classify_quadrant("below", "above") == QUADRANT_DISINFL_SLOWDOWN
+
+
+def test_classify_quadrant_slowdown_and_inflation_is_stagflation():
+    assert classify_quadrant("below", "below") == QUADRANT_STAGFLATION
+
+
+@pytest.mark.parametrize("growth,inflation", [(None, "above"), ("above", None), (None, None)])
+def test_classify_quadrant_none_when_either_status_missing(growth, inflation):
+    assert classify_quadrant(growth, inflation) is None
+
+
+# ---------------------------------------------------------------------------
+# compute_confidence
+# ---------------------------------------------------------------------------
+
+def test_compute_confidence_none_below_30_points():
+    ratio = [1.0] * 29
+    ma = [1.0] * 29
+    assert compute_confidence(ratio, ma) is None
+
+
+def test_compute_confidence_none_on_mismatched_lengths():
+    assert compute_confidence([1.0] * 30, [1.0] * 31) is None
+
+
+def test_compute_confidence_none_on_zero_variance():
+    # Every deviation is exactly 0 → stdev is 0 → cannot compute a meaningful z-score.
+    ratio = [1.0] * 30
+    ma = [1.0] * 30
+    assert compute_confidence(ratio, ma) is None
+
+
+def test_compute_confidence_large_deviation_approaches_positive_one():
+    ma = [10.0] * 30
+    ratio = [10.0] * 29 + [10.0]
+    # Small historical noise, then one huge spike on the latest point.
+    ratio[:-1] = [10.0 + ((-1) ** i) * 0.01 for i in range(29)]
+    ratio[-1] = 10.0 + 100.0
+    confidence = compute_confidence(ratio, ma)
+    assert confidence == pytest.approx(1.0, abs=1e-4)
+
+
+def test_compute_confidence_large_negative_deviation_approaches_negative_one():
+    ma = [10.0] * 30
+    ratio = [10.0 + ((-1) ** i) * 0.01 for i in range(29)] + [10.0 - 100.0]
+    confidence = compute_confidence(ratio, ma)
+    assert confidence == pytest.approx(-1.0, abs=1e-4)
+
+
+def test_compute_confidence_near_zero_deviation_is_near_zero():
+    ma = [10.0] * 31
+    ratio = [10.0 + ((-1) ** i) * 1.0 for i in range(30)] + [10.0]
+    confidence = compute_confidence(ratio, ma)
+    assert confidence == pytest.approx(0.0, abs=0.2)
+
+
+# ---------------------------------------------------------------------------
+# compute_quadrant
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_compute_quadrant_combines_growth_and_inflation(db_session):
+    dates = [date(2020, 1, 1) + timedelta(days=i) for i in range(35)]
+    # Growth ratio (equity/oil): rising → "above" its own cumulative MA.
+    await _seed_series(db_session, "us_equity", [(d, 100.0 + i) for i, d in enumerate(dates)])
+    await _seed_series(db_session, "oil", [(d, 1.0) for d in dates])
+    # Inflation ratio (bond/gold): falling → "below" its own cumulative MA.
+    await _seed_series(db_session, "us_bond", [(d, 100.0 - i) for i, d in enumerate(dates)])
+    await _seed_series(db_session, "gold", [(d, 1.0) for d in dates])
+
+    result = await compute_quadrant(db_session, "us", ma_years=100.0)
+
+    assert result["growth_status"] == "above"
+    assert result["inflation_status"] == "below"
+    assert result["quadrant"] == QUADRANT_OVERHEATING
+    assert result["growth_confidence"] is not None
+    assert result["inflation_confidence"] is not None
+    assert result["overall_confidence"] == pytest.approx(
+        (abs(result["growth_confidence"]) + abs(result["inflation_confidence"])) / 2
+    )
+    assert result["latest_date"] == dates[-1].isoformat()
+
+
+@pytest.mark.asyncio
+async def test_compute_quadrant_no_data_yields_none_quadrant_and_confidence(db_session):
+    result = await compute_quadrant(db_session, "zz_missing", ma_years=7.0)
+    assert result["quadrant"] is None
+    assert result["overall_confidence"] is None
+    assert result["growth_confidence"] is None
+    assert result["inflation_confidence"] is None

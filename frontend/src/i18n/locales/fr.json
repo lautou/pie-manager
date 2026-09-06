@@ -632,7 +632,31 @@
       "bondLabelRequired": "Le nom des obligations est requis"
     },
     "tabEquityPremium": "Premium action",
-    "tabBondPerformance": "Performance obligataire"
+    "tabBondPerformance": "Performance obligataire",
+    "quadrantTitle": "Quadrant macro-économique — {{region}}",
+    "quadrantNoData": "Aucune donnée pour le moment — la synchronisation quotidienne n'a pas encore assez d'historique pour classer ce quadrant.",
+    "quadrantConfidence": "Confiance : {{value}}",
+    "quadrantFavorabilityTableLabel": "Favorabilité par classe d'actif",
+    "quadrantAssetColumn": "Classe d'actif",
+    "quadrantFavorabilityColumn": "Lecture générale",
+    "quadrantAllocationColumn": "Ton allocation",
+    "quadrantNoPortfolioContext": "Accède à cette page depuis un portefeuille pour comparer avec ta propre allocation.",
+    "quadrant": {
+      "goldilocks": "Croissance + désinflation (\"Boucle d'or\")",
+      "overheating": "Croissance + inflation (surchauffe)",
+      "disinflationary_slowdown": "Ralentissement + désinflation",
+      "stagflation": "Ralentissement + inflation (stagflation)"
+    },
+    "quadrantCategory": {
+      "actions": "Actions",
+      "obligations": "Obligations",
+      "or": "Or physique",
+      "cash": "Cash"
+    },
+    "quadrantFavorability": {
+      "favorable": "Favorable",
+      "defavorable": "Défavorable"
+    }
   },
   "marketPerformance": {
     "chartTitle": "Top 15 — Performance boursière sur 1 an (EUR)",

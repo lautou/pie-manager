@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FormSelect, FormSelectOption } from '@patternfly/react-core';
 import RatioIndicatorChart from './RatioIndicatorChart';
+import QuadrantCard from './QuadrantCard';
 import { useGrowthIndicator, useInflationIndicator, useMacroRegions } from '../api/queries';
 import { useMacroSyncStatus } from '../hooks/useMacroSyncStatus';
 import { useSyncStatusInvalidation } from '../hooks/useSyncStatusInvalidation';
@@ -72,6 +73,7 @@ export default function GrowthInflationSection() {
         interpretationAbove={t('indicators.inflationInterpretationAbove')}
         interpretationBelow={t('indicators.inflationInterpretationBelow')}
       />
+      {region && <QuadrantCard region={region} regionLabel={regionLabel} />}
     </div>
   );
 }

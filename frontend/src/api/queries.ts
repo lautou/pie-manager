@@ -7,7 +7,7 @@ import type {
   DailySnapshot, DailyWithPools, DailyHoldingValues, EquityPremiumConfig, EquityPremiumEntry,
   EtfComposition, FiscalCarryForward,
   MacroRegionConfig, MonthlySnapshot, Pool, PoolAllocation, PortfolioCapitalGains, Holding,
-  Product, RatioIndicator, SectorPerfConfig, SectorPerformanceEntry, Transaction, User,
+  Product, QuadrantIndicator, RatioIndicator, SectorPerfConfig, SectorPerformanceEntry, Transaction, User,
 } from '../types';
 
 /**
@@ -468,6 +468,15 @@ export function useInflationIndicator(region: string) {
     queryFn: async () =>
       (await apiClient.get<RatioIndicator>('/api/indicators/inflation', { params: { region } })).data,
     staleTime: 60 * 60 * 1000,
+  });
+}
+
+export function useQuadrant(region: string) {
+  return useQuery<QuadrantIndicator>({
+    queryKey: ['macro-quadrant', region],
+    queryFn: async () =>
+      (await apiClient.get<QuadrantIndicator>('/api/indicators/quadrant', { params: { region } })).data,
+    staleTime: 60 * 60 * 1000, // refreshed once a day server-side, same as growth/inflation
   });
 }
 

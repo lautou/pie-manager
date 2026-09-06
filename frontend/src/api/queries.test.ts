@@ -33,7 +33,7 @@ import {
   useGitHubUpdateStatus,
   useSystemSetting, useSetSystemSetting, useDeleteSystemSetting,
   useEtfComposition, usePoolAllocation,
-  useGrowthIndicator, useInflationIndicator,
+  useGrowthIndicator, useInflationIndicator, useQuadrant,
   useMacroRegions, createMacroRegion, updateMacroRegion, deleteMacroRegion,
   useCountryPerformance, useCountryPerfConfigs,
   createCountryPerfConfig, updateCountryPerfConfig, deleteCountryPerfConfig,
@@ -702,6 +702,24 @@ describe('api/queries React Query hooks', () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(mockGet).toHaveBeenCalledWith('/api/indicators/inflation', { params: { region: 'world' } });
+    });
+  });
+
+  describe('useQuadrant', () => {
+    it('fetches the quadrant classification for the given region', async () => {
+      const quadrantFixture = {
+        quadrant: 'goldilocks', growth_confidence: 0.5, inflation_confidence: 0.5,
+        overall_confidence: 0.5, growth_status: 'above', inflation_status: 'above',
+        latest_date: '2026-08-01',
+      };
+      mockGet.mockResolvedValueOnce({ data: quadrantFixture } as any);
+
+      const wrapper = makeWrapper();
+      const { result } = renderHook(() => useQuadrant('fr'), { wrapper });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockGet).toHaveBeenCalledWith('/api/indicators/quadrant', { params: { region: 'fr' } });
+      expect(result.current.data).toEqual(quadrantFixture);
     });
   });
 

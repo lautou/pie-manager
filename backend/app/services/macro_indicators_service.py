@@ -10,7 +10,9 @@ the Yahoo HTTP fetching and PgQueuer scheduling.
 """
 from __future__ import annotations
 
+import math
 import re
+import statistics
 from datetime import date, timedelta
 from typing import Optional
 
@@ -156,4 +158,87 @@ async def compute_ratio_indicator(
         "ma_years": ma_years,
         "status": "above" if ratio[-1] >= moving_avg[-1] else "below",
         "latest_date": common_dates[-1].isoformat(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Growth/inflation quadrant classifier — informational only, see
+# docs/ROADMAP.md's "Quadrant macro-économique" entry for the full design brief.
+# Never drives Pool.target_pct or any rebalancing automation.
+# ---------------------------------------------------------------------------
+
+# growth "above" its MA = croissance, "below" = ralentissement.
+# inflation "above" its MA = désinflation, "below" = inflation (see compute_ratio_indicator's
+# own numerator/denominator convention: inflation ratio = bond/gold, so bonds outperforming
+# gold — ratio above its MA — is the désinflation signal, not the inflation one).
+QUADRANT_GOLDILOCKS = "goldilocks"       # croissance + désinflation
+QUADRANT_OVERHEATING = "overheating"     # croissance + inflation
+QUADRANT_DISINFL_SLOWDOWN = "disinflationary_slowdown"  # ralentissement + désinflation
+QUADRANT_STAGFLATION = "stagflation"     # ralentissement + inflation
+
+_QUADRANT_BY_STATUS: dict[tuple[str, str], str] = {
+    ("above", "above"): QUADRANT_GOLDILOCKS,
+    ("above", "below"): QUADRANT_OVERHEATING,
+    ("below", "above"): QUADRANT_DISINFL_SLOWDOWN,
+    ("below", "below"): QUADRANT_STAGFLATION,
+}
+
+
+def classify_quadrant(growth_status: Optional[str], inflation_status: Optional[str]) -> Optional[str]:
+    """Combine the two independently-computed ratio statuses into one of the 4 named
+    macro quadrants. Returns None if either status is unavailable (e.g. no price history
+    yet for a freshly-added region)."""
+    if growth_status not in ("above", "below") or inflation_status not in ("above", "below"):
+        return None
+    return _QUADRANT_BY_STATUS[(growth_status, inflation_status)]
+
+
+def compute_confidence(ratio: list[float], moving_avg: list[float]) -> Optional[float]:
+    """
+    This app's own derived confidence measure (-1..+1) for how far the latest ratio sits
+    from its moving average — NOT a reproduction of any third-party score. Method: a z-score
+    of the latest (ratio - moving_avg) deviation against the historical standard deviation of
+    that same deviation series, squashed into [-1, 1] via tanh so a handful of extreme outlier
+    days can't blow the scale out unboundedly. Positive = latest deviation further above the MA
+    than usual (stronger "above" signal); negative = further below than usual.
+
+    Returns None if there isn't enough history to estimate a meaningful volatility (fewer than
+    30 points, or a degenerate zero-variance series).
+    """
+    if len(ratio) < 30 or len(ratio) != len(moving_avg):
+        return None
+    deviations = [r - m for r, m in zip(ratio, moving_avg)]
+    stdev = statistics.pstdev(deviations)
+    if stdev == 0:
+        return None
+    z_score = deviations[-1] / stdev
+    return math.tanh(z_score)
+
+
+async def compute_quadrant(db: AsyncSession, region_code: str, ma_years: float) -> dict:
+    """Growth + inflation ratios for one region, combined into a quadrant + confidence score.
+    Reuses compute_ratio_indicator for both legs — no duplicated ratio/MA math.
+
+    `overall_confidence` is the mean of the two axes' confidence *magnitudes* (0 = right at
+    the crossover point on both axes, i.e. an ambiguous/borderline quadrant reading; 1 = both
+    axes are strongly displaced from their own moving average, i.e. a clear-cut reading) —
+    deliberately not signed, since "confidently above" and "confidently below" are equally
+    decisive for how clear-cut the quadrant itself is."""
+    growth = await compute_ratio_indicator(db, f"{region_code}_equity", "oil", ma_years)
+    inflation = await compute_ratio_indicator(db, f"{region_code}_bond", "gold", ma_years)
+    growth_confidence = compute_confidence(growth["ratio"], growth["moving_avg"])
+    inflation_confidence = compute_confidence(inflation["ratio"], inflation["moving_avg"])
+    overall_confidence = (
+        (abs(growth_confidence) + abs(inflation_confidence)) / 2
+        if growth_confidence is not None and inflation_confidence is not None
+        else None
+    )
+    return {
+        "quadrant": classify_quadrant(growth["status"], inflation["status"]),
+        "growth_confidence": growth_confidence,
+        "inflation_confidence": inflation_confidence,
+        "overall_confidence": overall_confidence,
+        "growth_status": growth["status"],
+        "inflation_status": inflation["status"],
+        "latest_date": growth["latest_date"] or inflation["latest_date"],
     }

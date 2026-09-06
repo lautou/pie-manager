@@ -52,16 +52,22 @@ async def download_backup():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"pie_backup_{timestamp}.dump"
 
-    result = subprocess.run(
-        ["pg_dump", *conn_args,
-         "--format=custom",
-         "--no-owner", "--no-privileges"],
-        capture_output=True, env=env,
-    )
+    try:
+        result = subprocess.run(
+            ["pg_dump", *conn_args,
+             "--format=custom",
+             "--no-owner", "--no-privileges"],
+            capture_output=True, env=env,
+        )
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not launch pg_dump: {exc}",
+        ) from exc
     if result.returncode != 0:
         raise HTTPException(
             status_code=500,
-            detail=f"pg_dump failed: {result.stderr.decode()[:400]}",
+            detail=f"pg_dump failed: {result.stderr.decode(errors='replace')[:400]}",
         )
     return StreamingResponse(
         iter([result.stdout]),
@@ -102,11 +108,20 @@ async def restore_backup(file: UploadFile = File(...)):
              tmpfile],
             capture_output=True, env=env,
         )
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not launch pg_restore: {exc}",
+        ) from exc
     finally:
         os.unlink(tmpfile)
 
     if result.returncode != 0:
-        stderr_text = result.stderr.decode()
+        # errors='replace': pg_restore's stderr encoding depends on the OS console codepage
+        # (e.g. cp1252 on a French-locale Windows install), not necessarily UTF-8 — a raw
+        # .decode() can raise UnicodeDecodeError on an accented character, crashing this
+        # handler before it ever gets to report the real underlying pg_restore error.
+        stderr_text = result.stderr.decode(errors="replace")
         error_lines = [line for line in stderr_text.splitlines() if "error:" in line.lower()]
         critical = [line for line in error_lines if "transaction_timeout" not in line]
         # Fatal if: critical errors OR non-empty stderr with no known "error:" lines

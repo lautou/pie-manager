@@ -257,6 +257,38 @@ async def test_lifespan_startup_equity_premium_runs_even_if_sector_performance_f
 
 
 @pytest.mark.asyncio
+async def test_lifespan_startup_bond_performance_raises(fake_queries):
+    """Exception enqueuing refresh_bond_performance → swallowed, startup completes."""
+    fake_queries.configure("refresh_bond_performance", raise_exc=ConnectionError)
+    async with lifespan(app):
+        pass
+
+
+@pytest.mark.asyncio
+async def test_lifespan_startup_bond_performance_succeeds(fake_queries):
+    """Happy path: refresh_bond_performance enqueued once."""
+    counter = {"n": 0}
+    fake_queries.configure("refresh_bond_performance", counter=counter)
+    async with lifespan(app):
+        pass
+
+    assert counter["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_lifespan_startup_bond_performance_runs_even_if_equity_premium_fails(fake_queries):
+    """A failure enqueuing refresh_equity_premium must not prevent
+    refresh_bond_performance from also being triggered."""
+    counter = {"n": 0}
+    fake_queries.configure("refresh_equity_premium", raise_exc=ConnectionError)
+    fake_queries.configure("refresh_bond_performance", counter=counter)
+    async with lifespan(app):
+        pass
+
+    assert counter["n"] == 1
+
+
+@pytest.mark.asyncio
 async def test_lifespan_calls_init_and_close_pgq_pool():
     """init_pgq_pool() runs once at startup, close_pgq_pool() once at shutdown."""
     with patch("app.core.pgq.init_pgq_pool", new_callable=AsyncMock) as mock_init, \

@@ -53,6 +53,7 @@ const mockUseMacroRegions = vi.fn();
 const mockUseCountryPerfConfigs = vi.fn();
 const mockUseSectorPerfConfigs = vi.fn();
 const mockUseEquityPremiumConfigs = vi.fn();
+const mockUseBondPerfConfigs = vi.fn();
 
 vi.mock('../api/queries', () => ({
   useSystemSetting: (...args: any[]) => mockUseSystemSetting(...args),
@@ -84,6 +85,10 @@ vi.mock('../api/queries', () => ({
   createEquityPremiumConfig: vi.fn().mockResolvedValue({}),
   updateEquityPremiumConfig: vi.fn().mockResolvedValue({}),
   deleteEquityPremiumConfig: vi.fn().mockResolvedValue(undefined),
+  useBondPerfConfigs: (...args: any[]) => mockUseBondPerfConfigs(...args),
+  createBondPerfConfig: vi.fn().mockResolvedValue({}),
+  updateBondPerfConfig: vi.fn().mockResolvedValue({}),
+  deleteBondPerfConfig: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../hooks/useSortable', () => ({
@@ -133,6 +138,14 @@ const MOCK_EQUITY_PREMIUM_COUNTRIES = [
   { code: 'ch', label: 'Suisse', equity_ticker: 'EWL', bond_ticker: 'CSBGC0.SW', equity_label: 'Actions suisses (EWL)', bond_label: 'Obligations suisses (CSBGC0.SW)' },
 ];
 
+// Deliberately different codes from every other manager's mock data on this page (us/fr/jp/gb/
+// or/petrole/de/ch/es) — all five managers render on the same page, so a shared code would
+// collide on aria-label queries (see "obligation {code}"'s own disambiguation rule).
+const MOCK_BOND_COUNTRIES = [
+  { code: 'nz', label: 'Nouvelle-Zélande', index_ticker: 'NZGB.AX', currency: 'NZD', index_label: "Obligations d'État néo-zélandaises" },
+  { code: 'kr', label: 'Corée du Sud', index_ticker: '148070.KS', currency: 'KRW', index_label: "Obligations d'État coréennes 10 ans" },
+];
+
 function setupDefaultMocks() {
   mockUseSystemSetting.mockReturnValue({ data: { value: '0.004' }, isError: false });
   mockUseSetSystemSetting.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false });
@@ -143,6 +156,7 @@ function setupDefaultMocks() {
   mockUseCountryPerfConfigs.mockReturnValue({ data: MOCK_COUNTRIES, refetch: vi.fn() });
   mockUseSectorPerfConfigs.mockReturnValue({ data: MOCK_SECTORS, refetch: vi.fn() });
   mockUseEquityPremiumConfigs.mockReturnValue({ data: MOCK_EQUITY_PREMIUM_COUNTRIES, refetch: vi.fn() });
+  mockUseBondPerfConfigs.mockReturnValue({ data: MOCK_BOND_COUNTRIES, refetch: vi.fn() });
 }
 
 describe('GlobalConfigPage — EquityPremiumManager (Premium action)', () => {

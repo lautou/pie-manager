@@ -54,6 +54,7 @@ const mockUseMacroRegions = vi.fn();
 const mockUseCountryPerfConfigs = vi.fn();
 const mockUseSectorPerfConfigs = vi.fn();
 const mockUseEquityPremiumConfigs = vi.fn();
+const mockUseBondPerfConfigs = vi.fn();
 
 vi.mock('../api/queries', () => ({
   useSystemSetting: (...args: any[]) => mockUseSystemSetting(...args),
@@ -85,6 +86,10 @@ vi.mock('../api/queries', () => ({
   createEquityPremiumConfig: vi.fn().mockResolvedValue({}),
   updateEquityPremiumConfig: vi.fn().mockResolvedValue({}),
   deleteEquityPremiumConfig: vi.fn().mockResolvedValue(undefined),
+  useBondPerfConfigs: (...args: any[]) => mockUseBondPerfConfigs(...args),
+  createBondPerfConfig: vi.fn().mockResolvedValue({}),
+  updateBondPerfConfig: vi.fn().mockResolvedValue({}),
+  deleteBondPerfConfig: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../hooks/useSortable', () => ({
@@ -139,6 +144,7 @@ function setupBrokerMocks() {
   mockUseCountryPerfConfigs.mockReturnValue({ data: [], refetch: vi.fn() });
   mockUseSectorPerfConfigs.mockReturnValue({ data: [], refetch: vi.fn() });
   mockUseEquityPremiumConfigs.mockReturnValue({ data: [], refetch: vi.fn() });
+  mockUseBondPerfConfigs.mockReturnValue({ data: [], refetch: vi.fn() });
 }
 
 describe('GlobalConfigPage — CommissionManager broker display', () => {

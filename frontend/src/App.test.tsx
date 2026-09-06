@@ -127,6 +127,11 @@ vi.mock('./api/queries', () => ({
   createEquityPremiumConfig: vi.fn(),
   updateEquityPremiumConfig: vi.fn(),
   deleteEquityPremiumConfig: vi.fn(),
+  useBondPerformance: () => ({ data: [], isLoading: false }),
+  useBondPerfConfigs: () => ({ data: [] }),
+  createBondPerfConfig: vi.fn(),
+  updateBondPerfConfig: vi.fn(),
+  deleteBondPerfConfig: vi.fn(),
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

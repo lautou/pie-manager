@@ -20,6 +20,9 @@ vi.mock('../components/SectorPerformanceSection', () => ({
 vi.mock('../components/EquityPremiumSection', () => ({
   default: () => <div data-testid="equity-premium-content">equity-premium</div>,
 }));
+vi.mock('../components/BondPerformanceSection', () => ({
+  default: () => <div data-testid="bond-performance-content">bond-performance</div>,
+}));
 
 import IndicatorsPage from './IndicatorsPage';
 
@@ -31,6 +34,7 @@ describe('IndicatorsPage', () => {
     expect(screen.getByText('Performance des actions')).toBeInTheDocument();
     expect(screen.getByText("Performance des classes d'actifs")).toBeInTheDocument();
     expect(screen.getByText('Premium action')).toBeInTheDocument();
+    expect(screen.getByText('Performance obligataire')).toBeInTheDocument();
   });
 
   it('mounts only the Croissance/Inflation tab content by default', () => {
@@ -39,6 +43,7 @@ describe('IndicatorsPage', () => {
     expect(screen.queryByTestId('market-performance-content')).not.toBeInTheDocument();
     expect(screen.queryByTestId('sector-performance-content')).not.toBeInTheDocument();
     expect(screen.queryByTestId('equity-premium-content')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bond-performance-content')).not.toBeInTheDocument();
   });
 
   it('switching tabs mounts Performance des actions and unmounts Croissance/Inflation', async () => {
@@ -68,6 +73,16 @@ describe('IndicatorsPage', () => {
     await user.click(screen.getByText('Premium action'));
 
     expect(screen.getByTestId('equity-premium-content')).toBeInTheDocument();
+    expect(screen.queryByTestId('growth-inflation-content')).not.toBeInTheDocument();
+  });
+
+  it('switching tabs mounts Performance obligataire and unmounts Croissance/Inflation', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<IndicatorsPage />);
+
+    await user.click(screen.getByText('Performance obligataire'));
+
+    expect(screen.getByTestId('bond-performance-content')).toBeInTheDocument();
     expect(screen.queryByTestId('growth-inflation-content')).not.toBeInTheDocument();
   });
 });

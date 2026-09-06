@@ -26,6 +26,7 @@ import { useSystemSetting, useSetSystemSetting, useAllBrokers, usePortfolios,
   useCountryPerfConfigs, createCountryPerfConfig, updateCountryPerfConfig, deleteCountryPerfConfig,
   useSectorPerfConfigs, createSectorPerfConfig, updateSectorPerfConfig, deleteSectorPerfConfig,
   useEquityPremiumConfigs, createEquityPremiumConfig, updateEquityPremiumConfig, deleteEquityPremiumConfig,
+  useBondPerfConfigs, createBondPerfConfig, updateBondPerfConfig, deleteBondPerfConfig,
 } from '../api/queries';
 import { useSortable } from '../hooks/useSortable';
 import ConfirmModal from '../components/ConfirmModal';
@@ -33,7 +34,7 @@ import CrudManager from '../components/CrudManager';
 import TickerLink from '../components/TickerLink';
 import EtfCompositionModal from '../components/EtfCompositionModal';
 import SettingField from '../components/SettingField';
-import type { Broker, CommissionTier, CountryPerfConfig, EquityPremiumConfig, MacroRegionConfig, Product, SectorPerfConfig } from '../types';
+import type { BondPerfConfig, Broker, CommissionTier, CountryPerfConfig, EquityPremiumConfig, MacroRegionConfig, Product, SectorPerfConfig } from '../types';
 import { computeCommission } from '../utils/commission';
 import { INSTRUMENT_TYPE_GOLD } from '../utils/productConstants';
 import { useBrokerCrud } from '../hooks/useBrokerCrud';
@@ -752,6 +753,53 @@ function EquityPremiumManager() {
   );
 }
 
+// ── Bond Performance Manager (sovereign bond market performance universe) ───
+
+const EMPTY_BOND_FORM: BondPerfConfig = { code: '', label: '', index_ticker: '', currency: '', index_label: '' };
+
+function BondCountryManager() {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const { data: countries = [], refetch } = useBondPerfConfigs();
+
+  const onMutated = () => {
+    refetch();
+    qc.invalidateQueries({ queryKey: ['bond-perf-configs'] });
+    qc.invalidateQueries({ queryKey: ['bond-performance'] });
+  };
+
+  return (
+    <CrudManager<BondPerfConfig>
+      items={countries}
+      emptyForm={EMPTY_BOND_FORM}
+      codeLabel={t('bondPerformance.countryCode')}
+      codePlaceholder="Ex: de"
+      codeValidationMessage={t('bondPerformance.validation.codeRequired')}
+      fields={[
+        { key: 'label', label: t('bondPerformance.countryLabel'), placeholder: 'Ex: Allemagne', validationMessage: t('bondPerformance.validation.labelRequired') },
+        { key: 'index_label', label: t('bondPerformance.indexLabel'), placeholder: "Ex: Obligations d'État allemandes 10.5+ ans", validationMessage: t('bondPerformance.validation.indexLabelRequired') },
+        { key: 'index_ticker', label: t('bondPerformance.indexTicker'), placeholder: 'Ex: EXX6.DE', monospace: true, validationMessage: t('bondPerformance.validation.indexTickerRequired') },
+        { key: 'currency', label: t('bondPerformance.currency'), placeholder: 'Ex: EUR', monospace: true, transform: (v) => v.toUpperCase(), validationMessage: t('bondPerformance.validation.currencyRequired') },
+      ]}
+      validationOrder={['label', 'index_ticker', 'currency', 'index_label']}
+      // "obligation" disambiguates from RegionManager's/MarketCountryManager's/
+      // EquityPremiumManager's own aria-labels — same collision-avoidance rule as "pays"/
+      // "secteur"/"prime" above: these country codes (us/de/fr/...) literally overlap all
+      // three of those managers.
+      ariaNoun="obligation"
+      countLabel={`${countries.length} pays`}
+      newLabel={t('bondPerformance.newCountry')}
+      editLabel={t('bondPerformance.editCountry')}
+      emptyLabel={t('bondPerformance.noCountries')}
+      deleteConfirmMessage={(item) => t('bondPerformance.deleteCountryConfirm', { name: `${item.code} — ${item.label}` })}
+      onCreate={createBondPerfConfig}
+      onUpdate={updateBondPerfConfig}
+      onDelete={deleteBondPerfConfig}
+      onMutated={onMutated}
+    />
+  );
+}
+
 export default function GlobalConfigPage() {
   const { t } = useTranslation();
   const { data: ttfSetting } = useSystemSetting('ttf_rate');
@@ -898,6 +946,17 @@ export default function GlobalConfigPage() {
             {t('equityPremium.sectionDescription')}
           </p>
           <EquityPremiumManager />
+        </CardBody>
+      </Card>
+
+      {/* ── Performance obligataire (univers de pays pour la performance des marchés obligataires) — pas de Top N ── */}
+      <Card style={{ marginBottom: '1.5rem' }}>
+        <CardTitle>{t('bondPerformance.sectionTitle')}</CardTitle>
+        <CardBody>
+          <p style={{ fontSize: '0.85rem', color: '#6A6E73', marginBottom: '1rem' }}>
+            {t('bondPerformance.sectionDescription')}
+          </p>
+          <BondCountryManager />
         </CardBody>
       </Card>
     </PageSection>

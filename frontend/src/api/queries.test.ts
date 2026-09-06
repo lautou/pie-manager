@@ -41,6 +41,8 @@ import {
   createSectorPerfConfig, updateSectorPerfConfig, deleteSectorPerfConfig,
   useEquityPremium, useEquityPremiumConfigs,
   createEquityPremiumConfig, updateEquityPremiumConfig, deleteEquityPremiumConfig,
+  useBondPerformance, useBondPerfConfigs,
+  createBondPerfConfig, updateBondPerfConfig, deleteBondPerfConfig,
 } from './queries';
 
 vi.mock('./client', () => ({
@@ -930,6 +932,65 @@ describe('api/queries React Query hooks', () => {
       mockDelete.mockResolvedValueOnce({} as any);
       await deleteEquityPremiumConfig('us');
       expect(mockDelete).toHaveBeenCalledWith('/api/indicators/equity-premium/countries/us');
+    });
+  });
+
+  describe('useBondPerformance', () => {
+    it('fetches the sovereign bond performance ranking', async () => {
+      const entries = [
+        { code: 'us', label: 'États-Unis', currency: 'USD', perf_pct: -2.5, latest_date: '2026-09-06', anchor_date: '2025-09-06', index_label: 'Trésor américain 7-10 ans (IEF)' },
+      ];
+      mockGet.mockResolvedValueOnce({ data: entries } as any);
+
+      const wrapper = makeWrapper();
+      const { result } = renderHook(() => useBondPerformance(), { wrapper });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockGet).toHaveBeenCalledWith('/api/indicators/bond-performance');
+      expect(result.current.data).toEqual(entries);
+    });
+  });
+
+  describe('useBondPerfConfigs', () => {
+    it('fetches the bond configuration list', async () => {
+      const countries = [{ code: 'us', label: 'États-Unis', index_ticker: 'IEF', currency: 'USD', index_label: 'Trésor américain 7-10 ans (IEF)' }];
+      mockGet.mockResolvedValueOnce({ data: countries } as any);
+
+      const wrapper = makeWrapper();
+      const { result } = renderHook(() => useBondPerfConfigs(), { wrapper });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(mockGet).toHaveBeenCalledWith('/api/indicators/bond-performance/countries');
+      expect(result.current.data).toEqual(countries);
+    });
+  });
+
+  describe('createBondPerfConfig', () => {
+    it('posts a new bond country', async () => {
+      const country = { code: 'kr', label: 'Corée du Sud', index_ticker: '148070.KS', currency: 'KRW', index_label: "Obligations d'État coréennes 10 ans" };
+      mockPost.mockResolvedValueOnce({ data: country } as any);
+      const result = await createBondPerfConfig(country);
+      expect(mockPost).toHaveBeenCalledWith('/api/indicators/bond-performance/countries', country);
+      expect(result).toEqual(country);
+    });
+  });
+
+  describe('updateBondPerfConfig', () => {
+    it('puts bond country changes', async () => {
+      const body = { label: 'USA', index_ticker: 'IEF', currency: 'USD', index_label: 'US Treasury 7-10y' };
+      const updated = { code: 'us', ...body };
+      mockPut.mockResolvedValueOnce({ data: updated } as any);
+      const result = await updateBondPerfConfig('us', body);
+      expect(mockPut).toHaveBeenCalledWith('/api/indicators/bond-performance/countries/us', body);
+      expect(result).toEqual(updated);
+    });
+  });
+
+  describe('deleteBondPerfConfig', () => {
+    it('deletes a bond country by code', async () => {
+      mockDelete.mockResolvedValueOnce({} as any);
+      await deleteBondPerfConfig('us');
+      expect(mockDelete).toHaveBeenCalledWith('/api/indicators/bond-performance/countries/us');
     });
   });
 

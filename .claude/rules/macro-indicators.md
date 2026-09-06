@@ -543,3 +543,84 @@ different ticker/exchange suffix, `br` moves to the confirmed table with zero ot
 needed. The other 5 (`mx`/`se`/`pl`/`be`/`nz`) were only checked for a bond product, not
 their equity leg, since the bond side already blocks them either way.
 
+## Sovereign bond market performance leaderboard (portfolio-independent)
+
+Fifth tab on the Indicateurs page, visible label **"Performance obligataire"** — trailing-1-year,
+EUR-adjusted price performance of one 10-year sovereign government bond product per country,
+mirroring `country_performance`/`sector_performance` structurally (not `equity_premium`, which
+is the point-in-time snapshot). `BondPerfConfig` (`bond_perf_configs` table) is the fifth
+code-keyed CRUD universe, built with `make_code_keyed_crud` and rendered via `CrudManager` like
+the other four — no new abstraction needed.
+
+**Fields named `index_ticker`/`index_label`, not `bond_ticker`/`bond_label`** — deliberately
+matching `CountryPerfConfig`/`SectorPerfConfig`'s naming (not `MacroRegion`'s/
+`EquityPremiumConfig`'s two-leg `equity_*`/`bond_*` naming), so the frontend reuses the shared
+`IndexPerfConfig`/`PerformanceEntry` TypeScript types via a plain alias
+(`export type BondPerfConfig = IndexPerfConfig`) instead of duplicating them. A single-leg,
+single-currency-per-row universe (like sector performance) always gets this naming; a two-leg
+universe (`MacroRegion`, `EquityPremiumConfig`) keeps the `equity_*`/`bond_*` split.
+
+**Series-key convention: `bond_{code}_govt`** — deliberately distinct from
+`equity_premium_configs`' `premium_{code}_bond_yield` (a yield snapshot, not a price series) and
+from `country_{code}_equity` (the equity-leaderboard series for the same countries). Backend
+task `app/tasks/bond_performance.py` and service `app/services/bond_performance_service.py`
+mirror `country_performance.py`/`sector_performance_service.py` exactly: `HISTORY_WINDOW_DAYS =
+450`, `fetch_yahoo_history` + `replace_series_prices`, `compute_bond_performance()` sorted
+ascending with no Top-N truncation (no `country_perf.top_n`-style setting for this universe,
+same as sector performance).
+
+**PgQueuer**: `refresh_bond_performance` runs on `0 6 * * *` UTC (06:00) — one slot past
+`refresh_equity_premium`'s `45 5 * * *`, continuing the established stagger: macro_indicators
+(05:00) → country_performance (05:15) → sector_performance (05:30) → equity_premium (05:45) →
+bond_performance (06:00), so 5 daily Yahoo-hitting jobs never fire at once.
+
+**`BondCountryManager`'s edit/delete aria-labels use `"obligation {code}"`** — same
+disambiguation rule as `EquityPremiumManager`'s `"prime {code}"`: `BondPerfConfig`'s codes
+(`us`/`de`/`fr`/...) are the same 2-3-letter country codes used by `MacroRegion`,
+`CountryPerfConfig`, and `EquityPremiumConfig`, all rendered on the same Configuration générale
+page. **The "New X" button label collided even after this fix** — `bondPerformance.newCountry`
+was initially "Nouveau pays"/"New country", byte-for-byte identical to
+`marketPerformance.newCountry`, which the aria-label convention doesn't cover (it's a static
+button, not a per-row action). Renamed to "Nouvelle obligation"/"New bond", mirroring how
+`equityPremium.newCountry` avoids the same collision with "Nouvelle prime"/"New premium". When
+adding a 6th code-keyed universe to this page, check every static (not just per-row) label
+against the other four for an exact-string collision, not just the aria-label convention.
+
+**No last-row delete guard, no `currency`-less shortcut** — unlike `EquityPremiumConfig`,
+`BondPerfConfig` keeps a `currency` column (FX-adjusted to EUR like `country_performance`/
+`sector_performance`) and has no last-remaining-row guard, since an emptied universe still
+degrades to a working, empty chart shell exactly like the sector-performance tab.
+
+**Frontend caveat banner for methodologically-imperfect entries** — `BondPerformanceSection.tsx`
+defines `CAVEAT_CODES = new Set(['se', 'mx'])` and renders a warning note below the chart
+listing any returned country in that set, using i18n key `bondPerformance.caveatNote`. This is
+new relative to every other leaderboard tab: those either exclude a problematic country
+entirely (equity premium) or accept the data as-is with no caveat. Here, the tracked product for
+`se`/`mx` is real and tradeable but not a pure single-country sovereign-only instrument (see the
+table below) — worth showing, not worth excluding.
+
+**15 confirmed rows** (13 clean + 2 flagged via `CAVEAT_CODES`), verified live via Yahoo's
+chart endpoint (price history, not `quoteSummary`) across two brainstorm passes:
+
+| code | index ticker | currency | note |
+|---|---|---|---|
+| us | IEF | USD | |
+| gb | IGLT.L | GBP | |
+| jp | 236A.T | JPY | |
+| de | EXX6.DE | EUR | |
+| ch | CSBGC0.SW | CHF | |
+| es | IS0P.DE | EUR | |
+| au | 5GOV.AX | AUD | |
+| cn | CNYB.AS | USD | |
+| ca | XGB.TO | CAD | |
+| in | INGB.AS | USD | |
+| kr | 148070.KS | KRW | new find — not the same ticker family tried (and rejected for missing yield) in the equity-premium research above |
+| it | BTP10.MI | EUR | better than equity-premium's `XBTP.MI`, which doesn't resolve for price history |
+| fr | IFRB.AS | EUR | the Amsterdam listing resolves; `IFRB.L` (London) doesn't |
+| se | XACT-OBLIGATION.ST | SEK | ⚠️ mixed bond index (not sovereign-only) — flagged via `CAVEAT_CODES` above |
+| mx | MEXS.L | USD | ⚠️ tracks USD-denominated Mexican international debt, not MXN local sovereign debt — flagged via `CAVEAT_CODES` above |
+
+**Brazil excluded** — same root cause as the equity-premium research: a real product
+(`BLTN`, iShares Brazil LTN ETF) exists but doesn't resolve on Yahoo under any of 9 tested
+exchange suffixes.
+

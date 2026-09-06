@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /**
- * Tests for ConfigGeneralePage — MarketCountryManager (Performance des actions).
+ * Tests for ConfigGeneralePage — BondCountryManager (Performance obligataire).
  * Split out of GlobalConfigPage.test.tsx (which keeps ProductManager) — see that file's own
  * header for why every split file duplicates the full mock setup: GlobalConfigPage always
  * renders every manager on one page, so each test file needs every hook mocked regardless of
@@ -114,33 +114,25 @@ const MOCK_REGIONS = [
   { code: 'fr', label: 'France', equity_ticker: '^FCHI', bond_ticker: 'MTE.PA', equity_label: 'CAC 40', bond_label: 'Obligations zone euro' },
 ];
 
-// Deliberately different codes from MOCK_REGIONS (us/fr) — both managers render on the
-// same page, so a shared code would make e.g. getByRole('button', { name: /Modifier us/i })
-// match two buttons at once.
 const MOCK_COUNTRIES = [
   { code: 'jp', label: 'Japon', index_ticker: '^N225', currency: 'JPY', index_label: 'Nikkei 225' },
   { code: 'gb', label: 'Royaume-Uni', index_ticker: '^FTSE', currency: 'GBP', index_label: 'FTSE 100' },
 ];
 
-// Deliberately different codes from MOCK_REGIONS/MOCK_COUNTRIES (us/fr/jp/gb) — all three
-// managers render on the same page, so a shared code would collide on aria-label queries.
 const MOCK_SECTORS = [
   { code: 'or', label: 'Or', index_ticker: 'GC=F', currency: 'USD', index_label: 'Or (COMEX)' },
   { code: 'petrole', label: 'Pétrole', index_ticker: 'CL=F', currency: 'USD', index_label: 'Pétrole (WTI)' },
 ];
 
-// Deliberately different codes from MOCK_REGIONS/MOCK_COUNTRIES/MOCK_SECTORS (us/fr/jp/gb/or/
-// petrole) — all four managers render on the same page, so a shared code would collide on
-// aria-label queries (this is exactly the pitfall the "prime {code}" aria-label disambiguates
-// against in the real component).
 const MOCK_EQUITY_PREMIUM_COUNTRIES = [
   { code: 'de', label: 'Allemagne', equity_ticker: 'EWG', bond_ticker: 'EXX6.DE', equity_label: 'Actions allemandes (EWG)', bond_label: 'Bund (EXX6.DE)' },
   { code: 'ch', label: 'Suisse', equity_ticker: 'EWL', bond_ticker: 'CSBGC0.SW', equity_label: 'Actions suisses (EWL)', bond_label: 'Obligations suisses (CSBGC0.SW)' },
 ];
 
 // Deliberately different codes from every other manager's mock data on this page (us/fr/jp/gb/
-// or/petrole/de/ch/es) — all five managers render on the same page, so a shared code would
-// collide on aria-label queries (see "obligation {code}"'s own disambiguation rule).
+// or/petrole/de/ch) — all five managers render on the same page, so a shared code would
+// collide on aria-label queries (this is exactly the pitfall "obligation {code}" disambiguates
+// against in the real component).
 const MOCK_BOND_COUNTRIES = [
   { code: 'nz', label: 'Nouvelle-Zélande', index_ticker: 'NZGB.AX', currency: 'NZD', index_label: "Obligations d'État néo-zélandaises" },
   { code: 'kr', label: 'Corée du Sud', index_ticker: '148070.KS', currency: 'KRW', index_label: "Obligations d'État coréennes 10 ans" },
@@ -159,26 +151,24 @@ function setupDefaultMocks() {
   mockUseBondPerfConfigs.mockReturnValue({ data: MOCK_BOND_COUNTRIES, refetch: vi.fn() });
 }
 
-// Shared by MarketCountryManager (this file) and SectorManager (GlobalConfigPage.sectorPerformance.test.tsx)
-// — both validate the same 5-field shape (code/label/index_ticker/currency/index_label) in the
-// same order, differing only in button text and typed values. EquityPremiumManager validates a
-// genuinely different 6-field shape (no currency, has separate equity/bond tickers+labels) so it
-// is NOT parameterized with these — its validation tests stay written out individually.
+// Same 5-field shape (code/label/index_ticker/currency/index_label) as SectorManager/
+// MarketCountryManager — see GlobalConfigPage.sectorPerformance.test.tsx's own comment on why
+// this isn't shared across files (each split file is self-contained).
 type ValidationStep = readonly [missing: string, labels: string[], values: string[], errorPattern: RegExp];
 
 function countryLikeValidationSteps(label: string, code: string, ticker: string, currency: string): ValidationStep[] {
   return [
     ['a code', ['Nom'], [label], /Le code est requis/i],
     ['a label', ['Code'], [code], /Le nom est requis/i],
-    ['an index ticker', ['Code', 'Nom'], [code, label], /Le ticker indice est requis/i],
-    ['a currency', ['Code', 'Nom', 'Ticker indice'], [code, label, ticker], /La devise est requise/i],
-    ['an index label', ['Code', 'Nom', 'Ticker indice', 'Devise'], [code, label, ticker, currency], /Le nom de l'indice est requis/i],
+    ['an index ticker', ['Code', 'Nom'], [code, label], /Le ticker obligation est requis/i],
+    ['a currency', ['Code', 'Nom', 'Ticker obligation'], [code, label, ticker], /La devise est requise/i],
+    ['an index label', ['Code', 'Nom', 'Ticker obligation', 'Devise'], [code, label, ticker, currency], /Le nom de l'obligation est requis/i],
   ];
 }
 
-const COUNTRY_LIKE_VALIDATION_STEPS = countryLikeValidationSteps('Allemagne', 'de', '^GDAXI', 'EUR');
+const BOND_VALIDATION_STEPS = countryLikeValidationSteps('Suède', 'se', 'XACT-OBLIGATION.ST', 'SEK');
 
-describe('GlobalConfigPage — MarketCountryManager (Performance des actions)', () => {
+describe('GlobalConfigPage — BondCountryManager (Performance obligataire)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setupDefaultMocks();
@@ -188,26 +178,25 @@ describe('GlobalConfigPage — MarketCountryManager (Performance des actions)', 
     vi.restoreAllMocks();
   });
 
-  it('renders the market performance section with the country list and top-N setting', () => {
+  it('renders the bond performance section with the country list', () => {
     render(<GlobalConfigPage />);
-    expect(screen.getByText(/Performance des actions/i)).toBeInTheDocument();
-    expect(screen.getByText('jp')).toBeInTheDocument();
-    expect(screen.getByText('Japon')).toBeInTheDocument();
-    expect(screen.getByText('^N225')).toBeInTheDocument();
-    expect(screen.getByText('JPY')).toBeInTheDocument();
-    expect(screen.getByLabelText('Nombre de pays affichés (Top N)')).toBeInTheDocument();
+    expect(screen.getByText(/Performance obligataire/i)).toBeInTheDocument();
+    expect(screen.getByText('nz')).toBeInTheDocument();
+    expect(screen.getByText('Nouvelle-Zélande')).toBeInTheDocument();
+    expect(screen.getByText('NZGB.AX')).toBeInTheDocument();
   });
 
-  it('shows "Aucun pays" when there are no countries', () => {
-    mockUseCountryPerfConfigs.mockReturnValue({ data: [], refetch: vi.fn() });
+  it('shows "Aucun pays" when there are no bond countries', () => {
+    mockUseBondPerfConfigs.mockReturnValue({ data: [], refetch: vi.fn() });
     render(<GlobalConfigPage />);
     expect(screen.getByText('Aucun pays')).toBeInTheDocument();
   });
 
-  it.each(COUNTRY_LIKE_VALIDATION_STEPS)('saving without %s shows validation error', async (_missing, labels, values, errorPattern) => {
+  it.each(BOND_VALIDATION_STEPS)('saving without %s shows validation error', async (_missing, labels, values, errorPattern) => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
-    await user.click(screen.getByText('Nouveau pays'));
+    const newButtons = screen.getAllByText('Nouvelle obligation');
+    await user.click(newButtons[newButtons.length - 1]);
     for (let i = 0; i < labels.length; i++) {
       await user.type(screen.getByLabelText(labels[i]), values[i]);
     }
@@ -216,126 +205,131 @@ describe('GlobalConfigPage — MarketCountryManager (Performance des actions)', 
     expect(screen.getByText(errorPattern)).toBeInTheDocument();
   }, 10000);
 
-  it('can create a country with valid data', async () => {
-    const { createCountryPerfConfig } = await import('../api/queries');
+  it('can create a bond country with valid data', async () => {
+    const { createBondPerfConfig } = await import('../api/queries');
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
-    await user.click(screen.getByText('Nouveau pays'));
-    await user.type(screen.getByLabelText('Code'), 'de');
-    await user.type(screen.getByLabelText('Nom'), 'Allemagne');
-    await user.type(screen.getByLabelText('Nom de l\'indice'), 'DAX 40');
-    await user.type(screen.getByLabelText('Ticker indice'), '^GDAXI');
-    await user.type(screen.getByLabelText('Devise'), 'eur');
+    const newButtons = screen.getAllByText('Nouvelle obligation');
+    await user.click(newButtons[newButtons.length - 1]);
+    await user.type(screen.getByLabelText('Code'), 'se');
+    await user.type(screen.getByLabelText('Nom'), 'Suède');
+    await user.type(screen.getByLabelText("Nom de l'obligation"), 'Obligations suédoises mixtes');
+    await user.type(screen.getByLabelText('Ticker obligation'), 'XACT-OBLIGATION.ST');
+    await user.type(screen.getByLabelText('Devise'), 'sek');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    expect(createCountryPerfConfig).toHaveBeenCalledWith({
-      code: 'de', label: 'Allemagne', index_ticker: '^GDAXI', currency: 'EUR', index_label: 'DAX 40',
+    expect(createBondPerfConfig).toHaveBeenCalledWith({
+      code: 'se', label: 'Suède', index_ticker: 'XACT-OBLIGATION.ST', currency: 'SEK',
+      index_label: 'Obligations suédoises mixtes',
     });
   }, 10000);
 
-  it('country code input converts to lowercase, currency input converts to uppercase', async () => {
+  it('bond country code input converts to lowercase, currency input converts to uppercase', async () => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
-    await user.click(screen.getByText('Nouveau pays'));
+    const newButtons = screen.getAllByText('Nouvelle obligation');
+    await user.click(newButtons[newButtons.length - 1]);
     const codeInput = screen.getByLabelText('Code');
-    await user.type(codeInput, 'DE');
-    expect((codeInput as HTMLInputElement).value).toBe('de');
+    await user.type(codeInput, 'SE');
+    expect((codeInput as HTMLInputElement).value).toBe('se');
     const currencyInput = screen.getByLabelText('Devise');
-    await user.type(currencyInput, 'eur');
-    expect((currencyInput as HTMLInputElement).value).toBe('EUR');
+    await user.type(currencyInput, 'sek');
+    expect((currencyInput as HTMLInputElement).value).toBe('SEK');
   }, 10000);
 
-  it('create country API error shows the returned detail message', async () => {
-    const { createCountryPerfConfig } = await import('../api/queries');
-    vi.mocked(createCountryPerfConfig).mockRejectedValueOnce({ response: { data: { detail: "Country 'de' already exists" } } });
+  it('create bond country API error shows the returned detail message', async () => {
+    const { createBondPerfConfig } = await import('../api/queries');
+    vi.mocked(createBondPerfConfig).mockRejectedValueOnce({ response: { data: { detail: "Country 'nz' already exists" } } });
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
-    await user.click(screen.getByText('Nouveau pays'));
-    await user.type(screen.getByLabelText('Code'), 'de');
-    await user.type(screen.getByLabelText('Nom'), 'Allemagne');
-    await user.type(screen.getByLabelText('Nom de l\'indice'), 'DAX 40');
-    await user.type(screen.getByLabelText('Ticker indice'), '^GDAXI');
-    await user.type(screen.getByLabelText('Devise'), 'EUR');
+    const newButtons = screen.getAllByText('Nouvelle obligation');
+    await user.click(newButtons[newButtons.length - 1]);
+    await user.type(screen.getByLabelText('Code'), 'nz');
+    await user.type(screen.getByLabelText('Nom'), 'Nouvelle-Zélande');
+    await user.type(screen.getByLabelText("Nom de l'obligation"), "Obligations d'État néo-zélandaises");
+    await user.type(screen.getByLabelText('Ticker obligation'), 'NZGB.AX');
+    await user.type(screen.getByLabelText('Devise'), 'NZD');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
     await rtlWaitFor(() => expect(screen.getByText(/already exists/i)).toBeInTheDocument());
   }, 10000);
 
-  it('create country API error without detail uses fallback message', async () => {
-    const { createCountryPerfConfig } = await import('../api/queries');
-    vi.mocked(createCountryPerfConfig).mockRejectedValueOnce(new Error('Network error'));
+  it('create bond country API error without detail uses fallback message', async () => {
+    const { createBondPerfConfig } = await import('../api/queries');
+    vi.mocked(createBondPerfConfig).mockRejectedValueOnce(new Error('Network error'));
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
-    await user.click(screen.getByText('Nouveau pays'));
-    await user.type(screen.getByLabelText('Code'), 'de');
-    await user.type(screen.getByLabelText('Nom'), 'Allemagne');
-    await user.type(screen.getByLabelText('Nom de l\'indice'), 'DAX 40');
-    await user.type(screen.getByLabelText('Ticker indice'), '^GDAXI');
-    await user.type(screen.getByLabelText('Devise'), 'EUR');
+    const newButtons = screen.getAllByText('Nouvelle obligation');
+    await user.click(newButtons[newButtons.length - 1]);
+    await user.type(screen.getByLabelText('Code'), 'se');
+    await user.type(screen.getByLabelText('Nom'), 'Suède');
+    await user.type(screen.getByLabelText("Nom de l'obligation"), 'Obligations suédoises mixtes');
+    await user.type(screen.getByLabelText('Ticker obligation'), 'XACT-OBLIGATION.ST');
+    await user.type(screen.getByLabelText('Devise'), 'SEK');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
     await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de l'enregistrement/i)).toBeInTheDocument());
   }, 10000);
 
-  it('shows edit modal with the code locked when clicking edit for a country', async () => {
+  it('shows edit modal with the code locked when clicking edit for a bond country', async () => {
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
-    await user.click(screen.getByRole('button', { name: /Modifier pays jp/i }));
-    expect(screen.getByText(/Modifier le pays — jp/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Modifier obligation nz/i }));
+    expect(screen.getByText(/Modifier le pays — nz/i)).toBeInTheDocument();
     const codeInput = screen.getByLabelText('Code');
     expect((codeInput as HTMLInputElement).disabled).toBe(true);
-    expect((codeInput as HTMLInputElement).value).toBe('jp');
+    expect((codeInput as HTMLInputElement).value).toBe('nz');
   }, 10000);
 
-  it('can save an edited country', async () => {
-    const { updateCountryPerfConfig } = await import('../api/queries');
+  it('can save an edited bond country', async () => {
+    const { updateBondPerfConfig } = await import('../api/queries');
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
-    await user.click(screen.getByRole('button', { name: /Modifier pays jp/i }));
+    await user.click(screen.getByRole('button', { name: /Modifier obligation nz/i }));
     const labelInput = screen.getByLabelText('Nom');
     await user.clear(labelInput);
-    await user.type(labelInput, 'Japan');
+    await user.type(labelInput, 'NZ');
     const modal = screen.getByTestId('modal');
     await user.click(within(modal).getByText('Enregistrer'));
-    expect(updateCountryPerfConfig).toHaveBeenCalledWith('jp', {
-      label: 'Japan', index_ticker: '^N225', currency: 'JPY', index_label: 'Nikkei 225',
+    expect(updateBondPerfConfig).toHaveBeenCalledWith('nz', {
+      label: 'NZ', index_ticker: 'NZGB.AX', currency: 'NZD', index_label: "Obligations d'État néo-zélandaises",
     });
   }, 10000);
 
-  it('can delete a country with confirm', async () => {
-    const { deleteCountryPerfConfig } = await import('../api/queries');
+  it('can delete a bond country with confirm', async () => {
+    const { deleteBondPerfConfig } = await import('../api/queries');
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
-    await user.click(screen.getByRole('button', { name: /Supprimer pays gb/i }));
+    await user.click(screen.getByRole('button', { name: /Supprimer obligation kr/i }));
     await user.click(screen.getByText('Supprimer'));
-    expect(deleteCountryPerfConfig).toHaveBeenCalledWith('gb');
+    expect(deleteBondPerfConfig).toHaveBeenCalledWith('kr');
   }, 10000);
 
-  it('delete cancelled by user does not call deleteCountryPerfConfig', async () => {
-    const { deleteCountryPerfConfig } = await import('../api/queries');
+  it('delete cancelled by user does not call deleteBondPerfConfig', async () => {
+    const { deleteBondPerfConfig } = await import('../api/queries');
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
-    await user.click(screen.getByRole('button', { name: /Supprimer pays gb/i }));
+    await user.click(screen.getByRole('button', { name: /Supprimer obligation kr/i }));
     await user.click(screen.getByText('Annuler'));
-    expect(deleteCountryPerfConfig).not.toHaveBeenCalled();
+    expect(deleteBondPerfConfig).not.toHaveBeenCalled();
   }, 10000);
 
-  it('delete succeeds with no last-remaining-row guard (unlike regions)', async () => {
-    const { deleteCountryPerfConfig } = await import('../api/queries');
-    mockUseCountryPerfConfigs.mockReturnValue({ data: [MOCK_COUNTRIES[0]], refetch: vi.fn() });
+  it('delete succeeds with no last-remaining-row guard', async () => {
+    const { deleteBondPerfConfig } = await import('../api/queries');
+    mockUseBondPerfConfigs.mockReturnValue({ data: [MOCK_BOND_COUNTRIES[0]], refetch: vi.fn() });
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
-    await user.click(screen.getByRole('button', { name: /Supprimer pays jp/i }));
+    await user.click(screen.getByRole('button', { name: /Supprimer obligation nz/i }));
     await user.click(screen.getByText('Supprimer'));
-    expect(deleteCountryPerfConfig).toHaveBeenCalledWith('jp');
+    expect(deleteBondPerfConfig).toHaveBeenCalledWith('nz');
   }, 10000);
 
   it('delete error without detail shows fallback message', async () => {
-    const { deleteCountryPerfConfig } = await import('../api/queries');
-    vi.mocked(deleteCountryPerfConfig).mockRejectedValueOnce(new Error('Unknown error'));
+    const { deleteBondPerfConfig } = await import('../api/queries');
+    vi.mocked(deleteBondPerfConfig).mockRejectedValueOnce(new Error('Unknown error'));
     const user = userEvent.setup({ delay: null });
     render(<GlobalConfigPage />);
-    await user.click(screen.getByRole('button', { name: /Supprimer pays gb/i }));
+    await user.click(screen.getByRole('button', { name: /Supprimer obligation kr/i }));
     await user.click(screen.getByText('Supprimer'));
     await rtlWaitFor(() => expect(screen.getByText(/Erreur lors de la suppression/i)).toBeInTheDocument());
   }, 10000);

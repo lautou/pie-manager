@@ -12,9 +12,15 @@ Business rules:
 - LIQUIDITE.* tickers (LIQUIDITE.EURO, LIQUIDITE.USD, …) are pure cash-account
   entries — not financial instruments — and are excluded entirely.
 - CUMP resets to 0 when position reaches 0 (full sell or below tolerance).
-- Realized PV per sell = (unit_price_eur - cump_at_sell) × qty_sold.
+- Realized PV per sell = total_amount_eur (exact proceeds) - cump_at_sell × qty_sold,
+  minus the linked disposal fee when `force_include_fees=True` (fiscal callers
+  only — see `compute_capital_gains`'s own docstring). Proceeds intentionally
+  come from total_amount_eur, not unit_price_eur × qty_sold: unit_price_eur is
+  stored rounded to 2 decimals while real broker execution prices can carry
+  3+ decimals, and that rounding error is amplified by quantity on large sales.
 - Cumulative realized PV is tracked across cycles (never resets).
-- Transactions of type 'Frais' and 'Revenu' are ignored.
+- Transactions of type 'Frais' and 'Revenu' are ignored, except as a linked-fee
+  cost/deduction folded into their parent Achat/Vente (see `fees_by_parent`).
 - Products with instrument_type='Or physique' (OR.PHYSIQUE) are excluded.
 """
 from __future__ import annotations
@@ -74,6 +80,7 @@ async def compute_capital_gains(
     db: AsyncSession,
     portfolio_id: int,
     account_id: int | None = None,
+    force_include_fees: bool = False,
 ) -> PortfolioCapitalGains:
     """
     Compute CUMP-based capital gains for all eligible tickers in the portfolio.
@@ -82,6 +89,17 @@ async def compute_capital_gains(
         db: Async SQLAlchemy session.
         portfolio_id: Portfolio to analyse.
         account_id: If provided, restrict to transactions on that account only.
+        force_include_fees: For fiscal/tax-declaration callers only (see
+            `app.api.routers.fiscal`) — always fold acquisition fees into CUMP and
+            always deduct disposal fees from realized PV, regardless of each
+            broker's own `include_fees_in_cump` setting. Degiro's own documentation
+            confirms this asymmetry: their live "PRU"/unrealized P&L deliberately
+            excludes brokerage fees/TTF (what `include_fees_in_cump=False` mirrors
+            for the main capital-gains page), but their realized P&L always
+            includes them — a real 2025 Degiro annual report reconciled exactly
+            with this app's numbers only once both fee corrections were applied
+            unconditionally. Must default to False so `app.api.routers.pv`'s
+            existing capital-gains page behavior is completely unaffected.
 
     Returns:
         PortfolioCapitalGains with current_value_eur=0.0 and unrealized_pv=0.0
@@ -117,8 +135,9 @@ async def compute_capital_gains(
     transactions = tx_result.scalars().all()
 
     # ── 2b. Build linked-fee cost lookup (brokerage + TTF per buy transaction) ──
-    # Only include fees for accounts where include_fees_in_cump = True.
-    # Accounts with include_fees_in_cump = False (e.g. Degiro, IBKR) exclude brokerage from WACOP.
+    # Only include fees for accounts where include_fees_in_cump = True — unless
+    # force_include_fees (fiscal callers), which always includes every account's
+    # fees regardless of that per-broker display setting.
     fees_account_ids = {
         aid for aid, include in fees_in_cump_by_account.items() if include
     }
@@ -131,8 +150,10 @@ async def compute_capital_gains(
             Transaction.portfolio_id == portfolio_id,
             Transaction.type == "Frais",
             Transaction.linked_transaction_id.isnot(None),
-            Transaction.account_id.in_(fees_account_ids) if fees_account_ids
-            else sa.literal(False),
+            sa.literal(True) if force_include_fees else (
+                Transaction.account_id.in_(fees_account_ids) if fees_account_ids
+                else sa.literal(False)
+            ),
         )
         .group_by(Transaction.linked_transaction_id)
     )
@@ -195,8 +216,17 @@ async def compute_capital_gains(
 
         elif is_sell:
             # ── SELL ─────────────────────────────────────────────────────────
+            # Proceeds come from total_amount_eur (exact), not unit_price_eur * qty:
+            # unit_price_eur is stored rounded to 2 decimals while the real broker
+            # execution price can have 3+ decimals — on a large-quantity sale this
+            # rounding, multiplied by quantity, produces a real, non-negligible
+            # error (confirmed live: 0.38€ off on a real 380-unit sale). See
+            # `.claude/rules/capital-gains.md`.
             qty_sold = abs(tx.quantity)
-            pv = (tx.unit_price_eur - cump) * qty_sold
+            proceeds = abs(tx.total_amount_eur)
+            pv = proceeds - cump * qty_sold
+            if force_include_fees:
+                pv -= fees_by_parent.get(tx.id, 0.0)
             realized_pv_by_ticker[ticker] += pv
 
             product_name = product.name if product else ticker

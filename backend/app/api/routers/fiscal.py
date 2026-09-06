@@ -158,7 +158,7 @@ async def _get_loss_harvesting_candidates(
 
     merged: dict[str, dict] = {}
     for cto_id in cto_ids:
-        cto_pv = await compute_capital_gains(db, portfolio_id, account_id=cto_id)
+        cto_pv = await compute_capital_gains(db, portfolio_id, account_id=cto_id, force_include_fees=True)
         for t in cto_pv.tickers:
             if t.ticker in _FISCAL_EXCLUDED_TICKERS or t.qty_held <= 0:
                 continue
@@ -231,7 +231,7 @@ async def get_current_year_pv(
 
     # Use the PV service — filter events by year and CTO account
     from app.services.pv_service import compute_capital_gains
-    pv_data = await compute_capital_gains(db, portfolio_id)
+    pv_data = await compute_capital_gains(db, portfolio_id, force_include_fees=True)
 
     year_str = str(fiscal_year)
     details: list[FiscalPvDetail] = []

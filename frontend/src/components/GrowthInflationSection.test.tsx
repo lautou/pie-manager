@@ -4,7 +4,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 
-import { pfCoreStubs } from '../../tests/utils/patternfly-mocks';
+import { pfCoreStubs, pfTableStubs } from '../../tests/utils/patternfly-mocks';
 
 (globalThis as any).ResizeObserver = class {
   observe() {}
@@ -13,6 +13,11 @@ import { pfCoreStubs } from '../../tests/utils/patternfly-mocks';
 };
 
 vi.mock('@patternfly/react-core', () => ({ ...pfCoreStubs }));
+vi.mock('@patternfly/react-table', () => ({ ...pfTableStubs }));
+
+vi.mock('react-router-dom', () => ({
+  useSearchParams: () => [new URLSearchParams(), vi.fn()],
+}));
 
 vi.mock('@patternfly/react-charts/victory', () => ({
   Chart: ({ children }: any) => <div data-testid="chart">{children}</div>,
@@ -27,11 +32,15 @@ vi.mock('@patternfly/react-charts/victory', () => ({
 const mockUseGrowthIndicator = vi.fn();
 const mockUseInflationIndicator = vi.fn();
 const mockUseMacroRegions = vi.fn();
+const mockUseQuadrant = vi.fn();
+const mockUseHoldings = vi.fn();
 
 vi.mock('../api/queries', () => ({
   useGrowthIndicator: (region: string) => mockUseGrowthIndicator(region),
   useInflationIndicator: (region: string) => mockUseInflationIndicator(region),
   useMacroRegions: () => mockUseMacroRegions(),
+  useQuadrant: (region: string) => mockUseQuadrant(region),
+  useHoldings: (userId: string | undefined) => mockUseHoldings(userId),
 }));
 
 const mockUseMacroSyncStatus = vi.fn();
@@ -67,6 +76,11 @@ describe('GrowthInflationSection', () => {
     mockUseMacroRegions.mockReturnValue({ data: REGIONS });
     mockUseMacroSyncStatus.mockReturnValue({ data: { status: 'never', started_at: null, finished_at: null, total_tickers: 0, succeeded: 0, failed_tickers: [] } });
     mockUseSyncStatusInvalidation.mockClear();
+    mockUseQuadrant.mockReturnValue({
+      data: { quadrant: null, growth_confidence: null, inflation_confidence: null, overall_confidence: null, growth_status: null, inflation_status: null, latest_date: null },
+      isLoading: false,
+    });
+    mockUseHoldings.mockReturnValue({ data: undefined });
   });
 
   it('defaults to the first region returned by the API and renders region-aware titles', () => {

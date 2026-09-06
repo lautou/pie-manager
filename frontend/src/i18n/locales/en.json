@@ -621,7 +621,31 @@
       "bondLabelRequired": "Bond name is required"
     },
     "tabEquityPremium": "Equity Risk Premium",
-    "tabBondPerformance": "Bond Performance"
+    "tabBondPerformance": "Bond Performance",
+    "quadrantTitle": "Macro quadrant — {{region}}",
+    "quadrantNoData": "No data yet — the daily sync doesn't have enough history to classify this quadrant.",
+    "quadrantConfidence": "Confidence: {{value}}",
+    "quadrantFavorabilityTableLabel": "Favorability by asset class",
+    "quadrantAssetColumn": "Asset class",
+    "quadrantFavorabilityColumn": "General read",
+    "quadrantAllocationColumn": "Your allocation",
+    "quadrantNoPortfolioContext": "Open this page from a portfolio to compare against your own allocation.",
+    "quadrant": {
+      "goldilocks": "Growth + disinflation (\"Goldilocks\")",
+      "overheating": "Growth + inflation (overheating)",
+      "disinflationary_slowdown": "Slowdown + disinflation",
+      "stagflation": "Slowdown + inflation (stagflation)"
+    },
+    "quadrantCategory": {
+      "actions": "Equities",
+      "obligations": "Bonds",
+      "or": "Physical gold",
+      "cash": "Cash"
+    },
+    "quadrantFavorability": {
+      "favorable": "Favorable",
+      "defavorable": "Unfavorable"
+    }
   },
   "marketPerformance": {
     "chartTitle": "Top 15 — 1-Year Stock Market Performance (EUR)",

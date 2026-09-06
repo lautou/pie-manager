@@ -16,6 +16,7 @@ from app.core.pgq import get_pgq_queries
 from app.models.macro_indicator import MacroRegion
 from app.tasks import job_runs
 from app.services.macro_indicators_service import (
+    compute_quadrant,
     compute_ratio_indicator,
     create_region,
     delete_region,
@@ -46,6 +47,16 @@ class RatioIndicatorOut(BaseModel):
     denominator_ticker: Optional[str] = None
     numerator_label: Optional[str] = None
     denominator_label: Optional[str] = None
+
+
+class QuadrantOut(BaseModel):
+    quadrant: Optional[str] = None
+    growth_confidence: Optional[float] = None
+    inflation_confidence: Optional[float] = None
+    overall_confidence: Optional[float] = None
+    growth_status: Optional[str] = None
+    inflation_status: Optional[str] = None
+    latest_date: Optional[str] = None
 
 
 class MacroSyncStatusOut(BaseModel):
@@ -111,6 +122,15 @@ async def get_inflation_indicator(region: str = Query("us"), db: AsyncSession = 
         "numerator_ticker": region_row.bond_ticker, "denominator_ticker": macro_settings["gold"],
         "numerator_label": region_row.bond_label, "denominator_label": macro_settings["gold_label"],
     }
+
+
+@router.get("/quadrant", response_model=QuadrantOut)
+async def get_quadrant(region: str = Query("us"), db: AsyncSession = Depends(get_db)):
+    """Growth/inflation quadrant classification for a region — informational only, see
+    docs/ROADMAP.md's "Quadrant macro-économique" entry. Never drives Pool.target_pct."""
+    region_row = await _get_region_or_404(db, region)
+    macro_settings = await get_macro_settings(db)
+    return await compute_quadrant(db, region_row.code, macro_settings["ma_years"])
 
 
 # ---------------------------------------------------------------------------

@@ -406,7 +406,16 @@
     "creationError": "Error creating entry.",
     "clickToEdit": "Click to edit",
     "selectYear": "Select tax year",
-    "amountLabel": "Capital loss amount"
+    "amountLabel": "Capital loss amount",
+    "planTitle": "Recommendation: sell then rebuy",
+    "planFractionable": "Fractional selling possible",
+    "planQtyToSell": "Quantity to sell then rebuy",
+    "planEstimatedLoss": "Estimated loss",
+    "planCovered": "{{covered}} of loss generated toward a {{target}} target",
+    "planShortfall": "Even selling every available position, {{amount}} is still short of fully covering the target.",
+    "planDisclaimerExecution": "Decision support only — no transaction is created automatically, you place the sell then the rebuy yourself.",
+    "planDisclaimerFees": "The estimated loss already includes the real brokerage commission for that account (schedule on file for this broker) — an estimate based on the current schedule, confirm at order time if it has since changed.",
+    "planDisclaimerRebalancing": "Selling and immediately rebuying the exact same quantity of the same instrument leaves the portfolio's composition completely unchanged — no impact on rebalancing."
   },
   "rebalancing": {
     "title": "Rebalancing",

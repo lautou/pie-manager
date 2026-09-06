@@ -747,6 +747,7 @@ export interface FiscalPvDetail {
 }
 
 export interface FiscalLossCandidate {
+  account_id: number;
   ticker: string;
   product_name: string;
   qty_held: number;

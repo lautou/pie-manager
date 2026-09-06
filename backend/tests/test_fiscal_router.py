@@ -333,6 +333,7 @@ async def test_loss_harvesting_candidate_appears_for_unrealized_loss(client, db_
     candidates = r.json()["loss_harvesting_candidates"]
     assert len(candidates) == 1
     c = candidates[0]
+    assert c["account_id"] == acc_id
     assert c["ticker"] == "LOSS.DE"
     assert c["qty_held"] == pytest.approx(10.0, abs=1e-6)
     assert c["cump"] == pytest.approx(100.0, rel=1e-4)
@@ -423,6 +424,33 @@ async def test_loss_harvesting_no_transactions_returns_empty(client, db_session)
     r = await client.get("/api/fiscal/current-year-pv/", params={"portfolio_id": pid})
     assert r.status_code == 200
     assert r.json()["loss_harvesting_candidates"] == []
+
+
+async def test_loss_harvesting_same_ticker_two_cto_accounts_not_merged(client, db_session):
+    """A ticker held on two different CTO brokers (e.g. Degiro + IBKR) must surface as
+    two separate candidate rows, each with its own account_id/qty/cump — never merged
+    into one blended row, since a hypothetical sell executes on one specific broker
+    whose own commission applies only to that account's quantity."""
+    pid = await create_portfolio(client, "Fiscal-Loss-TwoAccounts")
+    acc_a = await _make_cto_account(client, db_session, pid, "Degiro")
+    acc_b = await _make_cto_account(client, db_session, pid, "IBKR")
+    await create_product(client, "SHARED.DE", name="Shared ETF", category="Actif")
+
+    await _buy(client, pid, acc_a, "SHARED.DE", qty=10, unit_price=100.0)
+    await _buy(client, pid, acc_b, "SHARED.DE", qty=20, unit_price=90.0)
+    await _seed_price(db_session, "SHARED.DE", price=50.0)
+
+    r = await client.get("/api/fiscal/current-year-pv/", params={"portfolio_id": pid})
+    assert r.status_code == 200
+    candidates = r.json()["loss_harvesting_candidates"]
+    assert len(candidates) == 2
+    by_account = {c["account_id"]: c for c in candidates}
+    assert by_account[acc_a]["qty_held"] == pytest.approx(10.0, abs=1e-6)
+    assert by_account[acc_a]["cump"] == pytest.approx(100.0, rel=1e-4)
+    assert by_account[acc_a]["unrealized_pv"] == pytest.approx(-500.0, abs=0.01)
+    assert by_account[acc_b]["qty_held"] == pytest.approx(20.0, abs=1e-6)
+    assert by_account[acc_b]["cump"] == pytest.approx(90.0, rel=1e-4)
+    assert by_account[acc_b]["unrealized_pv"] == pytest.approx(-800.0, abs=0.01)
 
 
 async def test_loss_harvesting_skips_ticker_with_no_price(client, db_session):

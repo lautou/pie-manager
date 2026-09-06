@@ -417,7 +417,16 @@
     "creationError": "Erreur lors de la création.",
     "clickToEdit": "Cliquer pour modifier",
     "selectYear": "Sélectionner l'année fiscale",
-    "amountLabel": "Montant moins-value"
+    "amountLabel": "Montant moins-value",
+    "planTitle": "Recommandation : vendre puis racheter",
+    "planFractionable": "Fractionnement possible des actifs",
+    "planQtyToSell": "Quantité à vendre puis racheter",
+    "planEstimatedLoss": "Moins-value estimée",
+    "planCovered": "{{covered}} de moins-value générée sur {{target}} de cible",
+    "planShortfall": "Même en vendant toutes les positions disponibles, il manque {{amount}} pour couvrir entièrement la cible.",
+    "planDisclaimerExecution": "Aide à la décision uniquement — aucune transaction n'est créée automatiquement, à toi de passer la vente puis le rachat.",
+    "planDisclaimerFees": "La moins-value estimée inclut déjà le frais de courtage réel du compte concerné (barème enregistré pour ce broker) — estimation basée sur le barème actuel, à confirmer au moment de l'ordre si celui-ci a changé entre-temps.",
+    "planDisclaimerRebalancing": "Vendre puis racheter immédiatement la même quantité du même titre laisse la composition du portefeuille totalement inchangée — aucun impact sur le rééquilibrage."
   },
   "rebalancing": {
     "title": "Rééquilibrage",

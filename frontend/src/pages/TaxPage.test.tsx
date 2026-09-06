@@ -59,6 +59,7 @@ const mockUseCreateCarryForward = vi.fn();
 const mockUseUpdateCarryForward = vi.fn();
 const mockUseDeleteCarryForward = vi.fn();
 const mockUseFiscalCurrentYearPv = vi.fn();
+const mockUseBrokers = vi.fn();
 
 vi.mock('../api/queries', () => ({
   useFiscalCarryForwards: (...args: any[]) => mockUseFiscalCarryForwards(...args),
@@ -66,6 +67,7 @@ vi.mock('../api/queries', () => ({
   useUpdateCarryForward: () => mockUseUpdateCarryForward(),
   useDeleteCarryForward: () => mockUseDeleteCarryForward(),
   useFiscalCurrentYearPv: (...args: any[]) => mockUseFiscalCurrentYearPv(...args),
+  useBrokers: (...args: any[]) => mockUseBrokers(...args),
 }));
 
 // ── Test data ─────────────────────────────────────────────────────────────────
@@ -108,6 +110,7 @@ describe('TaxPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseFiscalCurrentYearPv.mockReturnValue({ data: undefined, isLoading: false });
+    mockUseBrokers.mockReturnValue({ data: [] });
     mockUseCreateCarryForward.mockReturnValue({
       mutateAsync: vi.fn(),
       isPending: false,
@@ -723,7 +726,7 @@ describe('TaxPage', () => {
           details: [],
           loss_harvesting_candidates: [
             {
-              ticker: 'LOSS.DE', product_name: 'Losing ETF',
+              account_id: 1, ticker: 'LOSS.DE', product_name: 'Losing ETF',
               qty_held: 10, cump: 100, current_value_eur: 800, unrealized_pv: -200,
             },
           ],
@@ -736,6 +739,155 @@ describe('TaxPage', () => {
       expect(screen.getByText('Losing ETF')).toBeInTheDocument();
       expect(screen.getByText(/-200,00/)).toBeInTheDocument();
     });
+  });
+});
+
+describe('TaxPage — loss-harvesting sell-then-rebuy plan', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseFiscalCarryForwards.mockReturnValue({ data: [], isLoading: false, isError: false });
+    mockUseBrokers.mockReturnValue({ data: [] });
+  });
+
+  it('does not render the plan when there is no taxable surplus (target <= 0)', () => {
+    mockUseFiscalCurrentYearPv.mockReturnValue({
+      data: {
+        year: 2026,
+        net_realized_pv: -50,
+        details: [],
+        loss_harvesting_candidates: [
+          { account_id: 1, ticker: 'LOSS.DE', product_name: 'Losing ETF', qty_held: 100, cump: 20, current_value_eur: 1000, unrealized_pv: -1000 },
+        ],
+      },
+      isLoading: false,
+    });
+
+    render(<TaxPage />);
+    expect(screen.queryByText('Recommandation : vendre puis racheter')).toBeNull();
+  });
+
+  it('recommends selling the full candidate when its loss exactly covers the target', () => {
+    mockUseFiscalCurrentYearPv.mockReturnValue({
+      data: {
+        year: 2026,
+        net_realized_pv: 1000,
+        details: [],
+        loss_harvesting_candidates: [
+          { account_id: 1, ticker: 'LOSS.DE', product_name: 'Losing ETF', qty_held: 100, cump: 20, current_value_eur: 1000, unrealized_pv: -1000 },
+        ],
+      },
+      isLoading: false,
+    });
+
+    render(<TaxPage />);
+    expect(screen.getByText('Recommandation : vendre puis racheter')).toBeInTheDocument();
+    expect(screen.getByText('1 000,00 € de moins-value générée sur 1 000,00 € de cible')).toBeInTheDocument();
+    expect(screen.queryByText(/couvrir entièrement la cible/)).toBeNull();
+  });
+
+  it('folds the real broker commission into the estimated loss and shows the account name', () => {
+    mockUseBrokers.mockReturnValue({
+      data: [{ id: 5, name: 'Degiro', commission_schedule: [{ type: 'flat', up_to: null, value: 3 }] }],
+    });
+    mockUseFiscalCurrentYearPv.mockReturnValue({
+      data: {
+        year: 2026,
+        net_realized_pv: 103,
+        details: [],
+        loss_harvesting_candidates: [
+          { account_id: 5, ticker: 'LOSS.DE', product_name: 'Losing ETF', qty_held: 100, cump: 20, current_value_eur: 900, unrealized_pv: -100 },
+        ],
+      },
+      isLoading: false,
+    });
+
+    render(<TaxPage />);
+    // 100€ latent loss + the real 3€ Degiro flat fee = 103€, matching the target exactly.
+    expect(screen.getByText('103,00 € de moins-value générée sur 103,00 € de cible')).toBeInTheDocument();
+    expect(screen.getAllByText('Degiro').length).toBeGreaterThan(0);
+  });
+
+  it('attributes each account its own broker fee for the same ticker held on two accounts', () => {
+    mockUseBrokers.mockReturnValue({
+      data: [
+        { id: 5, name: 'Degiro', commission_schedule: [{ type: 'flat', up_to: null, value: 3 }] },
+        { id: 2, name: 'IBKR', commission_schedule: [{ type: 'flat', up_to: null, value: 1.25 }] },
+      ],
+    });
+    mockUseFiscalCurrentYearPv.mockReturnValue({
+      data: {
+        year: 2026,
+        net_realized_pv: 103,
+        details: [],
+        loss_harvesting_candidates: [
+          { account_id: 5, ticker: 'SHARED.DE', product_name: 'Shared ETF', qty_held: 100, cump: 20, current_value_eur: 900, unrealized_pv: -100 },
+          { account_id: 2, ticker: 'SHARED.DE', product_name: 'Shared ETF', qty_held: 50, cump: 20, current_value_eur: 450, unrealized_pv: -50 },
+        ],
+      },
+      isLoading: false,
+    });
+
+    render(<TaxPage />);
+    // The worse (Degiro) candidate alone, plus its own 3€ fee, exactly covers the 103€ target —
+    // the IBKR line must never be touched, and never contribute its own 1.25€ fee.
+    expect(screen.getByText('103,00 € de moins-value générée sur 103,00 € de cible')).toBeInTheDocument();
+    expect(screen.getAllByText('Degiro').length).toBeGreaterThan(0);
+  });
+
+  it('rounds the cutoff quantity up by default (fractionnement unchecked)', () => {
+    mockUseFiscalCurrentYearPv.mockReturnValue({
+      data: {
+        year: 2026,
+        net_realized_pv: 100,
+        details: [],
+        loss_harvesting_candidates: [
+          // per-unit loss = 300/100 = 3 -> exact qty for 100 target = 33.333...
+          { account_id: 1, ticker: 'LOSS.DE', product_name: 'Losing ETF', qty_held: 100, cump: 20, current_value_eur: 700, unrealized_pv: -300 },
+        ],
+      },
+      isLoading: false,
+    });
+
+    render(<TaxPage />);
+    const checkbox = screen.getByLabelText('Fractionnement possible des actifs') as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+    expect(screen.getByText('34')).toBeInTheDocument(); // Math.ceil(33.333...)
+  });
+
+  it('uses the exact fractional quantity once fractionnement is checked', () => {
+    mockUseFiscalCurrentYearPv.mockReturnValue({
+      data: {
+        year: 2026,
+        net_realized_pv: 100,
+        details: [],
+        loss_harvesting_candidates: [
+          { account_id: 1, ticker: 'LOSS.DE', product_name: 'Losing ETF', qty_held: 100, cump: 20, current_value_eur: 700, unrealized_pv: -300 },
+        ],
+      },
+      isLoading: false,
+    });
+
+    render(<TaxPage />);
+    const checkbox = screen.getByLabelText('Fractionnement possible des actifs');
+    fireEvent.click(checkbox);
+    expect(screen.getByText('33,3333')).toBeInTheDocument();
+  });
+
+  it('shows a shortfall note when every candidate combined cannot cover the target', () => {
+    mockUseFiscalCurrentYearPv.mockReturnValue({
+      data: {
+        year: 2026,
+        net_realized_pv: 1000,
+        details: [],
+        loss_harvesting_candidates: [
+          { account_id: 1, ticker: 'LOSS.DE', product_name: 'Losing ETF', qty_held: 100, cump: 20, current_value_eur: 1000, unrealized_pv: -400 },
+        ],
+      },
+      isLoading: false,
+    });
+
+    render(<TaxPage />);
+    expect(screen.getByText(/manque 600,00 €/)).toBeInTheDocument();
   });
 });
 

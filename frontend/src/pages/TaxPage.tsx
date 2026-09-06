@@ -30,9 +30,11 @@ import {
   useCreateCarryForward,
   useUpdateCarryForward,
   useDeleteCarryForward,
+  useBrokers,
 } from '../api/queries';
 import { formatEUR, formatDate } from '../utils/format';
-import type { FiscalCarryForward } from '../types';
+import { computeLossHarvestingPlan } from '../utils/lossHarvesting';
+import type { FiscalCarryForward, Broker } from '../types';
 import type { FiscalPvDetail, FiscalLossCandidate } from '../api/queries';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -345,7 +347,13 @@ function DisposalTable({ rows }: { rows: FiscalPvDetail[] }) {
   );
 }
 
-function LossHarvestingSection({ candidates }: { candidates: FiscalLossCandidate[] }) {
+function LossHarvestingSection({
+  candidates,
+  brokersById,
+}: {
+  candidates: FiscalLossCandidate[];
+  brokersById: Map<number, Broker>;
+}) {
   const { t } = useTranslation();
   return (
     <div style={{ marginTop: '1rem' }}>
@@ -362,6 +370,7 @@ function LossHarvestingSection({ candidates }: { candidates: FiscalLossCandidate
             <Tr>
               <Th>{t('capitalGains.ticker')}</Th>
               <Th>{t('capitalGains.productName')}</Th>
+              <Th>{t('common.account')}</Th>
               <Th>{t('taxation.qtyHeld')}</Th>
               <Th>{t('capitalGains.cump')}</Th>
               <Th>{t('capitalGains.currentValue')}</Th>
@@ -370,9 +379,10 @@ function LossHarvestingSection({ candidates }: { candidates: FiscalLossCandidate
           </Thead>
           <Tbody>
             {candidates.map((c) => (
-              <Tr key={c.ticker}>
+              <Tr key={`${c.account_id}-${c.ticker}`}>
                 <Td><strong>{c.ticker}</strong></Td>
                 <Td>{c.product_name}</Td>
+                <Td>{brokersById.get(c.account_id)?.name ?? c.account_id}</Td>
                 <Td>{c.qty_held.toLocaleString('fr-FR', { maximumFractionDigits: 4 })}</Td>
                 <Td>{formatEUR(c.cump)}</Td>
                 <Td>{formatEUR(c.current_value_eur)}</Td>
@@ -383,6 +393,78 @@ function LossHarvestingSection({ candidates }: { candidates: FiscalLossCandidate
           </Tbody>
         </Table>
       )}
+    </div>
+  );
+}
+
+function LossHarvestingPlanSection({
+  candidates,
+  target,
+  brokersById,
+}: {
+  candidates: FiscalLossCandidate[];
+  target: number;
+  brokersById: Map<number, Broker>;
+}) {
+  const { t } = useTranslation();
+  const [fractionable, setFractionable] = useState(false);
+
+  if (target <= 0 || candidates.length === 0) return null;
+
+  const plan = computeLossHarvestingPlan(candidates, target, fractionable, brokersById);
+
+  return (
+    <div style={{ marginTop: '1rem' }}>
+      <Title headingLevel="h3" size="md" style={{ marginBottom: '0.4rem' }}>
+        {t('taxation.planTitle')}
+      </Title>
+
+      <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+        <input
+          type="checkbox"
+          checked={fractionable}
+          onChange={(e) => setFractionable(e.target.checked)}
+        />
+        {t('taxation.planFractionable')}
+      </label>
+
+      <Table aria-label="Recommandation vente puis rachat" variant="compact">
+        <Thead>
+          <Tr>
+            <Th>{t('capitalGains.ticker')}</Th>
+            <Th>{t('capitalGains.productName')}</Th>
+            <Th>{t('common.account')}</Th>
+            <Th>{t('taxation.planQtyToSell')}</Th>
+            <Th>{t('taxation.planEstimatedLoss')}</Th>
+          </Tr>
+        </Thead>
+        <Tbody>
+          {plan.lines.map((line) => (
+            <Tr key={`${line.account_id}-${line.ticker}`}>
+              <Td><strong>{line.ticker}</strong></Td>
+              <Td>{line.product_name}</Td>
+              <Td>{brokersById.get(line.account_id)?.name ?? line.account_id}</Td>
+              <Td>{line.qty.toLocaleString('fr-FR', { maximumFractionDigits: 4 })}</Td>
+              <Td><span style={{ color: '#c00', fontWeight: 500 }}>{formatEUR(-line.estimated_loss)}</span></Td>
+            </Tr>
+          ))}
+        </Tbody>
+      </Table>
+
+      <p style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>
+        {t('taxation.planCovered', { covered: formatEUR(plan.covered), target: formatEUR(target) })}
+      </p>
+      {plan.shortfall > 0 && (
+        <p style={{ fontSize: '0.85rem', color: '#c00' }}>
+          {t('taxation.planShortfall', { amount: formatEUR(plan.shortfall) })}
+        </p>
+      )}
+
+      <ul style={{ fontSize: '0.78rem', color: '#6A6E73', paddingLeft: '1.1rem', margin: '0.5rem 0 0' }}>
+        <li>{t('taxation.planDisclaimerExecution')}</li>
+        <li>{t('taxation.planDisclaimerFees')}</li>
+        <li>{t('taxation.planDisclaimerRebalancing')}</li>
+      </ul>
     </div>
   );
 }
@@ -398,6 +480,8 @@ export default function TaxPage() {
 
   const { data: entries = [], isLoading, isError } = useFiscalCarryForwards(portfolioIdStr);
   const { data: currentYearPv } = useFiscalCurrentYearPv(portfolioIdStr);
+  const { data: brokers = [] } = useBrokers(portfolioId);
+  const brokersById = new Map(brokers.map((b) => [b.id, b]));
 
   // Years usable for a new row (not already in DB, not future)
   const oldestExisting = entries.length > 0
@@ -595,7 +679,8 @@ export default function TaxPage() {
             {t('taxation.disclaimer')}
           </div>
 
-          <LossHarvestingSection candidates={lossCandidates} />
+          <LossHarvestingSection candidates={lossCandidates} brokersById={brokersById} />
+          <LossHarvestingPlanSection candidates={lossCandidates} target={stockAjuste} brokersById={brokersById} />
 
           {pvDetails.length > 0 && (
             <div style={{ marginTop: '1rem' }}>

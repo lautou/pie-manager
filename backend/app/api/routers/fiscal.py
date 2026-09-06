@@ -123,6 +123,7 @@ class FiscalPvDetail(BaseModel):
 
 
 class FiscalLossCandidate(BaseModel):
+    account_id: int
     ticker: str
     product_name: str
     qty_held: float
@@ -147,49 +148,57 @@ async def _get_loss_harvesting_candidates(
     Currently-held CTO positions (excl. forex) sitting at an unrealized loss right
     now — candidates the user could sell before year-end to realize more offsetting
     moins-values. Reuses compute_capital_gains (CUMP/WACOP) and the same
-    price/FX-conversion helpers pv.py's own endpoint uses, scoped per CTO account
-    (compute_capital_gains aggregates by ticker *within* the accounts it's given —
-    calling it once per CTO account_id, then merging by ticker, keeps a ticker held
-    in both a CTO and a non-CTO account from leaking its non-CTO quantity in).
+    price/FX-conversion helpers pv.py's own endpoint uses, scoped per CTO account.
+
+    One row per (account, ticker) — deliberately NOT merged across accounts even
+    when the same ticker is held on two different CTO brokers (e.g. Degiro and
+    IBKR). A hypothetical sell-to-harvest-a-loss executes on one specific broker,
+    whose own commission schedule/fee must be attributable to that exact account —
+    a cross-broker blended row would make that impossible downstream.
     """
     from app.services.dashboard_service import _get_latest_prices, _get_spot_rates
     from app.services.price_service import _to_eur, r2
     from app.services.pv_service import compute_capital_gains
 
-    merged: dict[str, dict] = {}
+    per_account: list[dict] = []
+    all_tickers: set[str] = set()
     for cto_id in cto_ids:
         cto_pv = await compute_capital_gains(db, portfolio_id, account_id=cto_id, force_include_fees=True)
         for t in cto_pv.tickers:
             if t.ticker in _FISCAL_EXCLUDED_TICKERS or t.qty_held <= 0:
                 continue
-            entry = merged.setdefault(
-                t.ticker, {"product_name": t.product_name, "qty_held": 0.0, "cost_basis_eur": 0.0}
-            )
-            entry["qty_held"] += t.qty_held
-            entry["cost_basis_eur"] += t.cost_basis_eur
+            per_account.append({
+                "account_id": cto_id,
+                "ticker": t.ticker,
+                "product_name": t.product_name,
+                "qty_held": t.qty_held,
+                "cost_basis_eur": t.cost_basis_eur,
+            })
+            all_tickers.add(t.ticker)
 
-    if not merged:
+    if not per_account:
         return []
 
-    tickers = list(merged.keys())
-    prices = await _get_latest_prices(db, tickers)
+    prices = await _get_latest_prices(db, list(all_tickers))
     spot_rates = await _get_spot_rates(db)
 
     candidates: list[FiscalLossCandidate] = []
-    for ticker, data in merged.items():
+    for entry in per_account:
+        ticker = entry["ticker"]
         if ticker not in prices:
             continue
         native_price, currency = prices[ticker]
         price_eur = _to_eur(native_price, currency, spot_rates)
-        current_value_eur = r2(data["qty_held"] * price_eur)
-        unrealized_pv = r2(current_value_eur - data["cost_basis_eur"])
+        current_value_eur = r2(entry["qty_held"] * price_eur)
+        unrealized_pv = r2(current_value_eur - entry["cost_basis_eur"])
         if unrealized_pv < 0:
-            # qty_held > 0 guaranteed by the merge loop's own skip above — no zero-division risk.
-            cump = data["cost_basis_eur"] / data["qty_held"]
+            # qty_held > 0 guaranteed by the loop's own skip above — no zero-division risk.
+            cump = entry["cost_basis_eur"] / entry["qty_held"]
             candidates.append(FiscalLossCandidate(
+                account_id=entry["account_id"],
                 ticker=ticker,
-                product_name=data["product_name"],
-                qty_held=round(data["qty_held"], 6),
+                product_name=entry["product_name"],
+                qty_held=round(entry["qty_held"], 6),
                 cump=round(cump, 6),
                 current_value_eur=current_value_eur,
                 unrealized_pv=unrealized_pv,

@@ -76,6 +76,13 @@ func startupSequence(pkgRoot, home string, onProgress func(string)) (*nativeSess
 
 	firstRun := isFirstRun(home)
 
+	if !firstRun {
+		report("Checking database compatibility…")
+		if err := checkPostgresUpgradeCompatibility(home); err != nil {
+			return nil, err
+		}
+	}
+
 	p := selectPorts()
 
 	if firstRun {

@@ -346,6 +346,25 @@ console-window suppression, the PgQueuer worker, and this module's own CI covera
 Auto-update is handled entirely by the Microsoft Store, like any other Store app — no
 in-app update mechanism, no Scheduled Task, no manual re-run needed.
 
+### Bundled PostgreSQL bumped from 16.14 to 18.4 — a real cross-platform restore failure
+
+`build-installer.yml`'s EDB Windows download URL now pins PostgreSQL 18.4, matching every other
+platform (Linux/macOS containers run PostgreSQL 18 too). Triggered by a real, live user-reported
+bug this session: a backup produced on Linux/macOS (PG18) could never be restored on this
+launcher's own bundled PG16 `pg_restore.exe` ("version non supportée (1.16) dans le fichier
+d'en-tête").
+
+This launcher's data directory (`%USERPROFILE%\PieManager\pgdata`) is a plain filesystem path,
+not a Podman volume mount, so the container installer's PGDATA-on-a-fresh-mount concern
+(`.claude/rules/containers-and-backup.md`'s "PostgreSQL major-version bumps") doesn't apply here
+— only version compatibility does. `pg_version_guard.go`'s `checkPostgresUpgradeCompatibility`
+(new, fully unit-tested) guards against this bump and any future major bump: it compares the
+bundled `postgres.exe --version` against the data directory's own `PG_VERSION` file and refuses
+to start on a mismatch rather than risk corrupting an incompatible on-disk format. Its
+remediation text necessarily differs from `installer/common.go`'s equivalent container-installer
+guard — the Microsoft Store silently replaces the previous package on update, so there's no "old
+version" binary left to reopen and back up with by the time this guard would ever fire.
+
 ### Native window integration (wrapper.py / WebKitGTK) — Linux only
 
 At install time, `deployWrapper()` checks whether Python 3 + WebKitGTK 2 (`gi`, `WebKit2 4.1`)

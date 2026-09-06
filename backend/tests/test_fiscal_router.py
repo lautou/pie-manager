@@ -436,3 +436,170 @@ async def test_loss_harvesting_skips_ticker_with_no_price(client, db_session):
     r = await client.get("/api/fiscal/current-year-pv/", params={"portfolio_id": pid})
     assert r.status_code == 200
     assert r.json()["loss_harvesting_candidates"] == []
+
+
+# ── fee-inclusion fix: fiscal always folds in acquisition+disposal fees ──────
+#
+# Real Degiro/IBKR accounts have include_fees_in_cump=False (a deliberate choice for
+# the main capital-gains page, matching how Degiro's own platform displays PRU/latent
+# P&L) — but Degiro's own documentation states realized P&L always includes brokerage
+# fees. A real 2025 Degiro annual report reconciled exactly with this app's numbers
+# only once fiscal.py started applying both fee corrections unconditionally. These
+# tests explicitly set include_fees_in_cump=False (never rely on the model's True
+# default) so they actually exercise the override, and each one cross-checks /api/pv/
+# to prove the main capital-gains page is completely unaffected.
+
+async def test_current_year_pv_deducts_disposal_fee(client, db_session):
+    """A linked courtage fee on a sell reduces fiscal net_realized_pv, but /api/pv/'s
+    own realized_pv_total for the same ticker is untouched."""
+    from sqlalchemy import text
+    from tests.helpers import create_broker
+
+    pid = await create_portfolio(client, "Fiscal-Fee-Sell")
+    acc = await create_broker(client, pid, name="Degiro")
+    acc_id = acc["id"]
+    await db_session.execute(
+        text("UPDATE brokers SET is_cto = TRUE WHERE id = :id"), {"id": acc_id}
+    )
+
+    await create_product(client, "FEE.DE", name="Fee Test ETF", category="Actif")
+    await create_product(client, "FRAIS.COURTAGE.EUR", name="Frais courtage", category="Frais")
+
+    from datetime import date
+    current_year = date.today().year
+
+    # Buy 10@100, no fee — isolates the disposal-fee effect.
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": pid, "account_id": acc_id,
+        "date": "2024-01-15", "type": "Actif", "ticker": "FEE.DE",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -10, "unit_price": 100.0, "unit_price_eur": 100.0,
+        "total_amount": -1000.0, "total_amount_eur": -1000.0,
+    })
+    assert r.status_code == 201, r.text
+
+    # Sell 5@120 with a 3€ courtage fee, current year.
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": pid, "account_id": acc_id,
+        "date": f"{current_year}-03-01", "type": "Actif", "ticker": "FEE.DE",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": 5, "unit_price": 120.0, "unit_price_eur": 120.0,
+        "total_amount": 600.0, "total_amount_eur": 600.0,
+        "courtage_eur": 3.0,
+    })
+    assert r.status_code == 201, r.text
+
+    # Fiscal: 5*(120-100) - 3 = 97.0 (fee deducted).
+    r = await client.get("/api/fiscal/current-year-pv/", params={"portfolio_id": pid})
+    assert r.status_code == 200
+    assert r.json()["net_realized_pv"] == pytest.approx(97.0, abs=0.01)
+
+    # pv.py: 5*(120-100) = 100.0 — fee NOT deducted, unaffected.
+    r = await client.get("/api/pv/", params={"portfolio_id": pid})
+    assert r.status_code == 200
+    tickers = {t["ticker"]: t for t in r.json()["tickers"]}
+    assert tickers["FEE.DE"]["realized_pv_total"] == pytest.approx(100.0, abs=0.01)
+
+
+async def test_current_year_pv_includes_acquisition_fee_in_cump(client, db_session):
+    """A linked courtage fee on a buy is folded into CUMP for fiscal purposes even when
+    include_fees_in_cump=False, while /api/pv/'s own CUMP stays fee-exclusive."""
+    from sqlalchemy import text
+    from tests.helpers import create_broker
+
+    pid = await create_portfolio(client, "Fiscal-Fee-Buy")
+    acc = await create_broker(client, pid, name="Degiro")
+    acc_id = acc["id"]
+    await db_session.execute(
+        text("UPDATE brokers SET is_cto = TRUE WHERE id = :id"), {"id": acc_id}
+    )
+    r = await client.put(f"/api/brokers/{acc_id}/include-fees",
+                          json={"include_fees_in_cump": False})
+    assert r.status_code == 200, r.text
+
+    await create_product(client, "FEE2.DE", name="Fee Test ETF 2", category="Actif")
+    await create_product(client, "FRAIS.COURTAGE.EUR", name="Frais courtage", category="Frais")
+
+    from datetime import date
+    current_year = date.today().year
+
+    # Buy 10@100 with a 3€ courtage fee → fiscal CUMP = (1000+3)/10 = 100.3.
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": pid, "account_id": acc_id,
+        "date": "2024-01-15", "type": "Actif", "ticker": "FEE2.DE",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -10, "unit_price": 100.0, "unit_price_eur": 100.0,
+        "total_amount": -1000.0, "total_amount_eur": -1000.0,
+        "courtage_eur": 3.0,
+    })
+    assert r.status_code == 201, r.text
+
+    # Sell all 10@120, no fee — isolates the acquisition-fee/CUMP effect.
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": pid, "account_id": acc_id,
+        "date": f"{current_year}-03-01", "type": "Actif", "ticker": "FEE2.DE",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": 10, "unit_price": 120.0, "unit_price_eur": 120.0,
+        "total_amount": 1200.0, "total_amount_eur": 1200.0,
+    })
+    assert r.status_code == 201, r.text
+
+    # Fiscal: (120 - 100.3) * 10 = 197.0.
+    r = await client.get("/api/fiscal/current-year-pv/", params={"portfolio_id": pid})
+    assert r.status_code == 200
+    assert r.json()["net_realized_pv"] == pytest.approx(197.0, abs=0.01)
+
+    # pv.py: CUMP excludes the fee (broker flag False) → (120-100)*10 = 200.0.
+    r = await client.get("/api/pv/", params={"portfolio_id": pid})
+    assert r.status_code == 200
+    tickers = {t["ticker"]: t for t in r.json()["tickers"]}
+    assert tickers["FEE2.DE"]["realized_pv_total"] == pytest.approx(200.0, abs=0.01)
+
+
+async def test_loss_harvesting_candidate_cump_includes_acquisition_fee(client, db_session):
+    """loss_harvesting_candidates' CUMP also reflects the fiscal fee-inclusion override —
+    a position that would show an unrealized *gain* under pv.py's fee-exclusive CUMP can
+    correctly surface as a loss-harvesting candidate once the fee is folded in."""
+    from sqlalchemy import text
+    from tests.helpers import create_broker
+
+    pid = await create_portfolio(client, "Fiscal-Fee-LossCUMP")
+    acc = await create_broker(client, pid, name="Degiro")
+    acc_id = acc["id"]
+    await db_session.execute(
+        text("UPDATE brokers SET is_cto = TRUE WHERE id = :id"), {"id": acc_id}
+    )
+    r = await client.put(f"/api/brokers/{acc_id}/include-fees",
+                          json={"include_fees_in_cump": False})
+    assert r.status_code == 200, r.text
+
+    await create_product(client, "FEELOSS.DE", name="Fee Loss ETF", category="Actif")
+    await create_product(client, "FRAIS.COURTAGE.EUR", name="Frais courtage", category="Frais")
+
+    # Buy 10@100 with a 3€ fee → fiscal CUMP = 100.3, pv.py CUMP = 100.
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": pid, "account_id": acc_id,
+        "date": "2024-01-15", "type": "Actif", "ticker": "FEELOSS.DE",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -10, "unit_price": 100.0, "unit_price_eur": 100.0,
+        "total_amount": -1000.0, "total_amount_eur": -1000.0,
+        "courtage_eur": 3.0,
+    })
+    assert r.status_code == 201, r.text
+
+    # Current price sits between the two CUMPs: a gain under pv.py (100.1 > 100),
+    # a loss under the fiscal fee-inclusive CUMP (100.1 < 100.3).
+    await _seed_price(db_session, "FEELOSS.DE", price=100.1)
+
+    r = await client.get("/api/fiscal/current-year-pv/", params={"portfolio_id": pid})
+    assert r.status_code == 200
+    candidates = r.json()["loss_harvesting_candidates"]
+    assert len(candidates) == 1
+    assert candidates[0]["cump"] == pytest.approx(100.3, abs=0.001)
+    assert candidates[0]["unrealized_pv"] == pytest.approx(-2.0, abs=0.01)
+
+    # pv.py: same position shows a small unrealized *gain*, not a loss.
+    r = await client.get("/api/pv/", params={"portfolio_id": pid})
+    assert r.status_code == 200
+    tickers = {t["ticker"]: t for t in r.json()["tickers"]}
+    assert tickers["FEELOSS.DE"]["unrealized_pv"] == pytest.approx(1.0, abs=0.01)

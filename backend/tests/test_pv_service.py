@@ -13,6 +13,7 @@ Covered invariants:
   8. Partial sell does not reset CUMP.
   9. Endpoint GET /api/pv/ returns 200 with correct structure.
  10. Empty portfolio returns zero totals.
+ 11. Realized PV uses total_amount_eur (exact), not rounded unit_price_eur * qty.
 """
 from __future__ import annotations
 
@@ -705,3 +706,55 @@ async def test_unlinked_frais_not_included_in_cump(db_session):
     t = next(x for x in result.tickers if x.ticker == "TST.FRAIS3")
     # CUMP unchanged — unlinked Frais not included
     assert t.cump == pytest.approx(100.0, rel=1e-6)
+
+
+@pytest.mark.asyncio
+async def test_realized_pv_uses_total_amount_eur_not_rounded_unit_price(db_session):
+    """
+    Realized PV must be derived from total_amount_eur (exact), not
+    unit_price_eur * qty_sold — unit_price_eur is stored rounded to 2 decimals
+    while a real broker execution price can carry more precision (confirmed
+    live: a real 380-unit Degiro sale at 6.129 EUR/unit stored as 6.13 EUR/unit,
+    producing a 0.38 EUR error when the calculation used the rounded price).
+    """
+    pid, aid = await _setup_base(db_session)
+    ticker = "TST.PRECISION"
+    await _ensure_product(db_session, ticker, "Test Precision ETF", "Actif")
+
+    D1, D2 = date(2025, 1, 1), date(2025, 4, 15)
+
+    buy = Transaction(
+        portfolio_id=pid, account_id=aid,
+        date=D1, type="Actif", ticker=ticker,
+        currency="EUR", exchange_rate=1.0,
+        quantity=-1000.0, unit_price=6.15, unit_price_eur=6.15,
+        total_amount=-6150.0, total_amount_eur=-6150.0,
+    )
+    db_session.add(buy)
+    await db_session.flush()
+
+    # Real execution price is 6.129 EUR/unit (total_amount_eur = 380 * 6.129 =
+    # 2329.02 EUR exactly), but unit_price_eur is stored rounded to 6.13.
+    # unit_price_eur * qty would give 2329.40 EUR — a 0.38 EUR overstatement.
+    sell = Transaction(
+        portfolio_id=pid, account_id=aid,
+        date=D2, type="Actif", ticker=ticker,
+        currency="EUR", exchange_rate=1.0,
+        quantity=380.0, unit_price=6.13, unit_price_eur=6.13,
+        total_amount=2329.02, total_amount_eur=2329.02,
+    )
+    db_session.add(sell)
+    await db_session.flush()
+
+    result = await compute_capital_gains(db_session, pid)
+    t = next(x for x in result.tickers if x.ticker == ticker)
+
+    cump = 6.15
+    expected_pv = 2329.02 - cump * 380.0  # proceeds from total_amount_eur
+    wrong_pv = (6.13 - cump) * 380.0      # what the old, buggy formula gave
+
+    assert expected_pv != pytest.approx(wrong_pv, abs=0.01)
+    assert t.realized_pv_total == pytest.approx(expected_pv, abs=0.001)
+    assert t.events[0].realized_pv == pytest.approx(expected_pv, abs=0.001)
+    # Display field stays the literal recorded unit price, untouched by the fix.
+    assert t.events[0].sell_price_eur == pytest.approx(6.13, rel=1e-6)

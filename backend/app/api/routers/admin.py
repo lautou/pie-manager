@@ -78,12 +78,39 @@ async def download_backup():
 
 # ── Restore — pg_restore --single-transaction ──────────────────────────────
 
+def _reset_public_schema(conn_args: list[str], env: dict[str, str]) -> None:
+    """
+    Drop and recreate the public schema before restoring.
+
+    pg_restore --clean --if-exists only drops/recreates objects that are present IN THE DUMP
+    FILE — it never touches a table that exists in the live database but is absent from the
+    dump. Restoring a backup older than a migration that has since added a table therefore
+    leaves that newer table in place (orphaned) while alembic_version reverts to the backup's
+    older revision, so the next app startup tries to re-run that migration and fails with a
+    duplicate-object error. Confirmed live: a Windows install crash-looped with
+    `asyncpg.exceptions.DuplicateTableError` on `bond_perf_configs` after restoring a backup
+    taken before that table's migration existed. Resetting the schema first guarantees the
+    post-restore state matches the dump exactly, with no leftover objects of any kind.
+    """
+    result = subprocess.run(
+        ["psql", *conn_args, "-c", "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"],
+        capture_output=True, env=env,
+    )
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not reset schema before restore: "
+                    f"{result.stderr.decode(errors='replace')[:400]}",
+        )
+
+
 @router.post("/restore")
 async def restore_backup(file: UploadFile = File(...)):
     """
     Restore a pg_dump custom-format backup via pg_restore.
-    Uses --clean --if-exists to wipe and recreate all objects, then
-    --single-transaction to roll back everything if any error occurs.
+    The public schema is dropped and recreated first (see _reset_public_schema), then
+    pg_restore reloads it from the dump — --clean --if-exists is kept for defense in depth
+    but is a no-op against an already-empty schema.
     """
     if not file.filename or not file.filename.endswith(".dump"):
         raise HTTPException(status_code=400, detail="Fichier .dump requis")
@@ -97,6 +124,18 @@ async def restore_backup(file: UploadFile = File(...)):
     with tempfile.NamedTemporaryFile(suffix=".dump", delete=False) as tmp:
         tmp.write(sql_bytes)
         tmpfile = tmp.name
+
+    try:
+        _reset_public_schema(conn_args, env)
+    except OSError as exc:
+        os.unlink(tmpfile)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not launch psql: {exc}",
+        ) from exc
+    except HTTPException:
+        os.unlink(tmpfile)
+        raise
 
     try:
         result = subprocess.run(

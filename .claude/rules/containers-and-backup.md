@@ -168,11 +168,25 @@ The `.env` file also holds `APP_VERSION=<n>`. Both variables are consumed by `co
 ## Database backup
 
 - Endpoint `GET /api/admin/backup` → calls `pg_dump` via `subprocess` from the backend container
-- Endpoint `POST /api/admin/restore` → `pg_restore --clean --if-exists --no-owner --no-privileges`
-  — deliberately **no** `--single-transaction`: it would fail the whole restore on a
-  non-critical `transaction_timeout` error emitted by dumps taken with a pg_dump newer than
-  the target server (a documented pg_restore quirk, not something to "fix" by adding the flag back)
+- Endpoint `POST /api/admin/restore` → first drops and recreates the `public` schema via `psql`
+  (`_reset_public_schema` in `admin.py`), then `pg_restore --clean --if-exists --no-owner
+  --no-privileges` — deliberately **no** `--single-transaction`: it would fail the whole
+  restore on a non-critical `transaction_timeout` error emitted by dumps taken with a pg_dump
+  newer than the target server (a documented pg_restore quirk, not something to "fix" by
+  adding the flag back)
 - Format `.dump` (custom binary pg_dump, compressed)
+
+**Why the schema is reset before `pg_restore` runs, not left to `--clean --if-exists`
+alone:** `--clean --if-exists` only drops/recreates objects that are present *in the dump
+file itself* — it never touches a table that exists in the live database but is absent from
+the dump. Restoring a backup older than a migration that has since added a table therefore
+leaves that newer table in place (orphaned) while `alembic_version` reverts to the backup's
+older revision, so the next app startup tries to re-run that migration and fails with a
+duplicate-object error. Confirmed live: a Windows native-launcher install crash-looped with
+`asyncpg.exceptions.DuplicateTableError` on `bond_perf_configs` (a table added by a migration
+newer than the backup that had just been restored). Dropping and recreating the schema first
+guarantees the post-restore state matches the dump exactly, with no leftover objects of any
+kind — a fix at the restore endpoint itself, not a one-off manual `DROP TABLE`.
 - `backend/Containerfile` pins `postgresql-client-18` to match the server (PostgreSQL 18) — a
   mismatched client version produces dumps the server's own pg_restore can't read, and an
   OLDER client outright refuses to dump a NEWER server at all

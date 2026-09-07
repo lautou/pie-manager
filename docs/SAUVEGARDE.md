@@ -214,7 +214,7 @@ podman machine start
 4. Sélectionner le fichier `.dump`
 5. Cliquer sur **Restaurer**
 
-La restauration utilise `pg_restore` : en cas d'erreur, l'opération est annulée et la base reste intacte.
+La restauration vide d'abord entièrement le schéma de la base (toutes les tables existantes sont supprimées, y compris celles absentes du fichier `.dump` restauré), puis reconstruit tout depuis la sauvegarde via `pg_restore`. Si `pg_restore` échoue en cours de route, la base peut rester partiellement vide plutôt que revenir à son état précédent — conservez toujours le fichier de sauvegarde à portée de main tant que la restauration n'est pas confirmée réussie.
 
 ---
 
@@ -234,6 +234,12 @@ curl -X POST "http://localhost:${PORT}/api/admin/restore" \
 # Copier le fichier dans le container backend (qui a pg_restore v18)
 podman cp ~/Downloads/pie-backup-2026-01-15.dump \
   pie-manager_backend_1:/tmp/backup.dump
+
+# Vider le schéma avant restauration (même étape que l'endpoint /api/admin/restore —
+# sans elle, une table ajoutée après la date de la sauvegarde resterait orpheline)
+podman exec -e PGPASSWORD=pie_password pie-manager_backend_1 \
+  psql -h postgres -U pie -d pie_db \
+  -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 
 # Restaurer via le backend
 podman exec -e PGPASSWORD=pie_password pie-manager_backend_1 \

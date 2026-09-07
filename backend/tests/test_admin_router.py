@@ -35,13 +35,6 @@ def _dump_file(content: str | bytes, filename: str = "backup.dump"):
     return ("file", (filename, io.BytesIO(content), "application/octet-stream"))
 
 
-def _sql_file(content: str | bytes, filename: str = "backup.sql"):
-    """Build an in-memory upload file for the restore endpoint."""
-    if isinstance(content, str):
-        content = content.encode()
-    return ("file", (filename, io.BytesIO(content), "application/sql"))
-
-
 def _make_proc(returncode: int = 0, stdout: bytes = b"", stderr: bytes = b""):
     """Build a mock CompletedProcess returned by subprocess.run."""
     proc = MagicMock(spec=subprocess.CompletedProcess)
@@ -171,7 +164,92 @@ async def test_restore_file_too_small_returns_400():
 
 
 # ---------------------------------------------------------------------------
-# Restore — success path (psql mocked)
+# Restore — schema reset (runs before pg_restore, see _reset_public_schema)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_restore_resets_schema_before_pg_restore():
+    """
+    The public schema is dropped/recreated via psql BEFORE pg_restore runs, so that a table
+    added by a migration since the backup was taken (and therefore absent from the dump) is
+    removed rather than left behind as an orphan — see _reset_public_schema's own docstring.
+    """
+    sql = b"-- pg_dump backup\n" + b"DROP TABLE IF EXISTS t;\n" * 10  # > 100 bytes
+    mock_proc = _make_proc(returncode=0)
+
+    with patch("app.api.routers.admin.subprocess.run", return_value=mock_proc) as mock_run:
+        async with _client() as client:
+            r = await client.post("/api/admin/restore", files=[_dump_file(sql)])
+
+    assert r.status_code == 200
+    assert mock_run.call_count == 2
+
+    reset_args = mock_run.call_args_list[0][0][0]
+    assert "psql" in reset_args
+    assert "DROP SCHEMA public CASCADE" in reset_args[-1]
+
+    restore_args = mock_run.call_args_list[1][0][0]
+    assert "pg_restore" in restore_args
+    assert "--single-transaction" not in restore_args
+    assert "--clean" in restore_args
+
+
+@pytest.mark.asyncio
+async def test_restore_schema_reset_failure_returns_500():
+    """psql returncode != 0 while resetting the schema → 500, pg_restore never called."""
+    sql = b"-- backup\n" + b"x" * 120
+    mock_proc = _make_proc(returncode=1, stderr=b"ERROR: permission denied for schema public")
+
+    with patch("app.api.routers.admin.subprocess.run", return_value=mock_proc) as mock_run:
+        async with _client() as client:
+            r = await client.post("/api/admin/restore", files=[_dump_file(sql)])
+
+    assert r.status_code == 500
+    assert "reset schema" in r.json()["detail"].lower()
+    mock_run.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_restore_schema_reset_not_found_returns_clean_500():
+    """
+    subprocess.run raising OSError while launching psql for the schema reset (e.g. binary
+    missing/blocked) → a clean HTTPException detail, same pattern as the pg_restore-not-found
+    case below, applied to the earlier step.
+    """
+    sql = b"-- backup\n" + b"x" * 120
+
+    with patch("app.api.routers.admin.subprocess.run", side_effect=FileNotFoundError("psql")):
+        async with _client() as client:
+            r = await client.post("/api/admin/restore", files=[_dump_file(sql)])
+
+    assert r.status_code == 500
+    assert "psql" in r.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_restore_temp_file_cleaned_up_on_schema_reset_failure():
+    """Temp file is deleted even when the schema-reset step fails."""
+    sql = b"-- backup\n" + b"x" * 120
+    mock_proc = _make_proc(returncode=1, stderr=b"ERROR: permission denied")
+    deleted_files: list[str] = []
+
+    real_unlink = __import__("os").unlink
+
+    def capture_unlink(path: str):
+        deleted_files.append(path)
+        real_unlink(path)
+
+    with patch("app.api.routers.admin.subprocess.run", return_value=mock_proc), \
+         patch("app.api.routers.admin.os.unlink", side_effect=capture_unlink):
+        async with _client() as client:
+            await client.post("/api/admin/restore", files=[_dump_file(sql)])
+
+    assert len(deleted_files) == 1
+    assert deleted_files[0].endswith(".dump")
+
+
+# ---------------------------------------------------------------------------
+# Restore — success path (pg_restore mocked)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -193,7 +271,8 @@ async def test_restore_valid_sql_calls_psql_and_returns_200():
     assert body["status"] == "ok"
     assert "successfully" in body["message"]
 
-    # Verify pg_restore was called without --single-transaction (incompatible pg_dump v17 / PG16)
+    # Verify pg_restore (the last call, after the schema reset) ran without
+    # --single-transaction (incompatible pg_dump v17 / PG16)
     call_args = mock_run.call_args[0][0]
     assert "pg_restore" in call_args
     assert "--single-transaction" not in call_args
@@ -202,11 +281,12 @@ async def test_restore_valid_sql_calls_psql_and_returns_200():
 
 @pytest.mark.asyncio
 async def test_restore_psql_failure_returns_500():
-    """psql returncode != 0 → 500, stderr included in detail."""
+    """pg_restore returncode != 0 (schema reset succeeds first) → 500, stderr included in detail."""
     sql = b"-- backup\n" + b"x" * 120
-    mock_proc = _make_proc(returncode=1, stderr=b"ERROR: relation does not exist")
+    ok_proc = _make_proc(returncode=0)
+    fail_proc = _make_proc(returncode=1, stderr=b"ERROR: relation does not exist")
 
-    with patch("app.api.routers.admin.subprocess.run", return_value=mock_proc):
+    with patch("app.api.routers.admin.subprocess.run", side_effect=[ok_proc, fail_proc]):
         async with _client() as client:
             r = await client.post("/api/admin/restore", files=[_dump_file(sql)])
 
@@ -217,11 +297,12 @@ async def test_restore_psql_failure_returns_500():
 
 @pytest.mark.asyncio
 async def test_restore_stderr_truncated_to_400_chars():
-    """Long psql stderr is truncated to ≤500 chars in the response detail."""
+    """Long pg_restore stderr is truncated to ≤500 chars in the response detail."""
     sql = b"-- backup\n" + b"x" * 120
-    mock_proc = _make_proc(returncode=1, stderr=b"E" * 600)
+    ok_proc = _make_proc(returncode=0)
+    fail_proc = _make_proc(returncode=1, stderr=b"E" * 600)
 
-    with patch("app.api.routers.admin.subprocess.run", return_value=mock_proc):
+    with patch("app.api.routers.admin.subprocess.run", side_effect=[ok_proc, fail_proc]):
         async with _client() as client:
             r = await client.post("/api/admin/restore", files=[_dump_file(sql)])
 
@@ -233,14 +314,15 @@ async def test_restore_stderr_truncated_to_400_chars():
 async def test_restore_transaction_timeout_only_returns_200():
     """returncode!=0 but only error is transaction_timeout → success (PG16 compat)."""
     sql = b"-- backup\n" + b"x" * 120
+    ok_proc = _make_proc(returncode=0)
     stderr = (
         b"pg_restore: error: could not execute query: ERROR: "
         b"unrecognized configuration parameter \"transaction_timeout\"\n"
         b"Command was: SET transaction_timeout = 0;\n"
     )
-    mock_proc = _make_proc(returncode=1, stderr=stderr)
+    timeout_proc = _make_proc(returncode=1, stderr=stderr)
 
-    with patch("app.api.routers.admin.subprocess.run", return_value=mock_proc):
+    with patch("app.api.routers.admin.subprocess.run", side_effect=[ok_proc, timeout_proc]):
         async with _client() as client:
             r = await client.post("/api/admin/restore", files=[_dump_file(sql)])
 
@@ -257,8 +339,10 @@ async def test_restore_pg_restore_not_found_returns_clean_500():
     fresh Windows install's first restore attempt.
     """
     sql = b"-- backup\n" + b"x" * 120
+    ok_proc = _make_proc(returncode=0)
 
-    with patch("app.api.routers.admin.subprocess.run", side_effect=FileNotFoundError("pg_restore")):
+    with patch("app.api.routers.admin.subprocess.run",
+               side_effect=[ok_proc, FileNotFoundError("pg_restore")]):
         async with _client() as client:
             r = await client.post("/api/admin/restore", files=[_dump_file(sql)])
 
@@ -276,10 +360,11 @@ async def test_restore_non_utf8_stderr_does_not_crash():
     underlying pg_restore error — a plain 500 masking a fixable problem behind a decode crash.
     """
     sql = b"-- backup\n" + b"x" * 120
+    ok_proc = _make_proc(returncode=0)
     # 0xe9 is "é" in cp1252/Latin-1 — not a valid standalone UTF-8 continuation byte.
-    mock_proc = _make_proc(returncode=1, stderr=b"pg_restore: erreur : \xe9chec de connexion")
+    fail_proc = _make_proc(returncode=1, stderr=b"pg_restore: erreur : \xe9chec de connexion")
 
-    with patch("app.api.routers.admin.subprocess.run", return_value=mock_proc):
+    with patch("app.api.routers.admin.subprocess.run", side_effect=[ok_proc, fail_proc]):
         async with _client() as client:
             r = await client.post("/api/admin/restore", files=[_dump_file(sql)])
 
@@ -289,7 +374,7 @@ async def test_restore_non_utf8_stderr_does_not_crash():
 
 @pytest.mark.asyncio
 async def test_restore_temp_file_cleaned_up_on_success():
-    """Temp file is deleted after psql runs (success path)."""
+    """Temp file is deleted after pg_restore runs (success path)."""
     sql = b"-- backup\n" + b"x" * 120
     mock_proc = _make_proc(returncode=0)
     deleted_files: list[str] = []

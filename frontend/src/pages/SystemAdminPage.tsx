@@ -189,9 +189,10 @@ export default function SystemAdminPage() {
         <CardBody>
           <Content style={{ marginBottom: '1rem' }}>
             <Content component={ContentVariants.p}>
-              La sauvegarde génère un dump SQL complet de la base de données. La restauration est
-              <strong> transactionnelle</strong> : si une seule instruction échoue, toute l'opération
-              est annulée et la base reste intacte.
+              La sauvegarde génère un dump SQL complet de la base de données. La restauration
+              <strong> vide entièrement</strong> la base actuelle avant de tout reconstruire
+              depuis le fichier de sauvegarde — conservez ce fichier à portée de main tant que
+              le succès n'est pas confirmé.
             </Content>
           </Content>
 
@@ -242,7 +243,7 @@ export default function SystemAdminPage() {
         title={t('admin.restore')}
         message={[
           `Restaurer la base depuis "${pendingRestoreFile?.name ?? ''}" ?`,
-          "ATTENTION : toutes les données actuelles seront remplacées si la restauration réussit. L'opération est transactionnelle : en cas d'erreur, rien n'est modifié.",
+          "ATTENTION : toutes les données actuelles seront supprimées avant même que la restauration ne commence. Si la restauration échoue en cours de route, la base peut rester partiellement vide.",
         ]}
         confirmLabel={t('common.confirm')}
         isLoading={isRestoring}

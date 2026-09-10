@@ -2,6 +2,16 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.8.1] - 2026-09-07
+
+### Changed
+
+- **indicators:** Move quadrant allocation comparison to Rebalancing page
+
+### Fixed
+
+- **admin:** Reset public schema before restoring a backup
+
 ## [1.8.0] - 2026-09-06
 
 ### Added

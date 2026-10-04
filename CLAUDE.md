@@ -34,221 +34,99 @@ back to update them. Distinguish:
 
 ### Installer test coverage policy
 
-The Go installer (`installer/`) has two categories of functions:
+The Go installer (`installer/`) splits into **fully testable** (pure logic, 100% covered) and
+**intentionally untestable** (real process/OS interaction, covered by CI smoke tests, never by
+mocking `podman`/`exec.Command`). Apply the same split to any new installer code.
 
-**Fully testable (must be 100% covered):** `findAvailablePort`, `readAppPort`,
-`readInstalledVersion`, `updateEnvPort`, `detectComposeCmd`, `copyFile`,
-`githubLatestAssetURL`, `downloadFile`,
-`composePostgresMajor`, `postgresMajorMismatch` (issue #58's PostgreSQL major-version
-mismatch guard — see `.claude/rules/containers-and-backup.md`'s "PostgreSQL major-version
-bumps" section for what this protects against),
-`writeInstallConfig`, `selfUpdateBinary`, `shouldRemoveImageTag` (extracted from
-`performInstall`'s own body — see below).
-These pure utility functions all live in `common.go` (no build constraint — shared by
-Linux/macOS, see `.claude/rules/distribution.md`'s "Shared refactor enabling this"
-in the macOS section), tested in `install_test.go`/`common_test.go`.
-
-**Intentionally untestable:** `runInstall`, `runStartWithCompose`, `forceRecreate`,
-`notify`, `podmanImageExists`, `focusExistingWindow`, `openBrowser`,
-`pgDataVolumeName`, `pgVersionMajor` (both exec `podman` directly, same class as
-`podmanImageExists` — issue #58),
-`pullImages`, `removeOldImageVersions` (both exec `podman pull`/`podman images`/`podman rmi`,
-same class), `symlinkBinaryIntoLocalBin` (best-effort OS glue, errors deliberately ignored —
-see its own doc comment), and `performInstall` itself (the orchestrator — every decision it
-makes is already covered by testing the pure functions it calls, see below; the function
-itself is thin sequencing glue, same rationale as `launcher-native/`'s `startupSequence`).
-`checkPostgresUpgradeCompatibility` sits in both buckets: its two no-op branches (fresh
-install, version unchanged) are pure and tested directly, but its real mismatch-detection
-path calls `pgDataVolumeName`/`pgVersionMajor` and is untestable for the same reason those are.
-And all functions in `install_darwin.go`/
-`start_darwin.go`/`main_darwin.go` (Podman `.pkg` install, Podman Machine setup,
-`launchd` agent, `.app` bundle writing). These exec external programs (Podman, browser,
-OS notifications) and require integration-level testing. They are covered
-by the CI smoke test (`go build + ./pie-manager version`). Overall installer coverage is
-necessarily low (check `go test ./... -cover` for the current figure) — expected and
-acceptable for a system-interaction binary.
-
-**`performInstall` was split from one 156-line function mixing ~7 concerns (version-mismatch
-guard, image pulls, four config-file writes, self-binary update, desktop integration,
-image cleanup, with `os.Exit(1)` inlined at 6+ points) into named helpers each returning an
-`error`, with `os.Exit` handling collapsed into `performInstall` itself.** `pullImages` also
-now derives its Postgres image tag from `composePostgresMajor(composeProd)` instead of a
-separate hardcoded `"docker.io/library/postgres:18-alpine"` literal, so a future Postgres
-major-version bump (see `.claude/rules/containers-and-backup.md`) can't silently drift between
-the compose file and this pre-pull step.
+**`installer/` (container-based, Linux/macOS):**
+- Fully testable, in `common.go` (no build constraint, shared by Linux/macOS — see
+  `.claude/rules/distribution.md`): `findAvailablePort`, `readAppPort`, `readInstalledVersion`,
+  `updateEnvPort`, `detectComposeCmd`, `copyFile`, `githubLatestAssetURL`, `downloadFile`,
+  `composePostgresMajor`, `postgresMajorMismatch` (the PostgreSQL major-version mismatch guard,
+  see `.claude/rules/containers-and-backup.md`), `writeInstallConfig`, `selfUpdateBinary`,
+  `shouldRemoveImageTag`. Tested in `install_test.go`/`common_test.go`. `pullImages` derives its
+  Postgres image tag from `composePostgresMajor` rather than a hardcoded version literal, so a
+  future major-version bump can't drift between the compose file and this pre-pull step.
+- Untestable (exec `podman`/OS directly — covered by the CI `go build + ./pie-manager version`
+  smoke test): `runInstall`, `runStartWithCompose`, `forceRecreate`, `notify`,
+  `podmanImageExists`, `focusExistingWindow`, `openBrowser`, `pgDataVolumeName`, `pgVersionMajor`,
+  `pullImages`, `removeOldImageVersions`, `symlinkBinaryIntoLocalBin`, `performInstall` (thin
+  sequencing glue — every decision it makes is covered by testing the pure functions it calls),
+  `checkPostgresUpgradeCompatibility`'s real mismatch-detection path, and everything in
+  `install_darwin.go`/`start_darwin.go`/`main_darwin.go`.
 
 **Installer structure:**
 - `common.go` — shared code (no build constraint): `Version`, `defaultPort`, `findAvailablePort`, `readAppPort`
 - `main.go` — Linux CLI dispatcher (`//go:build linux`)
 - `install.go`, `start.go`, `install_test.go` — Linux only (`//go:build linux`)
 - `main_darwin.go`, `install_darwin.go`, `start_darwin.go` — macOS full installer (`//go:build darwin`)
-- `launcher-native/` — separate Go module, issue #82's native-Windows-port MVP launcher (no
-  Podman/containers at all — orchestrates a bundled Postgres + bundled Python backend directly).
-  Own coverage policy, mirroring the pattern above: **fully testable (100% covered)** —
-  `paths.go` (data-directory resolution under `%USERPROFILE%\PieManager\`, deliberately never
-  under `AppData`/`LocalAppData` — confirmed live in #76/#82 that MSIX transparently redirects
-  any write under `AppData`, even a fully hardcoded path, to a location wiped on uninstall),
-  `ports.go` (dynamic port selection, never the #76 poc's hardcoded 5432/8123), all arg-builder
-  functions in `postgres.go`/`backend.go` (`buildInitdbArgs`, `buildPostgresArgs`,
-  `buildPgCtlStopArgs`, `buildCreateDbArgs`, `databaseURL`, `buildUvicornArgs`, `healthURL`,
-  `buildPgqueuerArgs`),
-  `runCapturedCommand`, `stopChildProcess` (renamed from `stopBackend` — issue #83's PgQueuer
-  worker is a second long-lived child process it also stops, so the old backend-specific name no
-  longer fit), `waitForHealth` (fully exercised via `httptest.Server` and
-  real short-lived subprocesses, not just argument-building), `readPostmasterPid`, and
-  `hideWindow` (`hidewindow_windows.go`/`hidewindow_other.go` — suppresses the console window
-  Windows otherwise pops up per spawned subprocess for a windowless GUI app, confirmed live via
-  #82's Store verification: 2 visible CMD windows, one per long-lived child process (Postgres,
-  uvicorn). Sets `CreationFlags: CREATE_NO_WINDOW` (a raw `0x08000000` — not exported by Go's
-  `syscall` package on Windows), not just `SysProcAttr.HideWindow` alone — `HideWindow` only
-  hides a console *after* Windows allocates one, it doesn't stop the allocation, which matters
-  specifically for Postgres: its Windows `EXEC_BACKEND` architecture (no `fork()`) has the
-  postmaster relaunch itself via its own internal `CreateProcess` calls for every background
-  worker (confirmed live: 7 separate `postgres.exe` processes for one idle server), and a
-  `HideWindow`-only parent still leaves each of those internal children to allocate their own
-  fresh, visible console. `CREATE_NO_WINDOW` means the parent never has a console for any child
-  to inherit from in the first place. The non-Windows no-op branch needs a real statement
-  (`_ = cmd`), not an empty body, or `go tool cover` reports a permanent false-negative 0.0% for
-  it regardless of test coverage.
-  **`startPostgres` moved into this fully-tested bucket** (was previously classified alongside
-  `startBackend` as an untestable real process spawn) — it now launches `postgres.exe` directly
-  instead of going through `pg_ctl start`, specifically because `pg_ctl` internally spawns
-  `postgres.exe` via its own Windows `CreateProcess` call with its own new console window that
-  `hideWindow()` on the `pg_ctl.exe` process has zero influence over (confirmed live: hiding
-  `pg_ctl.exe`'s own window left `postgres.exe`'s separately-created console visible for the
-  server's entire lifetime). Fully testable this way (100% covered) via a fake shebang-script
-  executable written directly at `postgresExePath(home)`'s computed path, real short-lived
-  subprocesses for the error branches (same technique as `runCapturedCommandIn`'s own
-  directory-blocked-by-file tests), matching `startBackend`'s own real-process-spawn style rather
-  than accepting it as untestable — the "real Windows service" alternative (which would also
-  avoid the console entirely) was researched and rejected: Windows SCM's `CreateService`, and
-  PostgreSQL's own `pg_ctl register` wrapper around it, both hard-require admin elevation with no
-  unprivileged exception, conflicting with this launcher's no-elevation design constraint (see
-  `startPostgres`'s own doc comment for sources). The former `pg_ctl -w start`'s built-in
-  readiness wait is now `waitForPostgresReady` (also 100% covered) — polls
-  `postgresAcceptingConnections` (the bundled `pg_isready.exe`, not a raw TCP dial: issue #83's
-  live functional-pass testing found a real race where a bare `net.Dial` succeeds as soon as
-  `postgres.exe`'s listener socket is bound, measurably before the server can complete a real
-  connection handshake, breaking `runMigrations` with "connection was closed in the middle of
-  operation" — `pg_isready` performs the same real libpq-level check `pg_ctl -w` itself relies
-  on) against the selected port, detects early process exit via `cmd.Wait()` in a background
-  goroutine (deliberately not `isPidRunning`, which is only a real liveness check on Windows —
-  see its own doc comment — reusing it here would make the early-exit branch untestable on Linux
-  for a platform-quirk reason unrelated to `cmd.Wait()` itself, which works correctly
-  everywhere).
-  **Issue #83 (feature parity)**: `startWorker` spawns the bundled PgQueuer worker
-  (`python.exe -m pgqueuer run app.tasks.pgq_app:main`, matching `buildUvicornArgs`/
-  `buildAlembicArgs`'s existing `-m modulename` style rather than a generated `Scripts/pgq.exe`
-  wrapper) as a second long-lived child alongside `uvicorn` — before this, the native launcher
-  ran no worker at all, a real functional gap (zero background price sync/snapshot computation)
-  versus the containerized version's separate `pgq-worker` service. Needs `cmd.Dir =
-  backendAppDir(home)`: pgqueuer's own factory-loading code
-  (`adapters/cli/factories.py`'s `load_factory`) resolves the `module:function` string via
-  `sys.path.insert(0, os.getcwd())`, not an `--app-dir`-style flag the way uvicorn's CLI
-  supports — confirmed against the installed `pgqueuer==1.3.2` source, no such flag exists. No
-  separate PgQueuer schema-install step needed: `alembic/versions/
-  uu44vv55ww66_add_pgqueuer_schema.py` already embeds the verbatim output of `pgq sql install`
-  for the pinned version, so the migrations `runMigrations` already applies on every launch
-  create it. Same untestable classification as `startBackend` (real process spawn) — not pushed
-  into the fully-tested bucket the way `startPostgres` was, to keep this change proportionate to
-  what #83 actually needed.
-
-  **Also #83: `startBackend`'s `cmd.Env` now prefixes `PATH` with `pgBinDir(home)`.**
-  `backend/app/api/routers/admin.py`'s backup/restore endpoints shell out to bare `pg_dump`/
-  `pg_restore` by name (matching the container image, where postgresql-client tooling is already
-  on `PATH`) — without this, the launcher's inherited `os.Environ()` PATH has no reason to
-  include the bundled `pgsql\bin`, and both endpoints would fail outright with "command not
-  found" on a real install. Found by reading `admin.py` directly, not assumed — confirmed nothing
-  else in this launcher previously set `PATH` at all. Not yet covered by CI (see #114).
-
-  **Follow-up to #83, found live on a real fresh Windows install:** the PATH fix above makes
-  `pg_dump.exe`/`pg_restore.exe` *findable*, but a real user's first "Restaurer une sauvegarde"
-  click still failed, surfacing only a bare, detail-less `AxiosError: Request failed with status
-  code 500`. Two distinct gaps found and fixed, only the second one being this specific report's
-  actual confirmed cause (real `backend.log` traceback, not a guess):
-  1. `admin.py`'s `subprocess.run(["pg_dump"/"pg_restore", ...])` calls had no `except OSError`
-     around them, so any failure to actually *launch* the executable (`FileNotFoundError`/
-     `PermissionError` — e.g. Defender/AV blocking an unsigned, never-before-run binary) would
-     propagate as an unhandled exception instead of this router's own clean
-     `HTTPException(detail=...)` pattern. Fixed defensively (both calls now catch `OSError`) and
-     paired with signing `pg_dump.exe`/`pg_restore.exe` in `build-installer.yml`'s "Sign the
-     bundled PostgreSQL executables" step (previously only `postgres.exe`/`pg_ctl.exe`/
-     `initdb.exe`/`createdb.exe` — these two ship unsigned in EDB's own zip exactly like their
-     four siblings and are just as exposed to Defender/SmartScreen friction on a brand-new
-     machine, despite never needing signing for the *server* to start). This is real
-     defense-in-depth, but was **not** what actually happened in the case below — the process
-     launched fine.
-  2. **The real, confirmed cause**: `result.stderr.decode()` (no `errors=` argument) crashed with
-     `UnicodeDecodeError: 'utf-8' codec can't decode byte 0xe9...` — pg_restore's stderr encoding
-     depends on the OS console codepage, not necessarily UTF-8 (confirmed live: a French-locale
-     Windows install's `pg_restore.exe` emitted an accented character as cp1252, not UTF-8). This
-     crashed the handler *before* it could ever report the real underlying pg_restore error,
-     turning a possibly-fixable/possibly-benign restore issue into an opaque decode crash. Fixed
-     in both `admin.py` decode sites (`pg_dump` and `pg_restore`) with `.decode(errors="replace")`
-     — never raises, worst case a garbled character in the displayed error text instead of a
-     crash that hides the real message entirely.
-
-  **Issue #119 (version-aware re-staging for pgsql/the Python interpreter, plus orphan recovery
-  for the backend/worker):** `staging.go`'s `stageIfBundleChanged` replaces the old
-  exe-presence-only marker with a `bundle-id.txt` manifest `build-installer.yml` computes from
-  each payload's actual build inputs (the pgsql download URL; the Python version + a hash of
-  `requirements.txt`) — deliberately never this app's own release `Version`, which changes every
-  release regardless of whether these large (~150-250MB), rarely-changing payloads actually did.
-  Fully tested (100% covered), same as the rest of `staging.go`. Re-staging on a mismatch needs
-  any orphaned `postgres.exe`/`python.exe` cleared first (Windows locks a directory a running
-  executable still holds open), so `recoverFromPreviousSession` (`crash_recovery.go`) now also
-  runs before `stageBundledFiles`, not just before `startPostgres` — and covers the backend/worker
-  too, via a self-written `backend.pid`/`worker.pid` record (`writePidRecord`/`readPidRecord`,
-  fully tested) whose live process is re-verified by start time (`processStartTime`,
-  `processtime_windows.go`/`processtime_other.go` — same Windows-only-real-implementation split
-  as `hideWindow`) before being killed — closing the PID-reuse false-positive gap
-  `isPidRunning`'s own doc comment accepts for Postgres, whose `postmaster.pid` format isn't ours
-  to extend the same way.
-
-  **PostgreSQL bumped from 16.14 to 18.4** (`build-installer.yml`'s EDB Windows download URL),
-  matching every other platform at PostgreSQL 18 — triggered by a real, live user-reported
-  cross-platform restore failure this session: a PG18-produced backup (Linux/macOS containers)
-  could never be restored by this launcher's own bundled PG16 `pg_restore.exe` ("version non
-  supportée (1.16) dans le fichier d'en-tête"). The container installer's PGDATA-on-a-fresh-mount
-  concern (`.claude/rules/containers-and-backup.md`'s "PostgreSQL major-version bumps") doesn't
-  apply here — this launcher's data directory is a plain filesystem path under
-  `%USERPROFILE%\PieManager\pgdata`, not a Podman volume mount, so there's no `lost+found`-style
-  non-empty-mount-point issue, only the version-compatibility one. `pg_version_guard.go`'s
-  `checkPostgresUpgradeCompatibility` (new, fully tested) now guards any existing data directory
-  against this bump or any future major bump: it compares the bundled `postgres.exe --version`
-  output against the data directory's own `PG_VERSION` file and refuses to start rather than risk
-  corrupting an incompatible on-disk format — mirroring `installer/common.go`'s equivalent guard
-  on the container-based installer, but with different remediation text, since the Microsoft
-  Store silently replaces the previous package on update (no "reopen the old version and back up
-  first" step is possible here, unlike the container installer where the old image/container is
-  still present when its own guard fires).
-
-  **Intentionally untestable** (real process spawns/OS liveness checks, same class as the
-  Podman-based installer's own untestable bucket) — `runInitdb`, `stopPostgres`,
-  `createAppDatabase`, `startBackend`, `startWorker`, `isPidRunning`, `recoverFromPreviousSession`,
-  `recoverOrphanedPostgres`, `recoverOrphanedPythonProcess`, `killPid` (issue #119's own recovery
-  functions — the pure "nothing to recover" early-return paths are tested, the real
-  liveness-check/kill paths are not),
-  `startupSequence` (the top-level orchestrator — every decision it makes is already covered by
-  testing the pure functions it calls; the function itself is thin sequencing glue), and all of
-  `main.go` (WebView2/window glue). Covered instead by the CI install+launch smoke test in
-  `build-installer.yml`'s `package-native-launcher-msix` job (issue #82) — `Add-AppxPackage` +
-  launch via `shell:AppsFolder`, then poll `/api/admin/version` — confirmed live: the full
-  first-run bootstrap (stage bundled files, `initdb`, start postgres directly, `createdb`,
-  Alembic migrations, spawn `uvicorn`) runs inside a real installed MSIX package on a real
-  GitHub-hosted Windows runner, and the backend answers its health check. This also confirms
-  `main.go`'s WebView2 window itself initializes there (the backend-spawning goroutine only
-  runs once `webview2.NewWithOptions` succeeds). Packaging assets (`AppxManifest.xml`,
-  `gen-assets/` icon renderer, `winres/` + `main_windows_amd64.syso` for the exe's own
-  taskbar/titlebar icon) live directly in this module — promoted here from a throwaway
-  `installer/testing/native-launcher-poc/` diagnostic (now deleted) once this exact mechanism
-  was proven live.
+- `launcher-native/` — separate Go module (issue #82): a native Windows launcher with no
+  Podman, orchestrating a bundled Postgres + Python backend directly. Same fully-tested/
+  untestable split as above; packaging assets (`AppxManifest.xml`,
+  `gen-assets/`, `winres/`) live in this module.
+  - Fully tested: `paths.go`, `ports.go`, the arg-builder functions in `postgres.go`/`backend.go`
+    (`buildInitdbArgs`, `buildPostgresArgs`, `buildPgCtlStopArgs`, `buildCreateDbArgs`,
+    `databaseURL`, `buildUvicornArgs`, `healthURL`, `buildPgqueuerArgs`), `runCapturedCommand`,
+    `stopChildProcess`, `waitForHealth`, `readPostmasterPid`, `hideWindow`, `startPostgres`,
+    `waitForPostgresReady`, `writePidRecord`/`readPidRecord`, `processStartTime`,
+    `checkPostgresUpgradeCompatibility`'s two no-op branches (fresh install, version unchanged),
+    and all of `staging.go`.
+  - Untestable (real process spawn / OS liveness check): `runInitdb`, `stopPostgres`,
+    `createAppDatabase`, `startBackend`, `startWorker`, `isPidRunning`,
+    `recoverFromPreviousSession`, `recoverOrphanedPostgres`, `recoverOrphanedPythonProcess`,
+    `killPid`, `startupSequence` (top-level orchestrator — its decisions are covered by testing
+    the pure functions it calls), and all of `main.go` (WebView2/window glue). Covered by the CI
+    install+launch smoke test (`package-native-launcher-msix` job): installs the real MSIX,
+    launches it via `shell:AppsFolder`, polls `/api/admin/version`.
+  - Non-obvious facts worth keeping (see `git log --grep '#<issue>'` for fix history):
+    - Data lives under `%USERPROFILE%\PieManager\`, never `AppData`/`LocalAppData` — MSIX
+      transparently redirects any write under `AppData` to a location wiped on uninstall.
+    - `hideWindow` sets `CreationFlags: CREATE_NO_WINDOW` (raw `0x08000000`, not exported by Go's
+      `syscall` on Windows) rather than `SysProcAttr.HideWindow`, which only hides a console
+      *after* Windows allocates one. Matters specifically for Postgres: its Windows `EXEC_BACKEND`
+      architecture (no `fork()`) has the postmaster relaunch itself via internal `CreateProcess`
+      calls per background worker, each of which would otherwise get its own visible console.
+    - `startPostgres` launches `postgres.exe` directly rather than via `pg_ctl start`, because
+      `pg_ctl` spawns `postgres.exe` through its own `CreateProcess` call with a console window
+      that `hideWindow()` on the `pg_ctl.exe` process has no influence over. A real Windows
+      service (`CreateService`/`pg_ctl register`) was considered and rejected — both hard-require
+      admin elevation, conflicting with this launcher's no-elevation design.
+    - `waitForPostgresReady` polls the bundled `pg_isready.exe`, not a raw TCP dial — a bare
+      `net.Dial` succeeds as soon as the listener socket is bound, measurably before the server
+      can complete a real connection handshake, which broke `runMigrations` with "connection was
+      closed in the middle of operation."
+    - `startWorker` needs `cmd.Dir = backendAppDir(home)`: pgqueuer's own factory-loading
+      (`adapters/cli/factories.py`) resolves `module:function` via `sys.path.insert(0,
+      os.getcwd())`, not an `--app-dir` flag — confirmed against the installed `pgqueuer==1.3.2`
+      source, no such flag exists.
+    - `startBackend`'s `cmd.Env` must prefix `PATH` with `pgBinDir(home)` — `admin.py`'s
+      backup/restore endpoints shell out to bare `pg_dump`/`pg_restore` by name, and the
+      launcher's inherited `PATH` has no reason to include the bundled `pgsql\bin`.
+    - `admin.py`'s `pg_dump`/`pg_restore` subprocess calls decode stderr with `errors="replace"`,
+      never a bare `.decode()` — stderr encoding depends on the OS console codepage (a
+      French-locale Windows install emits cp1252, not UTF-8), and an undecodable byte must never
+      crash the handler before it can report the real underlying error. Both calls also catch
+      `OSError` around the launch itself, a distinct failure mode from a bad exit code (e.g.
+      Defender blocking an unsigned, never-run binary).
+    - `staging.go` re-stages the bundled pgsql/Python payloads on a version mismatch, tracked via
+      a `bundle-id.txt` manifest derived from each payload's actual build inputs — never this
+      app's own release `Version`, which changes every release regardless of whether these large
+      (~150-250MB), rarely-changing payloads did. Re-staging first clears any orphaned
+      `postgres.exe`/`python.exe` from an unclean previous session (Windows locks a directory a
+      running executable still holds open), tracked via a self-written `backend.pid`/`worker.pid`
+      record re-verified by process start time before being killed — closing the PID-reuse
+      false-positive gap `isPidRunning` otherwise has for a non-Postgres process.
+    - PostgreSQL is pinned to 18.4 (bumped from 16.14) to match every other platform — a PG18
+      backup couldn't be restored by this launcher's previously-bundled PG16 `pg_restore.exe`.
+      `pg_version_guard.go`'s `checkPostgresUpgradeCompatibility` refuses to start against an
+      incompatible on-disk data directory, mirroring the container installer's own guard, but
+      with different remediation text: the Microsoft Store silently replaces the previous package
+      on update, so there's no old binary left to reopen and back up with.
 - `testing/` — reproducible scripts to recreate the win11 libvirt/QEMU test VM from scratch on
   a fresh Fedora host (not part of the shipped product; see its own `README.md`)
-- `testing/msix-loopback-poc/` — throwaway diagnostic confirming (live, on a real `windows-latest`
-  GitHub Actions runner) that a full-trust MSIX-packaged WebView2 control can reach `localhost` —
-  the gating question for issue #63 (Store-distributing `launcher.exe` as a free fix for #60's
-  Smart App Control block); not part of the shipped product, see its own `README.md`
+- `testing/msix-loopback-poc/` — throwaway diagnostic confirming a full-trust MSIX-packaged
+  WebView2 control can reach `localhost` (the gating question for issue #63); not part of the
+  shipped product, see its own `README.md`
 
 ## Absolute rule: refactor after every change
 
@@ -312,47 +190,29 @@ instead.
 
 **`App.tsx`'s `PortfolioLayout` drives the sidebar's narrow-viewport visibility itself
 (`useNarrowViewport` + a direct inline `style` override on `<PageSidebar>`) — never go back to
-PatternFly's own `isManagedSidebar`/`onPageResize` mobile detection for this.** Below
-PatternFly v6's `xl` breakpoint (1200px viewport width), `.pf-v6-c-page__sidebar` is off-canvas
-by default (`translateX(-100%)`, `opacity: 0`) and only becomes visible via PatternFly's own
-CSS when its `.pf-m-expanded` modifier class is present — which `PageSidebar` only ever applies
-when its own `Page`-level `isMobile` context flag is true. That flag is computed once via a
-`ResizeObserver`/`componentDidMount` check on `Page`'s own container, and this measurement
-races the native WebView2 launcher's asynchronous initial window-bounds call: confirmed live
-(issue #118) via DevTools that `window.innerWidth`/`clientWidth` were genuinely narrow (1028)
-while the sidebar's class kept toggling between `pf-m-collapsed` and no modifier at all —
-`isMobile` stayed stuck `false` and never self-corrected, since the window is never resized
-again after launch. This is a real, unfixable-from-userland race in PatternFly's own detection
-in this specific host environment, not something `isManagedSidebar` (tried first, and itself
-initially believed to be the fix) can paper over. The actual fix: track narrowness with a plain
-`window.innerWidth` check + a `resize` listener, and force the sidebar's `transform`/`opacity`
-via inline `style` (highest CSS specificity — wins regardless of whatever class PatternFly's own
-broken detection applies). Above 1200px, no override is applied and PatternFly's own root-level
-CSS var override makes the sidebar visible unconditionally, which needs no fix and must not be
-touched.
+PatternFly's own `isManagedSidebar`/`onPageResize` mobile detection for this.** Below PatternFly
+v6's `xl` breakpoint (1200px), `.pf-v6-c-page__sidebar` only becomes visible via PatternFly's own
+CSS when its `Page`-level `isMobile` context flag is true — a flag computed once via a
+`ResizeObserver` near mount, which races the native WebView2 launcher's asynchronous initial
+window-bounds call and never self-corrects (the window isn't resized again after launch). This is
+a real, unfixable-from-userland race in PatternFly's own detection in this host environment
+(issue #118), not something `isManagedSidebar` can paper over.
 
-**Neither a single deferred re-check nor a bounded startup poll of `window.innerWidth` is
-enough** — both confirmed live to still read wrong well past their window (500ms, then a 10s
-poll, tried in that order). The native launcher does real blocking work at startup (Postgres
-init, migrations, spawning the backend) before it's idle enough to process `WM_SIZE` and call
-`PutBounds` with the real window bounds, and how long that takes isn't bounded (e.g. slower under
-virtualization) — there's also no guarantee WebView2 dispatches a real `resize` DOM event for a
-programmatic `PutBounds` call the way it does for an end-user drag-resize, so the `resize`
-listener can't be trusted as a fallback for this either. `useNarrowViewport` polls
-`window.innerWidth` every 500ms for the component's entire lifetime instead of any bounded
-window — cheap, since React bails out of re-rendering when `setState` receives an unchanged
-boolean, and the only approach that's correct regardless of how long the native launcher takes to
-settle.
+The fix: track narrowness with a plain `window.innerWidth` check, polled every 500ms for the
+component's entire lifetime (cheap — React bails out of re-rendering on an unchanged boolean), not
+on any bounded startup window — the launcher's startup delay before its real window bounds settle
+isn't bounded (slower under virtualization), and WebView2 isn't guaranteed to fire a real `resize`
+DOM event for a programmatic `PutBounds` call the way it does for a user drag-resize, so a
+`resize`-listener-only fallback can't be trusted either. Force the sidebar's `transform`/`opacity`
+via a direct inline `style` (highest CSS specificity, wins regardless of PatternFly's own class
+state). Above 1200px, no override is applied — PatternFly's own CSS already makes the sidebar
+visible unconditionally there.
 
-This bug was easy to misdiagnose as an environment/display issue rather than a real,
-reproducible layout+timing bug — issue #118 went through three prior incorrect theories (QXL/
-SPICE virtual GPU, RDP codec/gfx pipeline, host-compositor stale repaint) before a user's own
-resolution testing (fails below ~1200px, works above it) pointed at a genuine CSS breakpoint, and
-three more incorrect fix attempts after that (`isManagedSidebar`, a single deferred re-check,
-then a 10s bounded poll) before the actual working fix above — always verify the specific
-mechanism live in the native launcher rather than trusting that a plausible-looking timing fix
-landed correctly.
-
+Also ruled out before finding the real cause — no commit trail for these, pure dead ends, worth
+remembering so a future similar-looking display glitch doesn't re-litigate the environment first:
+QXL/SPICE virtual GPU, RDP codec/gfx pipeline, host-compositor stale repaint. The actual signal was
+a user's own resolution testing (fails below ~1200px, works above it) pointing at a real CSS
+breakpoint.
 ## Mandatory conventions
 
 - **Code in English** — all source code, variable names, function names, comments, commit messages, and PR descriptions MUST be in English. Exception: README.md and user-facing documentation files may be in French. The UI itself is translated via i18n (fr/en).

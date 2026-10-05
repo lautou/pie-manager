@@ -208,18 +208,12 @@ route `portfolioId` (that page is already scoped to one portfolio, its name alwa
 page header), which turns on the "Ton allocation" column comparing the quadrant's favorability
 against that portfolio's real, current allocation.
 
-This replaced an earlier, confusing design where `QuadrantCard` read a portfolio ID off a
-`?from=<portfolioId>` query-string param that the global page's own nav link silently appended
-(originally added only so the page's "Retour" button could point back at the right portfolio —
-a legitimate, still-present mechanism, see `App.tsx`'s `GlobalLayout`). `QuadrantCard` piggybacked
-on that same param to silently fetch and display one specific portfolio's allocation, with
-nothing on screen naming which portfolio it was — confusing on a page explicitly labeled
-"Global", and would not have scaled past a couple of portfolios (a `?from=`-based "last viewed"
-portfolio has no way to let a user compare against a *different* one, or against several, without
-more URL-param plumbing). The explicit-prop version fixes this by construction: the global page
-structurally cannot show a per-portfolio column (no prop = no column, no ambiguity), and any
-portfolio-scoped page that wants the comparison passes its own already-unambiguous portfolio ID
-directly, no shared URL convention required between pages.
+This replaced an earlier design where `QuadrantCard` silently inferred a portfolio from a
+`?from=<portfolioId>` URL param (`git log --grep 'quadrant allocation comparison'`) — confusing
+on a page explicitly labeled "Global" with nothing on screen naming which portfolio it
+reflected, and wouldn't scale past a couple of portfolios. The `?from=` param itself is still
+used elsewhere for the page's "Retour" button (see `App.tsx`'s `GlobalLayout`) — only
+`QuadrantCard`'s own piggybacking on it was removed.
 
 ## Country market performance leaderboard (portfolio-independent)
 

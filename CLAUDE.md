@@ -454,12 +454,10 @@ same-day-same-currency row shows "—" regardless of what its own `balance_eur`/
 `balance_currency` columns actually contain. A raw-data "chain consistency" check
 (`balance == prev + amount`) will flag many rows that are never rendered at all.
 
-**`portfolio_accounts.cash_balance_eur` was NOT a safe ground truth either, for the same reason
-— root cause now identified and fixed going forward (see below).** `_update_account_cash_balance()`
-used to add `total_amount_eur` to this field for *every* transaction type/currency uniformly
-(JPYEUR=X buys/sells included) — so on any broker that mixes EUR activity with a forex position
-(Revolut, IBKR), `cash_balance_eur` got contaminated the same way `balance_eur` is, and diverged
-from the real EUR cash position.
+**`portfolio_accounts.cash_balance_eur` has the same contamination risk as `balance_eur`, for the
+same root cause:** `_update_account_cash_balance()` used to add `total_amount_eur` for *every*
+transaction type/currency uniformly (JPYEUR=X buys/sells included), so on any broker mixing EUR
+activity with a forex position (Revolut, IBKR) it diverged from the real EUR cash position.
 
 **Fix (in `_update_account_cash_balance`, `transaction_service.py`): forex-position transactions
 (`ticker` ending in `EUR=X`, e.g. `JPYEUR=X`) no longer touch `cash_balance_eur` at all**, except
@@ -498,25 +496,20 @@ formula. Degiro's historical bulk-correction (anchored on `cash_balance_eur`) wa
 because Degiro is 100% EUR with no forex activity at all, eliminating the ambiguity entirely —
 do not generalize that approach to any broker with foreign-currency transactions.
 
-**Known historical bug (fixed but not retroactively corrected everywhere):** several
-`balance_eur`/`balance_currency` lookup queries in `transaction_service.py` filtered only by
-`account_id`, not `(account_id, portfolio_id)` — since a broker (e.g. Degiro, Revolut, IBKR)
-can be shared by multiple portfolios, this let one portfolio's running balance leak into
-another's "previous balance" lookup. All 10 occurrences were fixed to filter on both columns.
-Degiro's historical data was bulk-corrected (anchored to `cash_balance_eur`, safe because its
-transactions are 100% EUR). Revolut/IBKR's *transaction-level* `balance_eur`/`balance_currency`
-history was **left uncorrected** (a bulk correction there requires computing across mixed
-EUR+JPY activity, which is not a simple sum — see above — do not attempt a blind bulk fix
-without re-deriving the exact intended formula first). This is separate from
-`portfolio_accounts.cash_balance_eur`, which IBKR's has always been accurate and Revolut's is
-now individually corrected (see the forex-position fix above).
+**Known bug, fixed in code but not retroactively corrected everywhere** (`git log --grep 'scope
+balance_eur'`): several `balance_eur`/`balance_currency` lookups filtered only by `account_id`,
+not `(account_id, portfolio_id)`, letting one portfolio's running balance leak into another's
+"previous balance" lookup on a broker shared across portfolios. Degiro's historical data was
+bulk-corrected (safe — 100% EUR, no forex ambiguity). Revolut/IBKR's *transaction-level*
+`balance_eur`/`balance_currency` history was **left uncorrected** — a bulk fix there needs
+computing across mixed EUR+JPY activity, which isn't a simple sum (see above); don't attempt one
+without re-deriving the exact formula first. Separate from `portfolio_accounts.cash_balance_eur`,
+which IBKR's has always been accurate and Revolut's is now individually corrected.
 
-**Gap noticed while implementing the forex-position fix — now fixed:** `update_transaction`'s
-`date_changed` branch used to never call `_update_account_cash_balance` at all, so if a
-transaction's date AND amount changed in the same edit, the amount delta's cash impact was
-silently dropped. Fixed: the `date_changed` branch now computes
-`cash_delta = tx.total_amount_eur - old_total_eur` and calls `_update_account_cash_balance`
-when non-zero, exactly like the non-date-move branch below it does.
+**`update_transaction`'s `date_changed` branch also applies the cash-balance delta**
+(`cash_delta = tx.total_amount_eur - old_total_eur` → `_update_account_cash_balance` when
+non-zero), matching the non-date-move branch — editing date and amount together previously
+dropped the amount's cash impact silently.
 
 ## Health check endpoint
 

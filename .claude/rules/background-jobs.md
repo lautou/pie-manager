@@ -20,13 +20,9 @@ paths:
 ## Background job processing — PgQueuer (issue #66, Celery/Redis fully removed)
 
 This app is single-user; a distributed-worker model (separate broker + worker process class) was
-more machinery than it needed. Issue #66 migrated all 6 periodic/on-demand background tasks off
-Celery/Redis onto PgQueuer **incrementally**, one small, independently live-verified step at a
-time (steps 1+3: `refresh_prices_live`/`refresh_etf_holdings`/`refresh_macro_indicators`/
-`refresh_country_performance`; step 4: `compute_daily_snapshots_all_users`/
-`compute_monthly_snapshots_all_users`/`fill_missing_snapshots`/`recompute_snapshots_range`; step
-5: removed Celery/Redis/the `worker` container and `celery_app.py` entirely, since nothing used
-them anymore by that point). `pgq-worker` is now the only worker process/container in this app.
+more machinery than it needed. All 6 periodic/on-demand background tasks run on PgQueuer; Celery
+and Redis are fully removed (`git log --grep '#66'` for the migration history).
+`pgq-worker` is now the only worker process/container in this app.
 
 **`job_runs` table** (`app/models/job_run.py`, `app/tasks/job_runs.py`) replaces Redis-based
 sync-status keys *and* Celery's `AsyncResult` for every task: one row per **execution attempt**
@@ -63,26 +59,19 @@ old one — `clean_old=True` on `@pgq.schedule` would delete it, not used here s
 cron value currently changes at runtime. Confirmed live via a temporary fast cron during
 resilience testing.
 
-**`job_runs.pgq_job_id` has no unique constraint — a real bug found via live kill/restart
-testing, not a design choice made upfront.** PgQueuer redelivers a job stuck `picked` (worker
-killed mid-handler) to the *same* `job.id` once `pgq-worker` restarts; the entrypoint handler's
-`start_run(..., pgq_job_id=job.id)` call then runs a second time for that job_id. A unique index
-here (added in migration `tt33uu44vv55`) turned this ordinary, expected redelivery into an
-unhandled `IntegrityError` that crashed the job — confirmed live, fixed by dropping the index in
-migration `vv55ww66xx77`. Several `job_runs` rows can legitimately share one `pgq_job_id`; a row
-stuck `running` forever with no `finished_at` is the accepted, documented shape of an
-interrupted attempt (no automatic orphan detection — the same gap Celery had, not a new
-regression).
+**`job_runs.pgq_job_id` has no unique constraint — not a design choice made upfront**
+(`git log --grep pgq_job_id`): PgQueuer redelivers a job stuck `picked` (worker killed
+mid-handler) to the *same* `job.id` once `pgq-worker` restarts, so several `job_runs` rows can
+legitimately share one `pgq_job_id` — don't re-add uniqueness here. A row stuck `running`
+forever with no `finished_at` is the accepted, documented shape of an interrupted attempt (no
+automatic orphan detection — the same gap Celery had, not a new regression).
 
 **Every `DateTime` column in this app stores naive UTC — always serialize it through
-`app/utils/datetime_utils.py`'s `to_utc_iso()`, never bare `.isoformat()`.** Found live
-(issue #72): `job_runs.started_at`/`finished_at` and `portfolios.created_at` were serialized
-with plain `.isoformat()`, which on a naive datetime omits the UTC offset entirely. JavaScript's
-`Date` constructor then parses an offset-less string as *local* time, not UTC — every "dernière
-synchro" badge across the app (price/ETF/macro/country-performance sync status all flow through
-`to_sync_status_dict`) displayed a time off by exactly the browser's UTC offset (2h in CEST, 1h
-in CET). `to_utc_iso()` attaches an explicit `+00:00` before serializing; use it at every point a
-naive-UTC datetime crosses the API boundary, including any new one added later.
+`app/utils/datetime_utils.py`'s `to_utc_iso()`, never bare `.isoformat()`** (issue #72): a bare
+`.isoformat()` omits the UTC offset, and JavaScript's `Date` constructor then parses the
+offset-less string as *local* time, not UTC — every sync-status badge across the app displayed a
+time off by the browser's UTC offset. `to_utc_iso()` attaches an explicit `+00:00`; use it at
+every point a naive-UTC datetime crosses the API boundary, including any new one added later.
 
 **`pgq-worker` compose service**: same image as `backend`, `command: pgq run
 app.tasks.pgq_app:main`, depends on `backend` — no Redis env vars, since Celery/Redis were
@@ -91,28 +80,14 @@ also present in `installer/assets/compose-prod.yaml`, but that copy is generated
 from the root file, not committed (see `.gitignore`) — no separate edit needed there.
 
 **Neither `backend` nor `pgq-worker` uses `depends_on: postgres: condition: service_healthy`
-in either compose file — deliberately removed, not an oversight.** That condition was present
-from v1.4.0's release through a first attempted fix, and both times `build-installer.yml`'s
-`test-linux-install` job hung indefinitely (confirmed live via `gh run cancel` + `gh run view
---job <id> --log`): the hang landed immediately after postgres's digest-pinned image finished
-pulling, with zero further output, on GitHub's `ubuntu-latest` runner's combination of podman
-4.9.3 (Ubuntu-bundled) + a freshly pip-installed podman-compose 1.6.0. The first fix attempt
-(only removing `pgq-worker`'s health condition, in case 2 services concurrently polling the
-same condition was the trigger) did **not** resolve it — the hang recurred at the identical
-point with `backend` alone still using the condition, disproving that hypothesis. The real
-cause is `condition: service_healthy` itself hanging in this specific podman-compose/podman
-version combination, regardless of which service uses it or how many do. Fix: both services
-now use a plain, unconditioned `depends_on` list; startup-ordering safety relies instead on
-`restart: unless-stopped` (a service that starts before its dependency is ready simply crashes
-and restarts, already proven resilient throughout this whole migration) plus HAProxy's own
-independent active health-check (`/api/admin/health` every 2s, see the root `CLAUDE.md`'s
-"Health check endpoint" section) as the real user-facing gate before traffic is routed. `installer/common.go`'s
-`forceRecreate()` also had its `up` step's stdout changed from `io.Discard` to `os.Stdout` —
-the original hang was invisible in CI logs specifically because that output was discarded,
-hiding every podman-compose message after the last image pull. Filed upstream as
-**containers/podman-compose#1541** (full repro data + workaround) — check whether it's been
-fixed/responded to on a podman-compose version this project would actually adopt before ever
-re-adding `condition: service_healthy` anywhere in this repo.
+in either compose file — deliberately removed, not an oversight** (`git log --grep
+service_healthy`): that condition hangs `build-installer.yml`'s CI runner indefinitely on its
+podman-compose 1.6.0 + podman 4.9.3 combination, regardless of which service uses it. Both
+services now use a plain, unconditioned `depends_on`; startup-ordering safety relies on
+`restart: unless-stopped` plus HAProxy's own active health-check (`/api/admin/health` every 2s,
+see root `CLAUDE.md`'s "Health check endpoint" section) as the real gate before traffic is
+routed. Filed upstream as **containers/podman-compose#1541** — check whether it's fixed on a
+version this project would adopt before ever re-adding `condition: service_healthy` here.
 
 **Never nest `asyncio.run()` inside a PgQueuer handler — it runs inside the worker's own
 persistent event loop already.** The Celery-era `fill_missing_snapshots`/
@@ -183,10 +158,6 @@ This makes Dashboard/Rebalancing refresh right when a price sync actually comple
 of waiting for the next blind interval tick.
 
 ## GitHub release update check (issue #113)
-
-Backend implementation of a feature the frontend had fully built (badge, tests) since before
-this repo's public squash, but had no server-side route at all — confirmed via grep, a
-permanent 404 in production until this was added.
 
 - `app/tasks/github_update.py`'s `check_github_update` PgQueuer schedule (every 6h, no
   Paris/DST shift — release timing doesn't depend on wall-clock time of day) calls the public,

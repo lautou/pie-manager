@@ -309,22 +309,16 @@ already maps 1:1 to the host caller instead of chowning anything.
     Attribution skip logic, see "Transaction running-balance display" below)
   - `_get_liquidity_eur()` → `SUM(portfolio_accounts.cash_balance_eur) WHERE portfolio_id=X`
 
-**Transaction ledger logic lives in `app/services/transaction_service.py`, not the router.**
-`app/api/routers/transactions.py` used to hold ~450 lines of running-balance/cash-balance/fee
-business logic directly — the one domain in this app without a dedicated service module,
-despite being the most business-critical and highest-risk one (every other domain —
-`pv_service.py`, `rebalancing_service.py`, `snapshot_service.py`, `macro_indicators_service.py`
-— already had one). `create_transaction_core`/`update_transaction_core`/
-`delete_transaction_core` now hold everything each mutating endpoint does up to (not
-including) commit/refresh/snapshot-trigger, mirroring the extraction `create_transaction_core`
-itself pioneered for the bulk-import feature (see `.claude/rules/transaction-import.md`) —
-applied consistently to update/delete too, not just create. The router's own endpoint
-functions are now thin wrappers: fetch-or-404, call the `*_core` function, commit/refresh,
-`trigger_snapshot_recompute`. `TransactionCreate`/`TransactionUpdate` (the request schemas,
-including `TransactionCreate`'s derived-field validator) moved into the service module
-alongside the logic that consumes them, to avoid a router-imports-service /
-service-imports-router cycle; `TransactionOut` (the response schema) stays in the router,
-since it's a pure FastAPI output contract with nothing the service needs.
+**Transaction ledger logic lives in `app/services/transaction_service.py`, not the router**
+(`git log --grep 'extract transaction ledger'`). `create_transaction_core`/
+`update_transaction_core`/`delete_transaction_core` hold everything each mutating endpoint does
+up to (not including) commit/refresh/snapshot-trigger; the router's own endpoint functions are
+thin wrappers: fetch-or-404, call the `*_core` function, commit/refresh,
+`trigger_snapshot_recompute`. `TransactionCreate`/`TransactionUpdate` (including
+`TransactionCreate`'s derived-field validator) live in the service module alongside the logic
+that consumes them, to avoid a router-imports-service / service-imports-router cycle;
+`TransactionOut` (the response schema) stays in the router, since it's a pure FastAPI output
+contract with nothing the service needs.
 
 - `portfolios` — portfolios (Portfolio 1 / Portfolio 2, separate tax households)
 - `transactions` — all transactions (Actif/Frais/Revenu)

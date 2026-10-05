@@ -91,31 +91,19 @@ Or"). When adding a new always-rendered element to a page that already has simil
 siblings, grep the test file for `getAllBy*`/`.slice(-N)`/`[N]`/`/regex/i` patterns that could
 now match your new element, don't assume "my new tests pass" is sufficient.
 
-**Problem 6 — RESOLVED (issue #48): Vite 8 (Oxc transform) needed the `-- @preserve` ignore
-comment repositioned, not an upstream fix:**
-Originally, bumping to `vite@8.2.1`/`@vitejs/plugin-react@6.0.5` (PR #46) built and passed all
-tests but dropped coverage to 99.96%/99.78%/99.89% — exactly the 4 spots using
-`/* v8 ignore next -- @preserve */`. Root cause confirmed via the real upstream fix chain
-([oxc-project/oxc#20549](https://github.com/oxc-project/oxc/issues/20549) →
-`oxc` crates v0.123.0 → `rolldown` v1.0.0-rc.13 → `vite@8.0.8`,
-per [vitest#9918](https://github.com/vitest-dev/vitest/issues/9918)) plus one repo-specific
-gotcha the general upstream fix didn't cover:
-
-**The gotcha**: a `v8 ignore next` comment placed *mid-expression* — between a destructuring
-`=` and its multi-line RHS call, or inline before a JSX `{`-opened expression continuing on the
-next line — is not reliably attached by Oxc's comment-to-AST mapping to the actual branching
-sub-expression, even when the upstream "ignore next" bug itself is fixed. **Fix: move the
-comment to be the immediate leading line of the specific property/expression that contains the
-branch**, not before an outer wrapper several tokens/lines away — e.g.
-`useSortable({ data, defaultCol: 'x', /* v8 ignore next -- @preserve */ getValue: (a, col) =>
-... })` with the comment on its own line directly above `getValue`, not above the whole
-`useSortable(...)` call. Confirmed empirically on all 4 previously-failing spots
-(`AdminPage.tsx`, `DashboardPage.tsx`, `GlobalConfigPage.tsx`, `PortfolioSelectPage.tsx`) —
-repositioning alone restored 100% coverage on every metric, with `vite@8.2.1`/
-`@vitejs/plugin-react@6.0.5`, no upstream fix needed beyond what had already shipped. If a
-future `v8 ignore next` addition shows the same symptom (branch/statement coverage gap that
-disappears when temporarily removing the surrounding multi-line expression), check comment
-placement mid-expression first before assuming a new upstream regression.
+**Problem 6 (issue #48): a `v8 ignore next` comment placed *mid-expression* isn't reliably
+attached by Oxc's comment-to-AST mapping** (`git log --grep 'bump vite to 8.2.1'`) — between a
+destructuring `=` and its multi-line RHS call, or inline before a JSX `{`-opened expression
+continuing on the next line, even once the general upstream fix chain
+([oxc-project/oxc#20549](https://github.com/oxc-project/oxc/issues/20549) → `oxc` 0.123.0 →
+`rolldown` 1.0.0-rc.13 → `vite@8.0.8`) has shipped. **Fix: move the comment to be the immediate
+leading line of the specific property/expression that contains the branch**, not before an
+outer wrapper several tokens/lines away — e.g. `useSortable({ data, defaultCol: 'x', /* v8
+ignore next -- @preserve */ getValue: (a, col) => ... })` with the comment directly above
+`getValue`, not above the whole `useSortable(...)` call. If a future `v8 ignore next` addition
+shows a branch/statement coverage gap that disappears when temporarily removing the surrounding
+multi-line expression, check comment placement mid-expression first before assuming a new
+upstream regression.
 
 **Current CI thresholds:**
 - statements: **100%** (unreachable code marked with `/* v8 ignore next -- @preserve */`)

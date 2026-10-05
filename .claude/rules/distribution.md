@@ -232,94 +232,70 @@ there to a location wiped on uninstall (confirmed live, #76/#82).
 ### `app/frontend.py`'s `mount_frontend` must set `Cache-Control: no-cache` on `index.html`
 
 The native launcher's WebView2 instance is a **persistent** browser profile (not ephemeral like
-a normal CI/ad hoc test) — it survives across app restarts and even MSIX reinstalls, since the
-profile lives outside `frontend_dist` entirely. `index.html` is requested at a stable, unhashed
-URL (`/`), unlike Vite's content-hashed asset filenames — a client that caches it without
-revalidating will keep serving a stale index.html (and therefore stale asset references)
-indefinitely, no matter how many times `frontend_dist` is rebuilt and correctly re-staged on
-disk. Confirmed live (issue #118): a real multi-round investigation where every single test
-appeared to still be running a build from an earlier session, even after independently verifying
-that *both* the installed MSIX's own `frontend_dist` and the staged writable copy under
-`%USERPROFILE%\PieManager\frontend_dist` had the correct, up-to-date files — the browser simply
-never re-requested `index.html` from the server at all.
+a normal CI/ad hoc test) — it survives across app restarts and even MSIX reinstalls. `index.html`
+is requested at a stable, unhashed URL (`/`), unlike Vite's content-hashed asset filenames — a
+client that caches it without revalidating will keep serving a stale index.html (and therefore
+stale asset references) indefinitely, no matter how many times `frontend_dist` is rebuilt and
+correctly re-staged on disk (`git log --grep 'Cache-Control'`, issue #118).
 
-**Fix**: `mount_frontend`'s `FileResponse` calls now set `Cache-Control: no-cache` explicitly
-for `index.html` (forces revalidation via the ETag/Last-Modified `FileResponse` already sets —
-cheap 304 if unchanged, fresh fetch if not) and `public, max-age=31536000, immutable` for
-everything else under `/assets/` (safe, since Vite's content-hash filenames never reuse a URL
-for different content). Without an explicit header, `FileResponse`'s default leaves caching up
-to the client's own heuristics, which can pick an arbitrarily long freshness lifetime — this is
-not a hypothetical, it's what actually happened here. If `mount_frontend` is ever rewritten
-(e.g., swapped for `StaticFiles`), preserve this exact split — don't let index.html fall back to
-default/heuristic caching again.
+**Fix**: `mount_frontend`'s `FileResponse` calls set `Cache-Control: no-cache` explicitly for
+`index.html` (forces revalidation via the ETag/Last-Modified `FileResponse` already sets) and
+`public, max-age=31536000, immutable` for everything else under `/assets/` (safe, since Vite's
+content-hash filenames never reuse a URL for different content). If `mount_frontend` is ever
+rewritten (e.g., swapped for `StaticFiles`), preserve this exact split — don't let index.html
+fall back to default/heuristic caching again.
 
-**Second, independent staleness bug found in a #118 follow-up — the "both copies verified
-up-to-date" claim above was incomplete.** `stageBundledFiles` (`staging.go`) used to skip
-re-copying `frontend_dist` entirely once a marker file (`frontend_dist/index.html`) already
-existed from the very first install — meaning every later MSIX upgrade left the staged, writable
-`%USERPROFILE%\PieManager\frontend_dist` the backend actually serves from permanently frozen at
-whatever the first-ever install shipped, no matter how many newer packages were installed on top.
-This is easy to miss precisely *because* the installed MSIX's own read-only `frontend_dist`
-(inside the package) IS correctly updated on every upgrade — checking that copy alone (as the
-original #118 investigation did) looks like confirmation, while the copy actually served to the
-browser silently never changes. Confirmed live via WebView2 devtools: `document.scripts[0].src`
-pointed at a content hash that didn't match the just-installed package's own bundle at all, and
-fetching it confirmed the served JS predated a real, already-merged fix. **Fix**: `frontend_dist`
-now always wipes and re-copies on every launch (cheap — a few MB, unlike the ~130MB pgsql/Python
-interpreter bundles, which use a real content-based check instead — see the #119 entry below).
-When debugging "a fix isn't taking effect" on the native
-launcher again, check what the browser actually loaded (`document.scripts[0].src` + `fetch(...).then(t =>
-t.includes(...))` in devtools) before trusting either the MSIX package contents or the Cache-Control
-header alone — three independent layers (package contents, staged copy, browser cache) can each
-look correct in isolation while the end-to-end result is still stale.
+**`stageBundledFiles` (`staging.go`) must always re-copy `frontend_dist` on every launch, never
+skip-if-marker-present** (`git log --grep 'always re-stage frontend_dist'`): a marker-file check
+left the staged, writable `%USERPROFILE%\PieManager\frontend_dist` the backend actually serves
+from frozen at whatever the first-ever install shipped, even though the installed MSIX's own
+read-only `frontend_dist` was correctly updated on every upgrade — checking *that* copy alone
+looks like confirmation while the copy actually served to the browser silently never changes.
+`frontend_dist` now always wipes and re-copies on every launch (cheap — a few MB, unlike the
+~130MB pgsql/Python interpreter bundles, which use a real content-based check instead — see
+below). **When debugging "a fix isn't taking effect" on the native launcher, check what the
+browser actually loaded** (`document.scripts[0].src` + `fetch(...).then(t => t.includes(...))`
+in devtools) **before trusting either the MSIX package contents or the Cache-Control header
+alone** — three independent layers (package contents, staged copy, browser cache) can each look
+correct in isolation while the end-to-end result is still stale.
 
-**Third staleness bug, same root cause, found while triaging #119 — the backend's own app
-source and Alembic migrations, not just its binaries, were frozen the same way (issue #121).**
-`build-installer.yml`'s packaging step copies `backend/app`, `backend/alembic.ini`, and
-`backend/alembic` directly into the same `python/` tree as the embeddable interpreter
-(`backendAppDir(home)` is literally `pythonDir(home)`, see `backend.go`) — so the same
-`pythonStagedMarker` skip-if-present check that's legitimately fine for the interpreter/
-site-packages also gated the FastAPI app code and migration scripts, which change on nearly
-every release. Worse than the frontend case: `runMigrations` runs `alembic upgrade head`
-against these exact staged scripts on every launch, so a frozen `alembic/` tree meant a new
-migration was never applied at all for an existing user, not just never displayed. **Fix**:
-`staging.go`'s `stageBackendAppSource` now always wipes and re-copies `app/`, `alembic/`, and
-`alembic.ini` on every launch, same pattern as `frontend_dist` — only the interpreter and its
+**Same root cause hit the backend's own app source and Alembic migrations, not just binaries**
+(`git log --grep 'backend app source'`, issue #121): `build-installer.yml`'s packaging step
+copies `backend/app`, `backend/alembic.ini`, and `backend/alembic` into the same `python/` tree
+as the embeddable interpreter (`backendAppDir(home)` is literally `pythonDir(home)`, see
+`backend.go`), so the interpreter's skip-if-present marker also gated the FastAPI app code and
+migration scripts, which change on nearly every release — worse than the frontend case, since
+`runMigrations` runs `alembic upgrade head` against these exact staged scripts on every launch.
+**Fix**: `staging.go`'s `stageBackendAppSource` always wipes and re-copies `app/`, `alembic/`,
+and `alembic.ini` on every launch, same pattern as `frontend_dist` — only the interpreter and its
 site-packages use a different mechanism, described next.
 
-**Fourth entry, resolving the original scope of #119 itself: pgsql/the Python interpreter now
-re-stage on a real content-based check, not an exe-presence marker at all.** The old
-`pgsqlStagedMarker`/`pythonStagedMarker` (presence of `postgres.exe`/`python.exe`) had two
-problems beyond just "no update story": it couldn't detect a genuine content change even if one
-ever happened, and — since `filepath.WalkDir` visits a directory's entries in lexical order —
-`bin/postgres.exe` (alphabetically before `lib/`, `share/`) could already exist after a copy
-interrupted partway through, so the marker could misread a partial copy as "fully staged" with
-no way to ever self-correct. **Fix**: `build-installer.yml` now writes a `bundle-id.txt`
-manifest into `pkgRoot/pgsql/` and `pkgRoot/python/` at packaging time, computed from each
-payload's actual build inputs (the pgsql download URL; the Python version + a `Get-FileHash` of
-`requirements.txt`) — deliberately **not** this app's own release `Version`, which changes every
-release regardless of whether these payloads did, which would have forced a needless
-~150-250MB re-copy on every ordinary update. `staging.go`'s `stageIfBundleChanged` compares this
-against a `staged-bundle-id.txt` it writes into the data directory only *after* `copyTree`
-fully succeeds (never before), re-staging whenever they differ or no staged id exists yet (which
-also means one unavoidable one-time re-stage for every install that predates this fix, migrating
-it off the old marker). One MakeAppx gotcha caught before it could bite in the field: the
-manifest files are named `bundle-id.txt`, not `.bundle-id` — **MakeAppx excludes
-dot-prefixed files/folders from a package by default**, which would have silently dropped the
-manifest from every real MSIX build while every local Go test kept passing.
+**`pgsql`/the Python interpreter re-stage on a real content-based check, not an exe-presence
+marker** (`git log --grep 'version-aware re-staging'`, issue #119). The old marker (presence of
+`postgres.exe`/`python.exe`) couldn't detect a genuine content change, and — since
+`filepath.WalkDir` visits entries in lexical order — `bin/postgres.exe` (alphabetically before
+`lib/`, `share/`) could already exist after a copy interrupted partway through, so the marker
+could misread a partial copy as "fully staged" with no way to self-correct. **Fix**:
+`build-installer.yml` writes a `bundle-id.txt` manifest into `pkgRoot/pgsql/` and
+`pkgRoot/python/` at packaging time, computed from each payload's actual build inputs (the pgsql
+download URL; the Python version + a `Get-FileHash` of `requirements.txt`) — deliberately
+**not** this app's own release `Version`, which would force a needless ~150-250MB re-copy on
+every ordinary update. `staging.go`'s `stageIfBundleChanged` compares this against a
+`staged-bundle-id.txt` it writes into the data directory only *after* `copyTree` fully succeeds,
+re-staging whenever they differ or no staged id exists yet. **MakeAppx gotcha**: the manifest
+files are named `bundle-id.txt`, not `.bundle-id` — MakeAppx excludes dot-prefixed files/folders
+from a package by default, which would silently drop the manifest from every real MSIX build
+while local Go tests kept passing.
 
 Re-staging pgsql/the interpreter this way needs any orphaned `postgres.exe`/`python.exe` from a
 previous, uncleanly-terminated session cleared first — Windows locks a directory a running
-executable still holds open, so `os.RemoveAll` would fail otherwise. `crash_recovery.go`'s
-`recoverFromPreviousSession` now runs before `stageBundledFiles` (not just before
-`startPostgres`), and also covers the backend/worker — which had no orphan-recovery at all
-before, unlike Postgres's own `postmaster.pid` — via a `backend.pid`/`worker.pid` record this
-launcher writes itself right after spawning each process (`writePidRecord`, `backend.go`'s
-`recordSpawnedPid`). Since that file format is entirely ours (unlike `postmaster.pid`, which
-PostgreSQL itself owns), it also records the process's start time (`processStartTime`,
-`processtime_windows.go`, via `GetProcessTimes`) and re-verifies it before killing anything —
-closing the PID-reuse false-positive gap `isPidRunning`'s own doc comment accepts as a narrow,
-unfixed risk for Postgres specifically.
+executable still holds open. `crash_recovery.go`'s `recoverFromPreviousSession` runs before
+`stageBundledFiles` (not just before `startPostgres`), and also covers the backend/worker via a
+self-written `backend.pid`/`worker.pid` record (`writePidRecord`, `backend.go`'s
+`recordSpawnedPid`) that also tracks process start time (`processStartTime`,
+`processtime_windows.go`) and re-verifies it before killing anything — closing the PID-reuse
+false-positive gap `isPidRunning`'s own doc comment accepts as a narrow, unfixed risk for
+Postgres specifically.
 
 ### Installed files (macOS)
 ```
@@ -346,24 +322,15 @@ console-window suppression, the PgQueuer worker, and this module's own CI covera
 Auto-update is handled entirely by the Microsoft Store, like any other Store app — no
 in-app update mechanism, no Scheduled Task, no manual re-run needed.
 
-### Bundled PostgreSQL bumped from 16.14 to 18.4 — a real cross-platform restore failure
+### Bundled PostgreSQL bumped from 16.14 to 18.4 (`git log --grep '16.14 to 18.4'`)
 
-`build-installer.yml`'s EDB Windows download URL now pins PostgreSQL 18.4, matching every other
-platform (Linux/macOS containers run PostgreSQL 18 too). Triggered by a real, live user-reported
-bug this session: a backup produced on Linux/macOS (PG18) could never be restored on this
-launcher's own bundled PG16 `pg_restore.exe` ("version non supportée (1.16) dans le fichier
-d'en-tête").
-
-This launcher's data directory (`%USERPROFILE%\PieManager\pgdata`) is a plain filesystem path,
-not a Podman volume mount, so the container installer's PGDATA-on-a-fresh-mount concern
-(`.claude/rules/containers-and-backup.md`'s "PostgreSQL major-version bumps") doesn't apply here
-— only version compatibility does. `pg_version_guard.go`'s `checkPostgresUpgradeCompatibility`
-(new, fully unit-tested) guards against this bump and any future major bump: it compares the
-bundled `postgres.exe --version` against the data directory's own `PG_VERSION` file and refuses
-to start on a mismatch rather than risk corrupting an incompatible on-disk format. Its
-remediation text necessarily differs from `installer/common.go`'s equivalent container-installer
-guard — the Microsoft Store silently replaces the previous package on update, so there's no "old
-version" binary left to reopen and back up with by the time this guard would ever fire.
+`build-installer.yml`'s EDB Windows download URL pins PostgreSQL 18.4, matching every other
+platform. This launcher's data directory (`%USERPROFILE%\PieManager\pgdata`) is a plain
+filesystem path, not a Podman volume mount, so the container installer's PGDATA-on-a-fresh-mount
+concern (`.claude/rules/containers-and-backup.md`'s "PostgreSQL major-version bumps") doesn't
+apply here — only version compatibility does, guarded by `pg_version_guard.go`'s
+`checkPostgresUpgradeCompatibility` (see the root `CLAUDE.md`'s "Non-obvious facts" list in the
+installer coverage-policy section for the mechanism).
 
 ### Native window integration (wrapper.py / WebKitGTK) — Linux only
 
@@ -564,25 +531,24 @@ Only handles a **fresh** install (`podman` absent from PATH) — re-running the 
 upgrades are left to the user/Homebrew, not this installer.
 
 **Right after a fresh `.pkg` install, `podman` is still not on `PATH` for the current
-process.** The `.pkg` registers its install directory via `/etc/paths.d/` for *future login
-shells* only — confirmed live in CI: `podman machine init` failed with "executable file not
-found in $PATH" immediately after "The install was successful." `refreshPathForPodman()`
-reads that same `/etc/paths.d/` entry and prepends it to the current process's `PATH` before
-continuing, rather than hardcoding the `.pkg`'s install directory. Also,
-`githubLatestAssetURL` (`common.go`) now passes `GITHUB_TOKEN`/`GH_TOKEN` as a bearer token
-when present in the environment — shared GitHub Actions runner IPs can already be near the
-unauthenticated GitHub API's 60/hour limit (confirmed live: a real 403), while a real end
-user's install never has this env var set.
+process** (`git log --grep 'macOS Podman PATH'`): the `.pkg` registers its install directory via
+`/etc/paths.d/` for *future login shells* only. `refreshPathForPodman()` reads that same
+`/etc/paths.d/` entry and prepends it to the current process's `PATH` before continuing, rather
+than hardcoding the `.pkg`'s install directory. Also, `githubLatestAssetURL` (`common.go`) passes
+`GITHUB_TOKEN`/`GH_TOKEN` as a bearer token when present in the environment — shared GitHub
+Actions runner IPs can already be near the unauthenticated GitHub API's 60/hour limit, while a
+real end user's install never has this env var set.
 
 **`configurePodmanRestartService()`'s `podman machine ssh` call must pass the whole
 `&&`-chained compound command as the sole trailing argument, never split as separate
-`"bash","-c",cmd` arguments.** `podman machine ssh` mangles a compound command passed that way
-— confirmed live and matches an independent upstream report
-([containers/podman#13517](https://github.com/containers/podman/issues/13517)): it re-joins
-multiple trailing arguments before forwarding them over SSH, so `bash`, `-c`, and the command
-string arrive at the remote shell re-split on whitespace — only the first word after `-c`
-survives as its actual script argument. Pass the full compound command as one string after
-`--` instead — the remote SSH server already wraps a single command string in a shell itself.
+`"bash","-c",cmd` arguments** (`git log --grep 'podman machine ssh command mangling'`): it
+matches an independent upstream report
+([containers/podman#13517](https://github.com/containers/podman/issues/13517)) — `podman
+machine ssh` re-joins multiple trailing arguments before forwarding them over SSH, so `bash`,
+`-c`, and the command string arrive at the remote shell re-split on whitespace, and only the
+first word after `-c` survives as its actual script argument. Pass the full compound command as
+one string after `--` instead — the remote SSH server already wraps a single command string in a
+shell itself.
 
 **Auto-start at login uses a `launchd` LaunchAgent.**
 `~/Library/LaunchAgents/com.pie-manager.podman-start.plist` (`RunAtLoad`) runs `podman machine
@@ -695,24 +661,21 @@ to make it a real release gate — don't leave it soft-failing forever just beca
 that way.
 
 **`test-linux-install` polls Quay.io before pulling — `publish-images.yml` fires off the same
-tag push with no ordering guarantee.** Confirmed live on the real v1.3.0 release: the job
-failed in 15s on "manifest unknown," well before `publish-images.yml` finished pushing 4
-minutes later (issue #16). It now has a "Wait for images to be published to Quay.io" step
-(polls the public `quay.io/api/v1/repository/.../tag/` endpoint, 10-minute timeout) before
-invoking the installer — chosen over reordering the two workflows via `workflow_run` (ref/
-context quirks) or merging them into one (bigger restructure for a timing bug).
+tag push with no ordering guarantee** (`git log --grep 'wait for Quay.io'`, issue #16). A "Wait
+for images to be published to Quay.io" step (polls the public `quay.io/api/v1/repository/.../
+tag/` endpoint, 10-minute timeout) runs before invoking the installer — chosen over reordering
+the two workflows via `workflow_run` (ref/context quirks) or merging them into one (bigger
+restructure for a timing bug).
 
-**`workflow_dispatch` lets this whole pipeline run on demand without creating a release.**
-`build` computes `VERSION` once — a real tag version on `push`; on a manual run, the
-**latest already-published release's version** instead of a made-up placeholder, since no
-container image exists on Quay.io for a version nobody ever published (confirmed live:
-`podman pull` failing with "manifest unknown" for a first attempt at a synthetic
-`0.0.0-dispatch-<sha>` version) — and exposes it as a job output so every downstream job reads
-the same value instead of re-deriving it from `GITHUB_REF_NAME` (a branch name on manual runs,
-which can contain `/` and would break filenames built from it). The "Create GitHub Release"
-and "Delete obsolete releases" steps are both gated `if: github.event_name == 'push'` — a
-manual dispatch builds and installer-tests both Linux and macOS but never touches GitHub
-Releases or Quay.io.
+**`workflow_dispatch` lets this whole pipeline run on demand without creating a release**
+(`git log --grep 'dispatch-test image version'`). `build` computes `VERSION` once — a real tag
+version on `push`; on a manual run, the **latest already-published release's version** instead
+of a made-up placeholder, since no container image exists on Quay.io for a version nobody ever
+published — and exposes it as a job output so every downstream job reads the same value instead
+of re-deriving it from `GITHUB_REF_NAME` (a branch name on manual runs, which can contain `/` and
+would break filenames built from it). The "Create GitHub Release" and "Delete obsolete releases"
+steps are both gated `if: github.event_name == 'push'` — a manual dispatch builds and
+installer-tests both Linux and macOS but never touches GitHub Releases or Quay.io.
 
 ### Changelog generation
 

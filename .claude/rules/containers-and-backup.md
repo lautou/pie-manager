@@ -19,17 +19,17 @@ green while `podman build` failed outright trying to compile it from source. Alw
 Python-version bump by actually running `podman build -f backend/Containerfile backend/`,
 not just by trusting CI.
 
-**`backend/Containerfile` is a multi-stage build** (`builder` → `runtime`, #20) — the final
-image no longer carries `pip`, `setuptools`, `build-essential`, `curl`, or `gnupg`, none of
-which the app needs after `pip install` finishes at build time. This structurally closes a
-class of Trivy finding that `requirements.txt` has no lever to fix: HIGH CVEs in pip's own
-vendored `msgpack` and in `setuptools` itself (both ship pre-installed in the `python:3.14-slim`
-base image, not from anything this Containerfile's own `RUN` steps add — see #11/#20).
-`builder` installs Python deps into an isolated `--prefix=/install` (kept separate from the
-base image's own pip) and stages `pg_dump`/`pg_restore` plus their full transitive
-shared-library closure into `/pg-runtime/` via an `ldd`-based walk (self-computing on every
-build, not a hand-maintained `.so` list that goes stale). `runtime` starts fresh from the same
-base+digest, removes the base image's own pip/setuptools/wheel
+**`backend/Containerfile` is a multi-stage build** (`builder` → `runtime`; `git log --grep
+'multi-stage build'`, closes #20) — the final image no longer carries `pip`, `setuptools`,
+`build-essential`, `curl`, or `gnupg`, none of which the app needs after `pip install` finishes
+at build time. This structurally closes a class of Trivy finding that `requirements.txt` has no
+lever to fix: HIGH CVEs in pip's own vendored `msgpack` and in `setuptools` itself (both ship
+pre-installed in the `python:3.14-slim` base image, not from anything this Containerfile's own
+`RUN` steps add). `builder` installs Python deps into an isolated `--prefix=/install` (kept
+separate from the base image's own pip) and stages `pg_dump`/`pg_restore` plus their full
+transitive shared-library closure into `/pg-runtime/` via an `ldd`-based walk (self-computing on
+every build, not a hand-maintained `.so` list that goes stale). `runtime` starts fresh from the
+same base+digest, removes the base image's own pip/setuptools/wheel
 (`python -m pip uninstall -y pip setuptools wheel` — uses pip's own RECORD manifest so
 companion files like the `_distutils_hack` `.pth` shim are removed correctly, not a `rm -rf`
 glob), then copies both artifacts in. A `RUN` step at the end of the `runtime` stage — a real
@@ -37,44 +37,30 @@ import of `app.main`/`app.tasks.pgq_app` plus `pg_dump --version`/`pg_restore --
 fails the build itself immediately if either copy is incomplete, instead of only surfacing at
 container start. **Both `FROM` lines must be bumped to the same digest together** — a future
 Dependabot base-image PR that only updates one would silently run the `builder`'s `ldd`
-closure against a different glibc than the `runtime` stage ships. Verified live: real
-`podman build`, a local Trivy scan confirming `msgpack`/`setuptools` are gone (present on the
-old single-stage image, absent here), a ~43% image size reduction (772 MB → 439 MB), and full
-`podman-compose up` smoke tests (see below) on both dev and prod-style stacks.
+closure against a different glibc than the `runtime` stage ships.
 
 **Both `Containerfile`s pull OS security patches at build time** (`apt-get upgrade -y` for
-backend/Debian, `apk upgrade --no-cache` for frontend/Alpine), added after #21 turned Trivy into
-a real release-blocking gate. A digest-pinned base image is frozen at whatever OS package
-snapshot existed when that digest was built — real incident: the week #21 shipped, Debian's
-security repo had already published a fix for a HIGH CVE in `util-linux`/`bsdutils` (present in
-the pinned `python:3.14-slim` digest) well before Docker Hub got around to rebuilding that image,
-and the new gate correctly blocked the release on it. `apt-get update && apt-get upgrade`/`apk
-upgrade` pulls whatever's current in the distro's live package repos at build time, decoupled
-from the base digest — standard practice for exactly this scenario, not a one-off patch.
+backend/Debian, `apk upgrade --no-cache` for frontend/Alpine; `git log --grep '#21'`) — a
+digest-pinned base image is frozen at whatever OS package snapshot existed when that digest was
+built, so a fix already published in the distro's security repo can lag behind the next
+base-image rebuild and still block a Trivy-gated release. `apt-get update && apt-get upgrade`/
+`apk upgrade` pulls whatever's current in the distro's live package repos at build time,
+decoupled from the base digest — standard practice for exactly this scenario, not a one-off
+patch.
 
-**`backend/Containerfile` runs as a non-root user (`appuser`, UID/GID 1000)** — fixed
-issue #17 (previously ran fully as root). `appuser` never needs write access to the
-application source tree: `pg_dump`/`pg_restore` (admin backup/restore) and the Excel import
-only ever touch `/tmp` or memory, and nothing else in the app writes to disk at all since
-Celery's removal (issue #66) — Celery Beat used to need its own schedule file redirected to
-`/tmp` (see git history if resurrecting this), but that mechanism is gone along with Celery
-itself. This also sidesteps host/container UID mismatches on the dev bind-mount
-(`./backend:/app:z`), since reading it only relies on standard "other" read permission
-bits, not an exact UID match.
-Verified live (not just build success): a real `podman-compose up` in both dev
-(bind-mount) and prod-style (`alembic upgrade head && uvicorn`, baked image) modes,
-confirming clean startup, no permission errors, and a working backup+restore
-round-trip, all as `appuser`.
+**`backend/Containerfile` runs as a non-root user (`appuser`, UID/GID 1000)** (`git log --grep
+'non-root user'`, closes #17). `appuser` never needs write access to the application source
+tree: `pg_dump`/`pg_restore` (admin backup/restore) and the Excel import only ever touch `/tmp`
+or memory, and nothing else in the app writes to disk at all since Celery's removal (issue #66).
+This also sidesteps host/container UID mismatches on the dev bind-mount (`./backend:/app:z`),
+since reading it only relies on standard "other" read permission bits, not an exact UID match.
 
 **`frontend/Containerfile` runs `node:24-alpine`** (matches CI's `node-version: '24'` in
-`ci.yml`). Bumped from `node:20-alpine` (2026-08) after a Trivy scan flagged an Alpine
-`libssl3`/`libcrypto3` CVE (CVE-2026-45447) that a rebuild alone couldn't fix — Node 20
-reached EOL 2026-04-30 and Docker Hub stopped rebuilding `node:20-alpine` shortly before,
-so its baked-in Alpine packages were permanently frozen pre-fix. Verified via real
-`podman run` + `apk list --installed` that `node:22-alpine`/`node:24-alpine` (both actively
-rebuilt) already carry the fixed `openssl` packages. If a future CVE report on this image
-assumes "just rebuild it", check the base tag's actual last-push date on Docker Hub first —
-an EOL runtime's official image can silently stop receiving any OS-level security rebuilds.
+`ci.yml`; `git log --grep CVE-2026-45447`). Bumped from `node:20-alpine` after Node 20 reached
+EOL and Docker Hub stopped rebuilding it, freezing its baked-in Alpine OpenSSL packages
+pre-fix. If a future CVE report on this image assumes "just rebuild it", check the base tag's
+actual last-push date on Docker Hub first — an EOL runtime's official image can silently stop
+receiving any OS-level security rebuilds.
 
 **Do not bump `node:24-alpine` → `node:26-alpine` before Node 26 reaches Active LTS
 (2026-10-28) — tracked in #57.** Dependabot PR #29 proposing this was closed (not
@@ -84,25 +70,20 @@ is still on the less battle-tested "Current" release line until its LTS date. No
 take on that risk early. Dependabot's own weekly scan will re-propose an equivalent PR on its
 own — merge it once Node 26 is actually Active LTS, don't defer indefinitely.
 
-**`frontend/Containerfile` is a multi-stage build** (`builder` → `runtime`, #13), mirroring
-the backend's #20 refactor for the same reason: `builder` runs `npm ci` (now copies
-`package-lock.json` before install too — previously only `package.json` was copied, so the
-image's `npm install` silently ignored the pinned lockfile and re-resolved from the registry
-at build time, picking up whatever transitive versions happened to be current) and the app
-source; `runtime` starts fresh from the same base+digest, deletes the base image's own bundled
-npm CLI (`rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx`) before
-copying in `builder`'s `/app`. This structurally removes a class of Trivy finding
-`package.json` has no lever to fix: HIGH/CRITICAL CVEs in npm's own vendored `tar`/
-`brace-expansion`/`ip-address`/`undici` (pre-installed in the `node:24-alpine` base image, not
-from anything this app's own dependencies pull in — confirmed by locating them under
-`/usr/local/lib/node_modules/npm/node_modules/`, not `app/node_modules/`). Safe to remove
+**`frontend/Containerfile` is a multi-stage build** (`builder` → `runtime`; `git log --grep
+'multi-stage frontend'`, closes #13), mirroring the backend's #20 refactor: `builder` runs
+`npm ci` (copies `package-lock.json` before install, not just `package.json` — otherwise `npm
+install` silently ignores the pinned lockfile and re-resolves from the registry at build time)
+and the app source; `runtime` starts fresh from the same base+digest, deletes the base image's
+own bundled npm CLI (`rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm
+/usr/local/bin/npx`) before copying in `builder`'s `/app`. This structurally removes a class of
+Trivy finding `package.json` has no lever to fix: HIGH/CRITICAL CVEs in npm's own vendored
+`tar`/`brace-expansion`/`ip-address`/`undici` (pre-installed in the `node:24-alpine` base image
+under `/usr/local/lib/node_modules/npm/node_modules/`, not `app/node_modules/`). Safe to remove
 because the dev server is invoked via its own binary (`node_modules/.bin/vite`, both in the
 Containerfile's `CMD` and in `compose.yaml`'s dev override), never via `npm run` — `node`
-itself doesn't depend on npm's bundled `node_modules` at runtime. Verified: real
-`podman build`, a from-scratch Trivy scan going from 4 HIGH/CRITICAL findings to 0, and a full
-`podman-compose up` smoke test (dev stack, isolated project name) confirming the Vite dev
-server still starts and serves the app correctly. As with the backend, **both `FROM` lines
-must be bumped to the same digest together** on a future base-image update.
+itself doesn't depend on npm's bundled `node_modules` at runtime. As with the backend, **both
+`FROM` lines must be bumped to the same digest together** on a future base-image update.
 
 ### Development (compose.yaml)
 
@@ -142,16 +123,12 @@ install (`~/.local/share/pie-manager`) resolve to the **same** project name ("pi
 purely because both directories share that basename — meaning the same container names and
 the same named volumes, even though the two compose files live at completely different paths.
 
-**This is not theoretical — it happened.** A `podman-compose build`/`up` run from this dev
-checkout in August 2026 (unreleased code including the migration for issue #123's "Performance
-par secteur" feature) resolved to the same project as the live production install, ran
-`alembic upgrade head` against the **real production Postgres volume**, and left it stamped
-two migrations ahead of whatever image tag production's `.env` was actually pinned to. When
-production's own containers next restarted on the old pinned image, the backend crash-looped
-forever (`Can't locate revision`) — production was down until a real release (bundling the
-unreleased migrations) was cut and installed. See git history around 2026-09-05 for the
-incident; no data was lost (both migrations involved were additive/widening, not destructive),
-but it could have gone the other way.
+**This is not theoretical — it happened** (`git log --grep 'project names'`, 2026-09-05): a dev
+compose run resolved to the same project as the live production install and ran `alembic
+upgrade head` against the **real production Postgres volume**, crash-looping production's
+backend on an unreleased migration until a real release was cut. No data was lost that time
+(the migrations involved were additive/widening, not destructive), but it could have gone the
+other way.
 
 **Rule:** never remove either `name:` key. If a third throwaway compose stack is ever spun up
 from a directory that could also end up named "pie-manager" (a clone, a copy, a test checkout),
@@ -177,16 +154,14 @@ The `.env` file also holds `APP_VERSION=<n>`. Both variables are consumed by `co
 - Format `.dump` (custom binary pg_dump, compressed)
 
 **Why the schema is reset before `pg_restore` runs, not left to `--clean --if-exists`
-alone:** `--clean --if-exists` only drops/recreates objects that are present *in the dump
-file itself* — it never touches a table that exists in the live database but is absent from
-the dump. Restoring a backup older than a migration that has since added a table therefore
-leaves that newer table in place (orphaned) while `alembic_version` reverts to the backup's
-older revision, so the next app startup tries to re-run that migration and fails with a
-duplicate-object error. Confirmed live: a Windows native-launcher install crash-looped with
-`asyncpg.exceptions.DuplicateTableError` on `bond_perf_configs` (a table added by a migration
-newer than the backup that had just been restored). Dropping and recreating the schema first
-guarantees the post-restore state matches the dump exactly, with no leftover objects of any
-kind — a fix at the restore endpoint itself, not a one-off manual `DROP TABLE`.
+alone** (`git log --grep 'reset public schema'`): `--clean --if-exists` only drops/recreates
+objects that are present *in the dump file itself* — it never touches a table that exists in
+the live database but is absent from the dump. Restoring a backup older than a migration that
+has since added a table therefore leaves that newer table in place (orphaned) while
+`alembic_version` reverts to the backup's older revision, so the next app startup tries to
+re-run that migration and fails with a duplicate-object error. Dropping and recreating the
+schema first guarantees the post-restore state matches the dump exactly, with no leftover
+objects of any kind — a fix at the restore endpoint itself, not a one-off manual `DROP TABLE`.
 - `backend/Containerfile` pins `postgresql-client-18` to match the server (PostgreSQL 18) — a
   mismatched client version produces dumps the server's own pg_restore can't read, and an
   OLDER client outright refuses to dump a NEWER server at all
@@ -195,52 +170,41 @@ kind — a fix at the restore endpoint itself, not a one-off manual `DROP TABLE`
 
 **A PostgreSQL major-version bump is never a simple image-tag swap — never merge one via
 Dependabot without redoing this whole exercise** (the `.github/dependabot.yml` `postgres`
-ignore rule blocks the next major version specifically so this can't happen by accident).
-Three independent problems, confirmed empirically (not just from docs) during #58, each
-needing its own fix:
+ignore rule blocks the next major version specifically so this can't happen by accident;
+`git log --grep '#58'` for the full #58 walkthrough). Three independent problems, each needing
+its own fix:
 
 1. **Mount/PGDATA convention change.** `postgres:18-alpine`'s official image defaults
    `PGDATA` to a version-scoped subdirectory (`/var/lib/postgresql/18/docker`) under a new
    `/var/lib/postgresql` `VOLUME` — it refuses to start on a **fresh, empty** volume mounted
-   the old way (`/var/lib/postgresql/data` directly), let alone an existing data volume. **Fix
-   verified empirically, not just read from docs:** pinning `PGDATA: /var/lib/postgresql/data`
-   explicitly in both compose files (a plain Postgres env var, honored regardless of the
-   image's own new default) lets `postgres:18-alpine` start cleanly under the *exact same*
-   mount layout `compose.yaml`/`compose-prod.yaml` already used for 16 — no volume
-   restructuring needed at all. This trades away the new layout's own benefit (enabling
-   `pg_upgrade --link` for a near-instant *future* major bump) in exchange for a much simpler
-   *this* bump — a deliberate choice for a personal single-user app, revisit if that trade-off
-   ever stops making sense.
+   the old way (`/var/lib/postgresql/data` directly), let alone an existing data volume. Fix:
+   pin `PGDATA: /var/lib/postgresql/data` explicitly in both compose files (a plain Postgres
+   env var, honored regardless of the image's own new default), letting `postgres:18-alpine`
+   start under the *exact same* mount layout already used for 16 — no volume restructuring
+   needed. This trades away the new layout's own benefit (enabling `pg_upgrade --link` for a
+   near-instant *future* major bump) for a much simpler *this* bump — a deliberate choice for a
+   personal single-user app, revisit if that trade-off ever stops making sense.
 2. **Client compatibility.** An older `pg_dump`/`pg_restore` client flatly refuses to touch a
    newer server (`aborting because of server version mismatch` — a hard PostgreSQL rule, not
-   a bug) — `backend/Containerfile`'s pinned `postgresql-client-16` → `postgresql-client-18`
-   bump above must happen in lockstep with the server bump, never independently.
+   a bug) — `backend/Containerfile`'s pinned client version bump must happen in lockstep with
+   the server bump, never independently.
 3. **Existing installs.** Even with (1) fixed, a v18 binary still cannot read v16's on-disk
    catalog format — some data migration is mandatory. **`installer/common.go`'s
    `pgDataVolumeName`/`pgVersionMajor`/`composePostgresMajor`/`postgresMajorMismatch`
    implement a hard-stop guard**, wired into `install.go`/`install_darwin.go`'s upgrade path
-   (Linux/macOS only — the old WSL2/Podman Windows installer this was never extended to has
-   since been fully removed, issue #84; the native Windows launcher bundles fixed-version
-   Postgres binaries rather than pulling an image tag, so this specific guard doesn't apply
-   there the same way): before pulling any new image, it reads the existing volume's
-   `PG_VERSION` file (found via `podman volume ls`, matched by a `_postgres_data` suffix —
-   deliberately NOT reconstructing podman-compose's project-name-derivation algorithm from
-   the install directory's basename, which differs across platforms/compose implementations
-   and this project has never needed to pin down) via a throwaway read-only `alpine` reader
-   that never starts postgres itself, and compares it against the target major version parsed
-   directly out of the embedded `compose-prod.yaml`'s image tag. On a real mismatch, it prints
-   step-by-step manual migration instructions (back up via the still-running old version's
-   Administration système page, remove the old volume, re-run the installer fresh, restore)
-   and exits **before** touching anything — never a blind image swap that would otherwise
-   crash the new postgres container against old-format data with no warning.
-
-**A full dump/restore round-trip was verified end-to-end with real production data** (not
-just an empty schema): restore a real backup into a throwaway v16 container, `pg_dump` with
-the v16 client, `pg_restore` into a throwaway v18 container (with the `PGDATA` fix) using the
-v18 client bundled in `postgres:18-alpine` itself, then ran the real FastAPI backend directly
-against the restored v18 database and confirmed the dashboard/transactions/portfolios
-endpoints all computed correct figures from the real, restored data — not just that row
-counts matched.
+   (Linux/macOS only — the native Windows launcher bundles fixed-version Postgres binaries
+   rather than pulling an image tag, so this guard doesn't apply there the same way): before
+   pulling any new image, it reads the existing volume's `PG_VERSION` file (found via `podman
+   volume ls`, matched by a `_postgres_data` suffix — deliberately not reconstructing
+   podman-compose's own project-name-derivation algorithm from the install directory's basename,
+   which differs across platforms/compose implementations and this project has never needed to
+   pin down) via a throwaway read-only `alpine` reader that never starts postgres itself, and
+   compares it against the target major version parsed directly out of the embedded
+   `compose-prod.yaml`'s image tag. On a real mismatch, it prints step-by-step manual migration
+   instructions (back up via the still-running old version's Administration système page, remove
+   the old volume, re-run the installer fresh, restore) and exits **before** touching anything —
+   never a blind image swap that would otherwise crash the new postgres container against old-format
+   data with no warning.
 
 Treat any future postgres major bump (19+) as its own project repeating this same exercise
 (mount/PGDATA compatibility check, client bump, installer guard re-verification, a real

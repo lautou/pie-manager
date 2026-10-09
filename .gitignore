@@ -21,8 +21,10 @@ token.json
 *.key
 *.pem
 
-# Database dumps
+# Database dumps / exports
 *.dump
+*.sql
+*.csv
 
 # IDE
 .vscode/

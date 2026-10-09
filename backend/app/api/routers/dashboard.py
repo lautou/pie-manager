@@ -34,6 +34,7 @@ class PoolDashboard(BaseModel):
 
 class DashboardOut(BaseModel):
     total_eur: float
+    invested_eur: float
     offensive_eur: float
     defensive_eur: float
     pools: list[PoolDashboard]
@@ -61,7 +62,7 @@ async def get_dashboard(
 
     if not pools:
         return DashboardOut(
-            total_eur=0.0, offensive_eur=0.0, defensive_eur=0.0,
+            total_eur=0.0, invested_eur=0.0, offensive_eur=0.0, defensive_eur=0.0,
             pools=[], liquidity_eur=0.0, last_updated=None,
         )
 
@@ -95,7 +96,8 @@ async def get_dashboard(
         pools, tickers_by_pool, positions, prices, spot_rates, product_instrument_types
     )
 
-    total_eur = sum(pool_values.values()) + liquidity_eur
+    invested_eur = sum(pool_values.values())
+    total_eur = invested_eur + liquidity_eur
     offensive_eur = sum(pool_values[p.id] for p in pools if p.strategy == "Offensive")
     defensive_eur = sum(pool_values[p.id] for p in pools if p.strategy == "Defensive")
 
@@ -103,7 +105,10 @@ async def get_dashboard(
     for pool in pools:
         pool_val = pool_values[pool.id]
 
-        current_pct = (pool_val / total_eur * 100) if total_eur > 0 else 0.0
+        # Allocation % is relative to invested assets only — uninvested cash sits
+        # outside the Offensive/Defensive pool strategy and would otherwise dilute
+        # every pool's share and distort its gap vs. target_pct.
+        current_pct = (pool_val / invested_eur * 100) if invested_eur > 0 else 0.0
         gap_pct = current_pct - (pool.target_pct * 100)
 
         pool_dashboards.append(
@@ -121,6 +126,7 @@ async def get_dashboard(
 
     return DashboardOut(
         total_eur=r2(total_eur),
+        invested_eur=r2(invested_eur),
         offensive_eur=r2(offensive_eur),
         defensive_eur=r2(defensive_eur),
         pools=pool_dashboards,

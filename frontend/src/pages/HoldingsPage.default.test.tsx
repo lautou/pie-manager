@@ -101,6 +101,7 @@ vi.mock('../api/queries', () => ({
 
 const mockDashboard = {
   total_eur: 100000,
+  invested_eur: 99000,
   offensive_eur: 50000,
   defensive_eur: 50000,
   liquidity_eur: 1000,
@@ -242,11 +243,12 @@ describe('HoldingsPage — additional branch coverage', () => {
     expect(screen.getByText('Positions actuelles')).toBeInTheDocument();
   });
 
-  // Lines 351, 366: dashboard.total_eur > 0 — FALSE branch (shows '–' instead of percentage)
-  it('lines 351, 366: total_eur === 0 — shows "–" for offensive and defensive pct', () => {
+  // dashboard.invested_eur > 0 — FALSE branch (shows '–' instead of percentage)
+  it('invested_eur === 0 — shows "–" for offensive and defensive pct', () => {
     const zeroDashboard = {
       ...mockDashboard,
       total_eur: 0,
+      invested_eur: 0,
       offensive_eur: 0,
       defensive_eur: 0,
     };

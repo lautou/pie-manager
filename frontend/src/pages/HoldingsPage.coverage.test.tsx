@@ -97,6 +97,7 @@ vi.mock('../api/queries', () => ({
 
 const mockDashboard = {
   total_eur: 100000,
+  invested_eur: 99000,
   offensive_eur: 50000,
   defensive_eur: 50000,
   liquidity_eur: 1000,

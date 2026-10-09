@@ -93,6 +93,7 @@
     "offensive": "Offensive",
     "defensive": "Defensive",
     "availableCash": "Available cash",
+    "ofInvested": "invested",
     "unrealizedPV": "Unrealized P&L",
     "realizedPV": "Realized P&L",
     "allocationByStrategy": "Allocation by strategy",

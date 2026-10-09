@@ -151,6 +151,7 @@ export interface PoolDashboard {
 
 export interface Dashboard {
   total_eur: number;
+  invested_eur: number;
   offensive_eur: number;
   defensive_eur: number;
   pools: PoolDashboard[];

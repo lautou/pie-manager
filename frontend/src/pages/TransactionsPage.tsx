@@ -39,6 +39,7 @@ import TickerLink from '../components/TickerLink';
 import EtfCompositionModal from '../components/EtfCompositionModal';
 import { formatEUR, formatEUR3, formatQty as fmtQty, formatNativeCurrency } from '../utils/format';
 import { isWeekendNewYork } from '../utils/commission';
+import { parseNumericInput } from '../utils/numericInput';
 import { TRANSACTION_TYPES, LIQUIDITE_TICKER } from '../utils/transactionConstants';
 import { useTransactionForm, defaultExecRow } from '../hooks/useTransactionForm';
 
@@ -252,7 +253,7 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
                 onFocus={(e) => e.target.select()}
                 onChange={(e) => {
                   if (!isEurCurrency)
-                    setField('exchange_rate', parseFloat(e.target.value) || 0);
+                    setField('exchange_rate', parseNumericInput(e.target.value));
                 }}
                 style={{ width: '140px', padding: '6px 8px', border: '1px solid #ccc', borderRadius: 4, fontSize: '1rem' }}
               />
@@ -273,9 +274,9 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
           <input
             id="tx-depot-montant"
             type="number" min={0} step={0.01}
-            value={form.quantity || ''}
+            value={form.quantity}
             onFocus={(e) => e.target.select()}
-            onChange={(e) => setField('quantity', parseFloat(e.target.value) || 0)}
+            onChange={(e) => setField('quantity', parseNumericInput(e.target.value))}
             style={{ width: '160px', padding: '6px 8px', border: '1px solid #ccc', borderRadius: 4, fontSize: '1rem' }}
           />
           {/* Retrait fee — auto-filled */}
@@ -284,9 +285,9 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
               <span style={{ fontSize: '0.85rem', color: '#6A6E73' }}>{t('transactions.withdrawalFee')}</span>
               <input
                 type="number" min={0} step={0.01}
-                value={form.courtage_eur || ''}
+                value={form.courtage_eur}
                 onFocus={(e) => e.target.select()}
-                onChange={(e) => setField('courtage_eur', parseFloat(e.target.value) || 0)}
+                onChange={(e) => setField('courtage_eur', parseNumericInput(e.target.value))}
                 style={{ width: '90px', padding: '4px 8px', border: '1px solid #ccc', borderRadius: 4, fontSize: '0.9rem' }}
               />
               <span style={{ fontSize: '0.8rem', color: '#6A6E73' }}>€</span>
@@ -365,9 +366,9 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
               type="number"
               min={0}
               step={1}
-              value={Math.abs(form.quantity) || ''}
+              value={Math.abs(form.quantity)}
               onFocus={(e) => e.target.select()}
-              onChange={(e) => setField('quantity', Math.abs(parseFloat(e.target.value) || 0))}
+              onChange={(e) => setField('quantity', Math.abs(parseNumericInput(e.target.value)))}
               style={{ width: '160px', padding: '6px 8px', border: '1px solid #ccc', borderRadius: 4, fontSize: '1rem' }}
             />
           </>
@@ -385,9 +386,9 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
               type="number"
               step={1}
               min={0}
-              value={Math.abs(form.quantity) || ''}
+              value={Math.abs(form.quantity)}
               onFocus={(e) => e.target.select()}
-              onChange={(e) => setField('quantity', Math.abs(parseFloat(e.target.value) || 0))}
+              onChange={(e) => setField('quantity', Math.abs(parseNumericInput(e.target.value)))}
               style={{ width: '160px', padding: '6px 8px', border: '1px solid #ccc', borderRadius: 4, fontSize: '1rem' }}
             />
           </>
@@ -417,9 +418,9 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
                     <span style={{ fontSize: '0.75rem', color: '#6A6E73', display: 'block' }}>{t('transactions.fields.exchangeRate')}</span>
                     <input
                       type="number" min={0} step={0.0001}
-                      value={form.exchange_rate || ''}
+                      value={form.exchange_rate}
                       onFocus={(e) => e.target.select()}
-                      onChange={(e) => setField('exchange_rate', parseFloat(e.target.value) || 0)}
+                      onChange={(e) => setField('exchange_rate', parseNumericInput(e.target.value))}
                       style={{ width: '70px', padding: '4px 6px', border: '1px solid #0066CC', borderRadius: 4, fontSize: '0.9rem' }}
                     />
                   </div>
@@ -428,9 +429,9 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
                   <span style={{ fontSize: '0.75rem', color: '#6A6E73', display: 'block' }}>{t('common.quantity')}</span>
                   <input
                     type="number" min={0} step={1}
-                    value={Math.abs(form.quantity) || ''}
+                    value={Math.abs(form.quantity)}
                     onFocus={(e) => e.target.select()}
-                    onChange={(e) => setField('quantity', Math.abs(parseFloat(e.target.value) || 0))}
+                    onChange={(e) => setField('quantity', Math.abs(parseNumericInput(e.target.value)))}
                     style={{ width: '90px', padding: '4px 6px', border: '1px solid #0066CC', borderRadius: 4, fontSize: '0.9rem' }}
                   />
                 </div>
@@ -438,9 +439,9 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
                   <span style={{ fontSize: '0.75rem', color: '#6A6E73', display: 'block' }}>{t('transactions.fields.unitPrice')}</span>
                   <input
                     type="number" min={0} step={0.0001}
-                    value={form.unit_price || ''}
+                    value={form.unit_price}
                     onFocus={(e) => e.target.select()}
-                    onChange={(e) => setField('unit_price', parseFloat(e.target.value) || 0)}
+                    onChange={(e) => setField('unit_price', parseNumericInput(e.target.value))}
                     style={{ width: '100px', padding: '4px 6px', border: '1px solid #0066CC', borderRadius: 4, fontSize: '0.9rem' }}
                   />
                 </div>
@@ -470,11 +471,11 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
                       <span style={{ fontSize: '0.75rem', color: '#6A6E73', display: 'block' }}>{t('transactions.fields.exchangeRate')}</span>
                       <input
                         type="number" min={0} step={0.0001}
-                        value={exec.exchange_rate || ''}
+                        value={exec.exchange_rate}
                         onFocus={(e) => e.target.select()}
                         onChange={(e) => {
                           const updated = [...form.additional_executions];
-                          updated[idx] = { ...updated[idx], exchange_rate: parseFloat(e.target.value) || 0 };
+                          updated[idx] = { ...updated[idx], exchange_rate: parseNumericInput(e.target.value) };
                           setField('additional_executions', updated);
                         }}
                         style={{ width: '70px', padding: '4px 6px', border: '1px solid #ccc', borderRadius: 4, fontSize: '0.9rem' }}
@@ -485,11 +486,11 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
                     <span style={{ fontSize: '0.75rem', color: '#6A6E73', display: 'block' }}>{t('common.quantity')}</span>
                     <input
                       type="number" min={0} step={1}
-                      value={exec.quantity || ''}
+                      value={exec.quantity}
                       onFocus={(e) => e.target.select()}
                       onChange={(e) => {
                         const updated = [...form.additional_executions];
-                        updated[idx] = { ...updated[idx], quantity: parseFloat(e.target.value) || 0 };
+                        updated[idx] = { ...updated[idx], quantity: parseNumericInput(e.target.value) };
                         setField('additional_executions', updated);
                       }}
                       style={{ width: '90px', padding: '4px 6px', border: '1px solid #ccc', borderRadius: 4, fontSize: '0.9rem' }}
@@ -499,11 +500,11 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
                     <span style={{ fontSize: '0.75rem', color: '#6A6E73', display: 'block' }}>{t('transactions.fields.unitPrice')}</span>
                     <input
                       type="number" min={0} step={0.0001}
-                      value={exec.unit_price || ''}
+                      value={exec.unit_price}
                       onFocus={(e) => e.target.select()}
                       onChange={(e) => {
                         const updated = [...form.additional_executions];
-                        updated[idx] = { ...updated[idx], unit_price: parseFloat(e.target.value) || 0 };
+                        updated[idx] = { ...updated[idx], unit_price: parseNumericInput(e.target.value) };
                         setField('additional_executions', updated);
                       }}
                       style={{ width: '100px', padding: '4px 6px', border: '1px solid #ccc', borderRadius: 4, fontSize: '0.9rem' }}
@@ -562,12 +563,12 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
           type="number"
           min={0}
           step={0.0001}
-          value={form.unit_price || ''}
+          value={form.unit_price}
           disabled={isCash}
           onFocus={(e) => e.target.select()}
           onChange={(e) => {
             if (!isCash)
-              setField('unit_price', /* v8 ignore next -- @preserve */ parseFloat(e.target.value) || 0);
+              setField('unit_price', parseNumericInput(e.target.value));
           }}
           style={{ width: '140px', padding: '6px 8px', border: '1px solid #ccc', borderRadius: 4, fontSize: '1rem' }}
         />
@@ -583,10 +584,10 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
                 type="number"
                 min={0}
                 step={0.01}
-                value={form.courtage_eur || ''}
+                value={form.courtage_eur}
                 disabled={operationType === 'grant'}
                 onFocus={(e) => e.target.select()}
-                onChange={(e) => setField('courtage_eur', parseFloat(e.target.value) || 0)}
+                onChange={(e) => setField('courtage_eur', parseNumericInput(e.target.value))}
                 style={{ width: '100px', padding: '6px 8px', border: '1px solid #ccc', borderRadius: 4, fontSize: '1rem', opacity: operationType === 'grant' ? 0.5 : 1 }}
               />
             </FormGroup>
@@ -596,10 +597,10 @@ function TransactionModal({ isOpen, portfolioId, editingTx, linkedFees, onClose 
                 type="number"
                 min={0}
                 step={0.01}
-                value={form.ttf_eur || ''}
+                value={form.ttf_eur}
                 disabled={operationType === 'sell' || operationType === 'grant'}
                 onFocus={(e) => e.target.select()}
-                onChange={(e) => setField('ttf_eur', parseFloat(e.target.value) || 0)}
+                onChange={(e) => setField('ttf_eur', parseNumericInput(e.target.value))}
                 style={{ width: '100px', padding: '6px 8px', border: '1px solid #ccc', borderRadius: 4, fontSize: '1rem', opacity: (operationType === 'sell' || operationType === 'grant') ? 0.5 : 1 }}
               />
             </FormGroup>

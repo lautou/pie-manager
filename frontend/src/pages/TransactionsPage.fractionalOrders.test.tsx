@@ -376,7 +376,7 @@ describe('TransactionsPage — fractional order executions, operation type switc
     fireEvent.change(unitPriceInput, { target: { value: '500' } });
 
     const courtageInput = document.getElementById('tx-courtage') as HTMLInputElement;
-    expect(courtageInput.value).toBe('');
+    expect(courtageInput.value).toBe('0');
   }, 10000);
 
   it('submitting an Attribution grant transaction sends operation="Attribution" with the entered unit price', async () => {

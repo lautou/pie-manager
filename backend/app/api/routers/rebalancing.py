@@ -13,6 +13,7 @@ from app.services.rebalancing_service import (
     compute_injection_total_needed,
     compute_rebalancing,
     find_untargeted_pools_with_value,
+    get_tolerance_ok_pct,
 )
 from app.services.dashboard_service import (
     _get_latest_prices,
@@ -119,10 +120,12 @@ async def compute_rebalancing_endpoint(
         for pool in pools
     ]
 
+    tolerance_ok_pct = await get_tolerance_ok_pct(db)
     results = compute_rebalancing(
         pool_inputs, liquidity_eur, body.external_injection,
         commission_pct=body.commission_pct,
         commission_min=body.commission_min,
+        tolerance_ok_pct=tolerance_ok_pct,
     )
 
     total_current = sum(p.current_value for p in pool_inputs)

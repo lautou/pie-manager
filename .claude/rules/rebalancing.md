@@ -81,6 +81,39 @@ from the *visible* label (a simplification, not an oversight) — but the underw
 (`gapBefore < 0` and non-ok) still wraps the label in `underweightTooltip`, since "capital
 insufficient to act" is real explanatory context a bare severity level can't convey.
 
+## Rebalancing — `tolerance_ok_pct` also gates the computed trade amount, not just the label
+
+Before this fix, `compute_rebalancing` (`rebalancing_service.py`) computed every pool's
+buy/sell amount as a raw `target − current` gap with no awareness of
+`rebalancing.tolerance_ok_pct` — only the frontend's severity label used that setting. A pool
+already within tolerance (showing "✅ En cible") could still get a nonzero "Acheter X €"/"Vendre
+X €" badge for a cosmetic, sub-tolerance amount, since `RebalancingPage.tsx` picks that badge
+whenever `Math.abs(amount) > 0.01`, independent of the severity label. Confirmed live against a
+real portfolio: two pools within 0.15% of target both showed a spurious 1-10€ buy recommendation.
+
+**Fix, applied to all 3 modes**: a pool whose gap is smaller than `tolerance_ok_pct` (expressed
+in euros of the mode's own total — `total_after` for injection seule/hybride, `total_current`
+for rééquilibrage complet) now gets exactly 0 for that mode's amount. Gated on the mode's own
+total, never on "today's gap vs total_current" alone — a single pool targeting 100% is always
+exactly 100% of `total_current` by construction, so that basis would wrongly suppress its
+injection even when genuinely far below its post-injection euro target (see
+`test_tolerance_does_not_suppress_sole_pool_far_below_its_own_target`).
+
+**Fallback for a meaningful apport**: injecting a sum that's itself non-trivial (≥
+`tolerance_ok_pct`% of `total_current`) into an already well-balanced portfolio can still move
+no single pool's gap past tolerance of the new, larger total — per-pool suppression alone would
+then leave the *entire* apport unallocated, silently discarding a deliberate investment. When
+every pool's shortfall would be suppressed AND the apport itself clears that same tolerance
+threshold, `compute_rebalancing` falls back to the raw (tolerance-unaware) shortfall/hybrid
+formulas instead, so the money still lands somewhere. A trivial apport (the day's leftover
+liquidity) stays fully suppressed — see
+`test_tolerance_meaningful_apport_still_distributed_even_if_every_gap_rounds_to_ok` and
+`test_tolerance_all_pools_within_band_recommends_nothing`.
+
+Backend now reads `rebalancing.tolerance_ok_pct` itself (`get_tolerance_ok_pct` in
+`rebalancing_service.py`, same `SystemSetting` key and default as the frontend) rather than only
+the frontend consuming it — keeps both sides of the "is this pool on target" judgment in sync.
+
 ## Rebalancing — banner/card copy conventions
 
 Every "capital" banner (Injection seule and Hybride, sufficient/insufficient/partial/

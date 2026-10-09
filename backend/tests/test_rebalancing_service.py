@@ -15,11 +15,14 @@ Key invariants:
 
 import pytest
 
+from app.models.system_setting import SystemSetting
 from app.services.rebalancing_service import (
+    DEFAULT_TOLERANCE_OK_PCT,
     PoolRebalanceInput,
     compute_injection_total_needed,
     compute_rebalancing,
     find_untargeted_pools_with_value,
+    get_tolerance_ok_pct,
 )
 
 
@@ -415,6 +418,151 @@ def test_fee_four_pool_with_injection():
     assert energie.injection_amount == pytest.approx(0.0, abs=0.02)
     assert energie.injection_fee == 0.0
     assert energie.injection_net == pytest.approx(0.0, abs=0.02)
+
+
+# ---------------------------------------------------------------------------
+# Tolerance-aware trade suppression — a gap smaller than tolerance_ok_pct must
+# not propose a cosmetic trade, in any of the 3 modes.
+# ---------------------------------------------------------------------------
+
+def test_tolerance_suppresses_tiny_injection_and_redistributes_to_real_shortfall():
+    """
+    4 pools, each within 1% of its 25% target except one (Or) that is
+    meaningfully underweight. With tolerance_ok_pct=1, the 3 near-target pools
+    must receive 0 injection and the entire injection must go to Or alone —
+    reproducing the real-world case (Énergie/Or showing "Acheter X€" despite
+    being within the "En cible" tolerance already shown on screen).
+    """
+    pools = _make_pools([
+        ("Asie",    "Offensive", 0.25, 25_000),   # exactly on target
+        ("Energie", "Offensive", 0.25, 24_900),   # 0.1% under — within tolerance
+        ("Yen",     "Defensive", 0.25, 25_100),   # 0.1% over — within tolerance
+        ("Or",      "Defensive", 0.25, 20_000),   # meaningfully underweight
+    ])
+    results = compute_rebalancing(
+        pools, liquidity_available=0.0, external_injection=5_000.0, tolerance_ok_pct=1.0
+    )
+    by_name = {r.name: r for r in results}
+
+    assert by_name["Asie"].injection_amount == 0.0
+    assert by_name["Energie"].injection_amount == 0.0
+    assert by_name["Yen"].injection_amount == 0.0
+    # Or alone absorbs the full injection instead of a quarter of it.
+    assert by_name["Or"].injection_amount == pytest.approx(5_000.0, abs=0.02)
+
+
+def test_tolerance_suppresses_hybrid_and_rebalance_amounts_symmetrically():
+    """
+    Same near-target pool, both overweight-within-tolerance (Yen) and
+    underweight-within-tolerance (Energie) must get 0 in hybride AND in
+    rééquilibrage complet (rebalance_amount), not just in injection seule.
+    """
+    pools = _make_pools([
+        ("Energie", "Offensive", 0.25, 24_900),   # within tolerance (under)
+        ("Yen",     "Defensive", 0.25, 25_100),   # within tolerance (over)
+        ("Or",      "Defensive", 0.25, 20_000),   # meaningfully underweight
+        ("Asie",    "Offensive", 0.25, 30_000),   # meaningfully overweight
+    ])
+    results = compute_rebalancing(
+        pools, liquidity_available=0.0, external_injection=0.0, tolerance_ok_pct=1.0
+    )
+    by_name = {r.name: r for r in results}
+
+    assert by_name["Energie"].hybrid_amount == 0.0
+    assert by_name["Energie"].rebalance_amount == 0.0
+    assert by_name["Yen"].hybrid_amount == 0.0
+    assert by_name["Yen"].rebalance_amount == 0.0
+    # The genuinely off-target pools are unaffected.
+    assert by_name["Or"].hybrid_amount > 0
+    assert by_name["Asie"].hybrid_amount < 0
+
+
+def test_tolerance_all_pools_within_band_recommends_nothing():
+    """
+    A well-balanced portfolio where every pool is already within tolerance:
+    no mode should propose any trade — the leftover cash simply stays
+    unallocated rather than being split into cosmetic micro-trades. Shape
+    (not the figures) matches what live testing against real portfolio data
+    surfaced: a small residual liquidity sweep on an already-balanced
+    4-pool portfolio.
+    """
+    pools = _make_pools([
+        ("Asie",    "Offensive", 0.25, 25_000),
+        ("Yen",     "Defensive", 0.25, 25_150),
+        ("Energie", "Offensive", 0.25, 24_950),
+        ("Or",      "Defensive", 0.25, 24_900),
+    ])
+    results = compute_rebalancing(
+        pools, liquidity_available=10.0, external_injection=0.0, tolerance_ok_pct=1.0
+    )
+    assert all(r.injection_amount == 0.0 for r in results)
+    assert all(r.hybrid_amount == 0.0 for r in results)
+    assert all(r.rebalance_amount == 0.0 for r in results)
+
+
+def test_tolerance_meaningful_apport_still_distributed_even_if_every_gap_rounds_to_ok():
+    """
+    Found via live testing against real production data: injecting a sum
+    comparable to a few percent of an already well-balanced portfolio moves
+    no single pool's gap past 1% of the new total, so per-pool suppression
+    alone would leave the ENTIRE apport unallocated — a real, deliberate
+    injection silently vanishing into "do nothing" recommendations. The
+    fallback must kick in here (apport is clearly meaningful relative to the
+    portfolio), unlike the tiny-leftover-cash case above.
+    """
+    pools = _make_pools([
+        ("Asie",    "Offensive", 0.25, 25_000),
+        ("Yen",     "Defensive", 0.25, 25_150),
+        ("Energie", "Offensive", 0.25, 24_950),
+        ("Or",      "Defensive", 0.25, 24_900),
+    ])
+    results = compute_rebalancing(
+        pools, liquidity_available=10.0, external_injection=2_000.0, tolerance_ok_pct=1.0
+    )
+    total_injection = sum(r.injection_amount for r in results)
+    total_hybrid = sum(r.hybrid_amount for r in results)
+    assert total_injection == pytest.approx(2_010.0, abs=0.02)
+    assert total_hybrid == pytest.approx(2_010.0, abs=0.02)
+
+
+def test_tolerance_does_not_suppress_sole_pool_far_below_its_own_target():
+    """
+    Regression guard for the edge case that rules out gating tolerance on
+    "today's gap vs total_current": a single pool targeting 100% of the
+    portfolio is *always* exactly 100% of total_current by construction
+    (there is nowhere else for the money to currently be), so gating on that
+    would wrongly read as "already on target" even when it's genuinely far
+    below its target vs total_after. Gating on total_after/total_current
+    (the mode's own basis) instead must still recommend the full injection.
+    """
+    pools = _make_pools([("A", "Offensive", 1.0, 100.0)])
+    results = compute_rebalancing(
+        pools, liquidity_available=0.0, external_injection=1_000.0, tolerance_ok_pct=1.0
+    )
+    assert results[0].injection_amount == pytest.approx(1_000.0, abs=0.02)
+
+
+# ---------------------------------------------------------------------------
+# get_tolerance_ok_pct
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_tolerance_ok_pct_default_when_unset(db_session):
+    assert await get_tolerance_ok_pct(db_session) == DEFAULT_TOLERANCE_OK_PCT
+
+
+@pytest.mark.asyncio
+async def test_get_tolerance_ok_pct_reads_valid_override(db_session):
+    db_session.add(SystemSetting(key="rebalancing.tolerance_ok_pct", value="2.5"))
+    await db_session.flush()
+    assert await get_tolerance_ok_pct(db_session) == 2.5
+
+
+@pytest.mark.asyncio
+async def test_get_tolerance_ok_pct_falls_back_on_unparsable_value(db_session):
+    db_session.add(SystemSetting(key="rebalancing.tolerance_ok_pct", value="not-a-number"))
+    await db_session.flush()
+    assert await get_tolerance_ok_pct(db_session) == DEFAULT_TOLERANCE_OK_PCT
 
 
 # ---------------------------------------------------------------------------

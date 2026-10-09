@@ -11,7 +11,26 @@ Logic:
 """
 
 from dataclasses import dataclass
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.price_service import r2
+from app.models.system_setting import SystemSetting
+
+TOLERANCE_OK_SETTING_KEY = "rebalancing.tolerance_ok_pct"
+DEFAULT_TOLERANCE_OK_PCT = 1.0
+
+
+async def get_tolerance_ok_pct(db: AsyncSession) -> float:
+    """Reads rebalancing.tolerance_ok_pct from SystemSetting, falling back to
+    DEFAULT_TOLERANCE_OK_PCT when unset or unparsable — matches the frontend's own
+    default (RebalancingPage.tsx's DEFAULT_TOLERANCE_OK_PCT) for a fresh install with
+    no SystemSetting row yet."""
+    setting = await db.get(SystemSetting, TOLERANCE_OK_SETTING_KEY)
+    if setting is None:
+        return DEFAULT_TOLERANCE_OK_PCT
+    try:
+        return float(setting.value)
+    except (TypeError, ValueError):
+        return DEFAULT_TOLERANCE_OK_PCT
 
 
 @dataclass
@@ -116,6 +135,7 @@ def compute_rebalancing(
     external_injection: float,   # additional cash to inject (user input)
     commission_pct: float = 0.0,  # broker commission percentage (e.g. 0.1 = 0.1%)
     commission_min: float = 0.0,  # minimum fee per trade in EUR
+    tolerance_ok_pct: float = 0.0,  # gap (in % points of the relevant total) below which no trade is proposed
 ) -> list[PoolRebalanceResult]:
     total_apport = liquidity_available + external_injection
     total_current = sum(p.current_value for p in pools)
@@ -124,19 +144,47 @@ def compute_rebalancing(
     if total_after <= 0:
         return []
 
+    # A gap smaller than tolerance_ok_pct (expressed as a euro amount of the total each
+    # mode targets) is already "on target" — the mode shouldn't propose a cosmetic trade
+    # for it. Gated on the mode's OWN total (total_after for injection/hybride, total_current
+    # for the no-injection full rebalance), never on the gap vs today's state alone: a lone
+    # pool with target_pct=1.0 is always exactly 100% of total_current by construction, so
+    # gating on that would wrongly suppress its injection even when it's genuinely far below
+    # its post-injection euro target.
+    tolerance_after = tolerance_ok_pct / 100 * total_after
+    tolerance_current = tolerance_ok_pct / 100 * total_current
+
     # --- Per-pool shortfall vs total_after (injection seule) ---
     # Shortfall = how far below its target each pool will be after injection.
     # Proportional allocation: each pool receives (shortfall / total_shortfall) * total_apport.
-    shortfalls: dict[int, float] = {
+    raw_shortfalls: dict[int, float] = {
         p.id: max(0.0, total_after * p.target_pct - p.current_value)
         for p in pools
     }
+    filtered_shortfalls: dict[int, float] = {
+        p.id: 0.0 if abs(total_after * p.target_pct - p.current_value) < tolerance_after
+        else raw_shortfalls[p.id]
+        for p in pools
+    }
+
+    # A genuinely meaningful apport (liquidity + injection) must still land somewhere even
+    # if every individual pool's own post-injection gap rounds to "within tolerance" — e.g.
+    # a sizeable injection into an already well-balanced, large portfolio moves no single
+    # pool by more than 1% of the new total, yet the user still wants that money invested,
+    # not silently left unallocated. Only fall back to the raw (tolerance-unaware)
+    # shortfalls in that specific case; a trivial apport (the day's leftover cash) stays
+    # fully suppressed.
+    use_raw_apport_distribution = (
+        sum(filtered_shortfalls.values()) <= 0 and abs(total_apport) >= tolerance_current
+    )
+    shortfalls = raw_shortfalls if use_raw_apport_distribution else filtered_shortfalls
     total_shortfall = sum(shortfalls.values())
 
     # --- Rebalance without injection (full rebalancing within current holdings) ---
     # Buy/sell within current total to reach target allocation.
     rebalance_amounts: dict[int, float] = {
-        p.id: total_current * p.target_pct - p.current_value  # negative = sell
+        p.id: 0.0 if abs(total_current * p.target_pct - p.current_value) < tolerance_current
+        else total_current * p.target_pct - p.current_value  # negative = sell
         for p in pools
     }
 
@@ -151,7 +199,14 @@ def compute_rebalancing(
 
         # Hybride: each pool reaches its target in the post-injection portfolio.
         # Overweight pools sell less as injection grows (target_after > target_before).
-        hybrid = total_after * p.target_pct - p.current_value
+        # Same use_raw_apport_distribution fallback as the shortfall above — hybrid amounts
+        # always sum to total_apport by construction (targets sum to 1), which per-pool
+        # tolerance suppression would otherwise silently break for a meaningful apport.
+        raw_hybrid = total_after * p.target_pct - p.current_value
+        hybrid = (
+            raw_hybrid if use_raw_apport_distribution or abs(raw_hybrid) >= tolerance_after
+            else 0.0
+        )
 
         current_pct = (p.current_value / total_current * 100) if total_current > 0 else 0.0
         target_value_after = total_after * p.target_pct

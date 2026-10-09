@@ -150,6 +150,23 @@ the `validateDOMNesting` warning that used to accompany it (fixed at the source:
 with no wrapping element — now real `<thead>`/`<tbody>` elements), there's no single shared root
 cause here to fix.
 
+**A second, distinct variant — `SettingField.test.tsx`'s "save flow > saves the edited value and
+shows a transient confirmation"**: `The current testing environment is not configured to support
+act(...)` (not the "update... was not wrapped in act" wording above — a different React warning,
+about `IS_REACT_ACT_ENVIRONMENT` rather than a missed `act()` boundary). Root cause: that
+`describe` block's `beforeEach` uses `vi.useFakeTimers({ shouldAdvanceTime: true })`, which lets
+Vitest's fake clock auto-tick in the background against real wall-clock time (needed so
+`userEvent.setup({ advanceTimers: vi.advanceTimersByTime })`'s own internal waits resolve during
+`user.clear`/`user.type`/`user.click`) — `SettingField.tsx`'s own `setTimeout(() =>
+setSaved(false), 2000)` can fire via that background auto-tick at a moment outside any `act()`
+scope, racing the test's own explicit `await act(async () => { vi.advanceTimersByTime(2000); })`.
+Confirmed pre-existing (reproduced identically on the commit before a round of dependency bumps,
+in an isolated worktree) — not a regression from any specific package version. **Do not "fix" this
+by dropping `shouldAdvanceTime: true`**: tried live, it fixes the warning but breaks both tests in
+the block with a 5000ms timeout (`userEvent`'s internal waits stop resolving without it). Left as
+documented noise for the same reason as the general case above — the real fix would need rewriting
+how this test drives fake timers around `userEvent`, not a one-line tweak.
+
 ### i18n initialization in tests
 `patternfly-mocks.tsx` imports `../../src/i18n` to ensure `initReactI18next` runs in each
 test file's module context — required for `useTranslation()` to work without a provider.

@@ -546,6 +546,20 @@ const handleFresh = useCallback((name: string) => {
 
 **Rule:** any callback passed as a prop to a child component that uses it in a `useEffect` **must** be wrapped in `useCallback`. Otherwise each parent re-render creates a new callback → child's useEffect re-fires → setState → re-render → infinite loop.
 
+## React Query cache invalidation — scope to every affected screen, not just the triggering page
+
+**Witnessed bug:** assigning/removing a ticker from a pool (`AdminPage.tsx`'s `PoolManager`)
+only refetched that page's own pool-products list. Holdings/Dashboard/Rebalancing
+(`useHoldings`/`useDashboard`) kept serving React Query's cached pre-assignment result (5-minute
+global `staleTime`, `main.tsx`), showing the ticker as "Non assigné" and Offensive+Defensive
+pool totals not summing to the expected share of the portfolio — even though the backend always
+computed pool membership live and correctly.
+
+**Rule:** any mutation that changes pool/holdings composition must invalidate `['holdings']` and
+`['dashboard']` query keys, not just refetch its own page-local list. When a screen looks stale
+despite a confirmed-correct backend response, suspect a missing `invalidateQueries` call before
+suspecting the data.
+
 ## UX design decisions — do not revisit
 
 ### Exchange rate (exchange_rate) — mandatory manual entry

@@ -100,14 +100,23 @@ function PoolManager({ portfolioId }: { portfolioId: string }) {
   const handleAddTicker = async (ticker: string) => {
     /* v8 ignore next -- @preserve */
     if (!selectedPool) return;
-    try { await addTickerToPool(selectedPool.id, ticker); refetchProducts(); setTickerSearch(''); setActionError(null); }
+    try {
+      await addTickerToPool(selectedPool.id, ticker);
+      refetchProducts();
+      qc.invalidateQueries({ queryKey: ['holdings'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      setTickerSearch(''); setActionError(null);
+    }
     catch (e) { setActionError(extractApiErrorMessage(e, t('error.saveFailed'))); }
   };
 
   const handleRemoveTicker = async (ticker: string) => {
     /* v8 ignore next -- @preserve */
     if (!selectedPool) return;
-    await removeTickerFromPool(selectedPool.id, ticker); refetchProducts();
+    await removeTickerFromPool(selectedPool.id, ticker);
+    refetchProducts();
+    qc.invalidateQueries({ queryKey: ['holdings'] });
+    qc.invalidateQueries({ queryKey: ['dashboard'] });
   };
 
   const assignedTickers = new Set(poolProducts.map(pp => pp.ticker));

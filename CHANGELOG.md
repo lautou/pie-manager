@@ -2,6 +2,20 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.8.2] - 2026-10-09
+
+### Changed
+
+- **rebalancing:** Extract macro context into its own nav section
+
+### Fixed
+
+- **admin:** Invalidate holdings/dashboard cache after pool ticker assignment
+- **dashboard:** Exclude uninvested cash from allocation percentages
+- **transactions:** Allow typing 0 into numeric transaction fields
+- **forms:** Allow typing 0 into TaxPage and RebalancingPage numeric fields
+- **date-picker:** Stop infinite focus loop + stabilize calendar popover height
+
 ## [1.8.1] - 2026-09-07
 
 ### Changed

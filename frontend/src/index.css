@@ -96,3 +96,17 @@ input[type='number'] {
 .pf-v6-c-nav.dark-sidebar-nav .pf-v6-c-nav__link.pf-m-current:visited {
   color: #ffffff;
 }
+
+/* Date picker calendar: PatternFly's CalendarMonth renders 4, 5, or 6 week rows
+   depending on the month (it stops generating weeks as soon as one rolls into
+   the next month) — navigating between months then visibly resizes/repositions
+   the whole popover. Pin a fixed min-height sized for 6 rows so the popover's
+   footprint never changes regardless of how many weeks the current month
+   needs — measured live (4/5/6-row heights were 207.8px/248.8px/289.7px,
+   a consistent ~41px per row), since PatternFly's own date-cell custom
+   properties (`--pf-v6-c-calendar-month__date--Height: 4ch` etc.) don't
+   actually add up to the real rendered row height. Re-measure if a future
+   PatternFly upgrade changes CalendarMonth's row sizing. */
+.pf-v6-c-calendar-month__calendar {
+  min-height: 290px;
+}

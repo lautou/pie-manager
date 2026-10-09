@@ -152,7 +152,7 @@ describe('FrDatePicker', () => {
     expect(() => fireEvent.focus(wrapperDiv)).not.toThrow();
   });
 
-  it('onFocus handler calls input.select() when a child input exists', () => {
+  it('onFocus handler calls input.select() when the input itself receives focus', () => {
     // Temporarily override capturedProps to make DatePicker return a real input
     // We use a different approach: render manually, inject an <input> child, then spy
     const { container } = render(<FrDatePicker value="2025-01-15" onChange={() => {}} />);
@@ -165,13 +165,40 @@ describe('FrDatePicker', () => {
     fakeInput.select = selectSpy;
     wrapperDiv.appendChild(fakeInput);
 
-    // Firing focus on the wrapper div invokes the onFocus handler
-    fireEvent.focus(wrapperDiv);
+    // Firing focus directly on the input (its event bubbles to the wrapper,
+    // exactly like a real click/tab into the field) invokes the onFocus handler
+    fireEvent.focus(fakeInput);
 
-    // select() should have been called on the injected input
+    // select() should have been called on the input that was actually focused
     expect(selectSpy).toHaveBeenCalled();
 
     // Cleanup
     wrapperDiv.removeChild(fakeInput);
+  });
+
+  it('onFocus handler does NOT call input.select() when a different descendant receives focus', () => {
+    // Regression test: React bubbles focus synthetically through the *component*
+    // tree, not the real DOM — PatternFly's calendar popover is portaled to
+    // document.body via appendTo, but is still a React child of DatePicker, so
+    // any focus move inside it (e.g. PatternFly refocusing a day cell after
+    // month navigation) used to bubble here and force-reselect the text input,
+    // stealing focus back from the popover and crashing it in an infinite loop.
+    const { container } = render(<FrDatePicker value="2025-01-15" onChange={() => {}} />);
+    const wrapperDiv = container.firstElementChild as HTMLElement;
+
+    const fakeInput = document.createElement('input');
+    const selectSpy = vi.fn();
+    fakeInput.select = selectSpy;
+    wrapperDiv.appendChild(fakeInput);
+
+    const otherDescendant = document.createElement('button');
+    wrapperDiv.appendChild(otherDescendant);
+
+    fireEvent.focus(otherDescendant);
+
+    expect(selectSpy).not.toHaveBeenCalled();
+
+    wrapperDiv.removeChild(fakeInput);
+    wrapperDiv.removeChild(otherDescendant);
   });
 });

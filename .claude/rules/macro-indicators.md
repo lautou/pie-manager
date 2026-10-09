@@ -30,7 +30,7 @@ paths:
   - "frontend/src/components/QuadrantCard.tsx"
   - "frontend/src/utils/portfolioAllocation.ts"
   - "frontend/src/utils/quadrantContent.ts"
-  - "frontend/src/pages/RebalancingPage.tsx"
+  - "frontend/src/pages/MacroContextPage.tsx"
 ---
 
 ## Shared CRUD abstractions — use these for the next code-keyed universe, don't hand-copy again
@@ -203,10 +203,19 @@ has nothing to do with macro regimes, only with reading `instrument_type` off re
 **`QuadrantCard.tsx` takes `portfolioId` as an explicit, caller-supplied prop — never inferred
 from the URL.** The global `/indicators` page (`GrowthInflationSection.tsx`) renders it with no
 `portfolioId` at all: a pure macro read (favorable/unfavorable per asset class + confidence
-score), no "Ton allocation" column. `RebalancingPage.tsx` renders a second instance with its own
-route `portfolioId` (that page is already scoped to one portfolio, its name always shown in the
-page header), which turns on the "Ton allocation" column comparing the quadrant's favorability
-against that portfolio's real, current allocation.
+score), no "Ton allocation" column. The portfolio-scoped nav section "Contexte macro"
+(`MacroContextPage.tsx`, route `/portfolio/:portfolioId/macro-context`, between Fiscalité and
+Configuration portefeuille in the sidebar) renders a second instance with its own route
+`portfolioId`, which turns on the "Ton allocation" column comparing the quadrant's favorability
+against that portfolio's real, current allocation. No outer titled card wraps the region
+selector on this page (removed deliberately, see git history for `MacroContextPage.tsx`) — the
+page's own `<Title>` already names the section, and the region `FormSelect` carries a visible
+label (`macroContext.regionLabel`, "Zone économique") via `FormGroup` instead of the
+aria-label-only selector `GrowthInflationSection.tsx` still uses.
+
+Originally embedded directly in `RebalancingPage.tsx` under a "Contexte macro-économique" card;
+extracted into its own page/nav item since it has nothing to do with the rebalancing simulator
+below it and was purely informational there (never fed into any rebalancing calculation).
 
 This replaced an earlier design where `QuadrantCard` silently inferred a portfolio from a
 `?from=<portfolioId>` URL param (`git log --grep 'quadrant allocation comparison'`) — confusing

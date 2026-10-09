@@ -10,6 +10,7 @@
     "manualPrices": "Prix manuels",
     "capitalGains": "Plus-values",
     "taxation": "Fiscalité",
+    "macroContext": "Contexte macro",
     "portfolioConfig": "Configuration portefeuille",
     "globalConfig": "Configuration générale",
     "systemAdmin": "Administration système",
@@ -381,6 +382,10 @@
     "savedSuccess": "Prix enregistré avec succès.",
     "priceLabel": "Prix ({{currency}})"
   },
+  "macroContext": {
+    "title": "Contexte macro",
+    "regionLabel": "Zone économique"
+  },
   "taxation": {
     "title": "Fiscalité",
     "year": "Année fiscale",
@@ -435,7 +440,6 @@
     "targetAllocation": "Allocation cible",
     "delta": "Écart",
     "action": "Action",
-    "macroContextTitle": "Contexte macro-économique",
     "actions": {
       "buy": "Acheter",
       "sell": "Vendre",

@@ -914,8 +914,8 @@ describe('TaxPage — row badges, inline editing edge cases, and save error hand
     expect(screen.getByTestId('current-year-badge')).toBeInTheDocument();
   });
 
-  it('shows an empty amount input when editing an entry with a zero amount', () => {
-    // entry.amount_eur=0 → editValue=Math.abs(0)=0 (falsy) → value={0 || ''}=''
+  it('shows "0" (not blank) in the amount input when editing a zero-amount entry', () => {
+    // entry.amount_eur=0 → editValue=Math.abs(0)=0, displayed as-is (value={editValue})
     const zeroEntry = { id: 11, portfolio_id: 1, tax_year: 2022, amount_eur: 0 };
     mockUseFiscalCarryForwards.mockReturnValue({ data: [zeroEntry], isLoading: false, isError: false });
     mockUseUpdateCarryForward.mockReturnValue({ mutate: vi.fn(), isPending: false });
@@ -925,11 +925,9 @@ describe('TaxPage — row badges, inline editing edge cases, and save error hand
     const amountDisplay = screen.getByTestId('amount-display');
     fireEvent.click(amountDisplay);
 
-    // editValue=0 → value={0 || ''}='' → input shows empty string
     const editInput = document.querySelector('input[type="number"]') as HTMLInputElement | null;
     if (editInput) {
-      // The input value should be empty ('' from 0||'')
-      expect(editInput.value).toBe('');
+      expect(editInput.value).toBe('0');
     }
   });
 
@@ -944,9 +942,8 @@ describe('TaxPage — row badges, inline editing edge cases, and save error hand
 
     const editInput = document.querySelector('input[type="number"]') as HTMLInputElement | null;
     if (editInput) {
-      // Type empty/non-numeric → parseFloat('') = NaN → || 0 → editValue = Math.abs(0) = 0
+      // Clearing the field → parseNumericInput('') falls back to 0 → editValue = Math.abs(0) = 0
       fireEvent.change(editInput, { target: { value: '' } });
-      // Math.abs(parseFloat('') || 0) = Math.abs(NaN || 0) = Math.abs(0) = 0
       expect(screen.getByText('Fiscalité')).toBeInTheDocument();
     }
   });

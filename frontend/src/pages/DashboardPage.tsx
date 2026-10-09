@@ -293,18 +293,20 @@ export default function DashboardPage() {
               poolColor: pc,
               /* v8 ignore next -- @preserve */
               pct: pool.current_value_eur > 0
-                ? (pos.value_eur / dashboard.total_eur) * 100
+                ? (pos.value_eur / dashboard.invested_eur) * 100
                 : 0,
             }))
           : [{ name: pool.name, value: pool.current_value_eur, pool: pool.name, poolColor: pc, pct: pool.current_pct }],
       };
     });
 
-  const offPct = dashboard.total_eur > 0
-    ? formatPct1(dashboard.offensive_eur / dashboard.total_eur * 100)
+  // Offensive/Defensive share is relative to invested assets only — uninvested
+  // cash (liquidity_eur) sits outside both strategy sleeves, see CLAUDE.md.
+  const offPct = dashboard.invested_eur > 0
+    ? formatPct1(dashboard.offensive_eur / dashboard.invested_eur * 100)
     : '0,0 %';
-  const defPct = dashboard.total_eur > 0
-    ? formatPct1(dashboard.defensive_eur / dashboard.total_eur * 100)
+  const defPct = dashboard.invested_eur > 0
+    ? formatPct1(dashboard.defensive_eur / dashboard.invested_eur * 100)
     : '0,0 %';
 
   return (
@@ -626,9 +628,9 @@ export default function DashboardPage() {
                 <div>
                   <div style={{ color: '#6A6E73', fontSize: '0.78rem', marginBottom: 2 }}>{t('positions.valueEur')}</div>
                   <strong>{formatEUR(pos.value_eur)}</strong>
-                  {dashboard && dashboard.total_eur > 0 && (
+                  {dashboard && dashboard.invested_eur > 0 && (
                     <span style={{ marginLeft: 6, color: '#6A6E73', fontSize: '0.82rem' }}>
-                      ({formatPct1(pos.value_eur / dashboard.total_eur * 100)} portefeuille)
+                      ({formatPct1(pos.value_eur / dashboard.invested_eur * 100)} {t('dashboard.ofInvested')})
                     </span>
                   )}
                 </div>

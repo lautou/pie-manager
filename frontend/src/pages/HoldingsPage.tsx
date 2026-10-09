@@ -286,8 +286,8 @@ export default function HoldingsPage() {
                 {formatEUR(dashboard.offensive_eur)}
               </span>
               <div style={{ fontSize: '0.9rem', color: 'var(--pf-t--global--text--color--subtle)' }}>
-                {dashboard.total_eur > 0
-                  ? formatPct1(dashboard.offensive_eur / dashboard.total_eur * 100)
+                {dashboard.invested_eur > 0
+                  ? formatPct1(dashboard.offensive_eur / dashboard.invested_eur * 100)
                   : '–'}
               </div>
             </CardBody>
@@ -301,8 +301,8 @@ export default function HoldingsPage() {
                 {formatEUR(dashboard.defensive_eur)}
               </span>
               <div style={{ fontSize: '0.9rem', color: 'var(--pf-t--global--text--color--subtle)' }}>
-                {dashboard.total_eur > 0
-                  ? formatPct1(dashboard.defensive_eur / dashboard.total_eur * 100)
+                {dashboard.invested_eur > 0
+                  ? formatPct1(dashboard.defensive_eur / dashboard.invested_eur * 100)
                   : '–'}
               </div>
             </CardBody>

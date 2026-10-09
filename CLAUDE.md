@@ -418,6 +418,16 @@ position accurate after paying broker commissions in that currency.
 
 The same logic is mirrored in `brokers.py` for broker-level position display.
 
+## Pool/strategy allocation % excludes uninvested cash — critical business rule
+
+`GET /api/dashboard/` (`dashboard.py`) returns both `total_eur` (pools + liquidity) and
+`invested_eur` (pools only). Every allocation percentage — per-pool `current_pct`/`gap_pct`, the
+Offensive/Defensive split, and any individual position's "% of X" — must be computed against
+`invested_eur`, never `total_eur`. Uninvested cash sits outside the Offensive/Defensive pool
+strategy entirely; dividing by `total_eur` dilutes every pool's share and makes its gap vs.
+`target_pct` look wrong by the portfolio's cash ratio. `total_eur` is only ever used as a raw EUR
+amount (the "Total portfolio" headline figure) — never as a percentage denominator.
+
 ## Transaction running-balance display — `balance_eur` vs `balance_currency` (do not confuse)
 
 Each `Transaction` row carries two running-balance columns computed at create/update time:

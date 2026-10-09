@@ -86,7 +86,7 @@ describe('types/index', () => {
     expect(poolDashboard.gap_pct).toBe(0);
 
     const dashboard: Dashboard = {
-      total_eur: 10000, offensive_eur: 5000, defensive_eur: 5000,
+      total_eur: 10000, invested_eur: 10000, offensive_eur: 5000, defensive_eur: 5000,
       pools: [], liquidity_eur: 0, last_updated: null,
     };
     expect(dashboard.total_eur).toBe(10000);

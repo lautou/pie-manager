@@ -84,6 +84,7 @@ import GlobalConfigPage from './pages/GlobalConfigPage';
 import CapitalGainsPage from './pages/CapitalGainsPage';
 import RebalancingPage from './pages/RebalancingPage';
 import TaxPage from './pages/TaxPage';
+import MacroContextPage from './pages/MacroContextPage';
 import IndicatorsPage from './pages/IndicatorsPage';
 
 function AppNav({ portfolioId }: { portfolioId: string }) {
@@ -125,6 +126,9 @@ function AppNav({ portfolioId }: { portfolioId: string }) {
         </NavItem>
         <NavItem isActive={isPath(`/portfolio/${portfolioId}/fiscalite`)}>
           <RouterNavLink to={`/portfolio/${portfolioId}/fiscalite`}>{t('nav.taxation')}</RouterNavLink>
+        </NavItem>
+        <NavItem isActive={isPath(`/portfolio/${portfolioId}/macro-context`)}>
+          <RouterNavLink to={`/portfolio/${portfolioId}/macro-context`}>{t('nav.macroContext')}</RouterNavLink>
         </NavItem>
         <NavItem isActive={isPath(`/portfolio/${portfolioId}/admin`)}>
           <RouterNavLink to={`/portfolio/${portfolioId}/admin`}>{t('nav.portfolioConfig')}</RouterNavLink>
@@ -376,6 +380,7 @@ function PortfolioRoutes() {
         <Route path="synthese" element={<AccountsSummaryPage />} />
         <Route path="pv" element={<CapitalGainsPage />} />
         <Route path="fiscalite" element={<TaxPage />} />
+        <Route path="macro-context" element={<MacroContextPage />} />
         <Route path="admin" element={<AdminPage />} />
         <Route path="*" element={<Navigate to={`/portfolio/${portfolioId}/dashboard`} replace />} />
       </Routes>

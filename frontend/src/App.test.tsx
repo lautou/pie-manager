@@ -57,9 +57,14 @@ vi.mock('@patternfly/react-core', () => ({
     if (variant === 'link') capturedGererPortefeuilles = onClick;
     return <button onClick={onClick}>{children}</button>;
   },
-  // Capture FormSelect onChange to test portfolio switching
-  FormSelect: ({ children, onChange, value }: any) => {
-    capturedFormSelectOnChange = onChange;
+  // Capture FormSelect onChange to test portfolio switching. Every portfolio-scoped
+  // page renders at once under this test's flattened Routes/Route mocks (no path
+  // matching), so more than one FormSelect can mount simultaneously (e.g.
+  // MacroContextPage's region selector) — only capture the portfolio switcher
+  // itself, identified by its own dedicated className, not whichever FormSelect
+  // happens to mount last.
+  FormSelect: ({ children, onChange, value, className }: any) => {
+    if (className === 'portfolio-switcher-select') capturedFormSelectOnChange = onChange;
     return <select value={value} onChange={(e: any) => onChange?.(e, e.target.value)}>{children}</select>;
   },
   FormSelectOption: ({ value, label }: any) => <option value={value}>{label}</option>,

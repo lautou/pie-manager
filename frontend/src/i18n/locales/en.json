@@ -10,6 +10,7 @@
     "manualPrices": "Manual Prices",
     "capitalGains": "Capital Gains",
     "taxation": "Taxation",
+    "macroContext": "Macro context",
     "portfolioConfig": "Portfolio Configuration",
     "globalConfig": "General Configuration",
     "systemAdmin": "System Administration",
@@ -370,6 +371,10 @@
     "savedSuccess": "Price saved successfully.",
     "priceLabel": "Price ({{currency}})"
   },
+  "macroContext": {
+    "title": "Macro context",
+    "regionLabel": "Economic zone"
+  },
   "taxation": {
     "title": "Taxation",
     "year": "Tax year",
@@ -424,7 +429,6 @@
     "targetAllocation": "Target allocation",
     "delta": "Delta",
     "action": "Action",
-    "macroContextTitle": "Macro-economic context",
     "actions": {
       "buy": "Buy",
       "sell": "Sell",

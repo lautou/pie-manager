@@ -2,6 +2,12 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.8.3] - 2026-10-09
+
+### Fixed
+
+- **rebalancing:** Make tolerance_ok_pct gate the computed trade amount, not just the label
+
 ## [1.8.2] - 2026-10-09
 
 ### Changed

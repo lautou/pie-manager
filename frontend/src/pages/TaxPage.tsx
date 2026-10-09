@@ -34,6 +34,7 @@ import {
 } from '../api/queries';
 import { formatEUR, formatDate } from '../utils/format';
 import { computeLossHarvestingPlan } from '../utils/lossHarvesting';
+import { parseNumericInput } from '../utils/numericInput';
 import type { FiscalCarryForward, Broker } from '../types';
 import type { FiscalPvDetail, FiscalLossCandidate } from '../api/queries';
 
@@ -167,11 +168,10 @@ function ExistingRow({
             type="number"
             min={0}
             step={0.01}
-            value={/* v8 ignore next -- @preserve */editValue || ''}
+            value={editValue}
             autoFocus
             onFocus={(e) => e.target.select()}
-            /* v8 ignore next -- @preserve */
-            onChange={(e) => setEditValue(Math.abs(parseFloat(e.target.value) || 0))}
+            onChange={(e) => setEditValue(Math.abs(parseNumericInput(e.target.value)))}
             onBlur={saveEdit}
             onKeyDown={handleKeyDown}
             style={{ width: '120px', padding: '4px 6px', border: '1px solid #0066CC', borderRadius: 4, fontSize: '0.9rem' }}
@@ -277,8 +277,8 @@ function NewRow({
           type="number"
           min={0}
           step={0.01}
-          value={amountAbs || ''}
-          onChange={(e) => setAmountAbs(Math.abs(Number(e.target.value)))}
+          value={amountAbs}
+          onChange={(e) => setAmountAbs(Math.abs(parseNumericInput(e.target.value)))}
           onFocus={(e) => e.target.select()}
           style={{ width: '120px' }}
           aria-label={t('taxation.amountLabel')}

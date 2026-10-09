@@ -10,6 +10,7 @@ import {
 } from '@patternfly/react-core';
 import { useState, useRef, useEffect } from 'react';
 import { formatEUR } from '../utils/format';
+import { parseNumericInput } from '../utils/numericInput';
 import { useDashboard, useSystemSetting } from '../api/queries';
 import apiClient from '../api/client';
 import SyncBadge from '../components/SyncBadge';
@@ -141,9 +142,9 @@ export default function RebalancingPage() {
                   type="number"
                   min={0}
                   step={500}
-                  value={injection || ''}
+                  value={injection}
                   onFocus={(e) => e.target.select()}
-                  onChange={(e) => handleInjectionChange(Number(e.target.value) || 0)}
+                  onChange={(e) => handleInjectionChange(parseNumericInput(e.target.value))}
                   style={{ width: 120, padding: '6px 8px', border: '1px solid #ccc', borderRadius: 4, fontSize: '0.9rem' }}
                 />
                 <span style={{ fontSize: '0.8rem', color: '#6A6E73' }}>+ {formatEUR(dashboard?.liquidity_eur ?? 0)} liquidités</span>
@@ -185,10 +186,10 @@ export default function RebalancingPage() {
                   type="number"
                   min={0}
                   step={0.01}
-                  value={commissionPct || ''}
+                  value={commissionPct}
                   placeholder="ex: 0.1"
                   onChange={(e) => {
-                    const v = parseFloat(e.target.value) || 0;
+                    const v = parseNumericInput(e.target.value);
                     handleCommissionChange(v, commissionMin);
                   }}
                   style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', fontSize: '0.9rem', width: 110 }}
@@ -203,10 +204,10 @@ export default function RebalancingPage() {
                   type="number"
                   min={0}
                   step={0.01}
-                  value={commissionMin || ''}
+                  value={commissionMin}
                   placeholder="ex: 1.00"
                   onChange={(e) => {
-                    const v = parseFloat(e.target.value) || 0;
+                    const v = parseNumericInput(e.target.value);
                     handleCommissionChange(commissionPct, v);
                   }}
                   style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', fontSize: '0.9rem', width: 110 }}

@@ -31,6 +31,7 @@ services:
     build:
       context: ./backend
       dockerfile: Containerfile
+    image: pie-manager-dev-backend:latest
     env_file: .env
     environment:
       POSTGRES_HOST: postgres
@@ -44,9 +45,7 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   pgq-worker:
-    build:
-      context: ./backend
-      dockerfile: Containerfile
+    image: pie-manager-dev-backend:latest
     env_file: .env
     environment:
       POSTGRES_HOST: postgres

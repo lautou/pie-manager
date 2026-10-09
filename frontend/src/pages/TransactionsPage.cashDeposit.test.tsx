@@ -119,7 +119,14 @@ describe('TransactionsPage — isCashDirectDeposit section (Dépôt/Retrait on a
     balance_currency: null, balance_eur: null,
   };
 
-  const eurAccount = { id: 1, portfolio_id: 1, name: 'Degiro', currency: 'EUR', portfolio_ids: [1] };
+  // withdrawal_fee_eur/withdrawal_first_free are non-nullable on the real Broker model
+  // (backend default 0/false) — always included here so a withdrawal-fee auto-fill never
+  // sees `undefined` and writes it into courtage_eur (that's a contract the real API
+  // guarantees, not something TransactionsPage.tsx needs to defend against itself).
+  const eurAccount = {
+    id: 1, portfolio_id: 1, name: 'Degiro', currency: 'EUR', portfolio_ids: [1],
+    withdrawal_fee_eur: 0, withdrawal_first_free: false,
+  };
   const cashProduct = { ticker: 'LIQUIDITE.EURO', name: 'Liquidités EUR', category: 'Actif', instrument_type: 'Cash', currency: 'EUR' };
 
   beforeEach(() => {

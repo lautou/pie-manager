@@ -9,7 +9,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import '@testing-library/jest-dom';
+import '@testing-library/jest-dom/vitest';
 import { pfCoreStubs, pfTableStubs } from '../../tests/utils/patternfly-mocks';
 
 vi.mock('react-router-dom', () => ({

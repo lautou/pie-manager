@@ -20,10 +20,20 @@ export default function FrDatePicker({
   return (
     // Wrapper intercepts focus to select all text in the inner <input>,
     // so the user can immediately type a new date without manual selection.
+    // React bubbles focus synthetically through the *component* tree, not the
+    // real DOM — the calendar popover is a child of DatePicker even though
+    // `appendTo={document.body}` portals it elsewhere in the DOM. Every focus
+    // move inside that popover (e.g. PatternFly refocusing a day cell after
+    // clicking the month-navigation arrows) therefore bubbles up here too.
+    // Forcibly calling .select() on the text input then steals focus back
+    // from the popover, PatternFly tries to restore it, and the two fight in
+    // an infinite focus loop (RangeError: Maximum call stack size exceeded)
+    // that crashes the picker closed. Only react when the input itself —
+    // not some other focused descendant — is the actual event target.
     <div
       onFocus={(e) => {
         const input = (e.currentTarget as HTMLElement).querySelector('input');
-        if (input) input.select();
+        if (input && e.target === input) input.select();
       }}
     >
       <DatePicker

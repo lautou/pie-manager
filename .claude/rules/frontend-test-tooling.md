@@ -173,3 +173,19 @@ test file's module context — required for `useTranslation()` to work without a
 Components that don't import patternfly-mocks must import `../../src/i18n` (or `./i18n`)
 directly (e.g. `SyncBadge.test.tsx`, `RefreshBanner.test.tsx`).
 
+### `@testing-library/jest-dom` must be imported per test file, not centralized in `setupFiles`
+On Vitest 5 (migrated from 4.x), `import '@testing-library/jest-dom'` (the bare, Jest-oriented
+entry point) no longer augments Vitest's `expect` at all — every `jest-dom` matcher call
+(`toBeInTheDocument`, `toHaveValue`, etc.) fails with `Error: Invalid Chai property: ...`. Fix:
+import the dedicated `import '@testing-library/jest-dom/vitest'` subpath instead, which targets
+Vitest's actual `Assertion` type/runtime shape.
+
+**This import must stay in every individual test file — moving it into the shared
+`tests/utils/vitest-setup.ts` (`setupFiles`) does not work**, confirmed by directly reproducing
+both ways: a per-file `import '@testing-library/jest-dom/vitest'` registers the matcher
+correctly; the exact same import placed once in `vitest-setup.ts` does not reach the `expect`
+instance each test file actually uses. Root cause not fully pinned down (Vitest 5's per-file
+test isolation likely gives each file module its own `expect`, so a `setupFiles`-level
+`expect.extend()` call doesn't propagate) — but the fix that empirically works is per-file
+imports, same as before the migration, just with the corrected subpath.
+

@@ -670,10 +670,17 @@ Never commit:
 
 `.gitignore` blocks `.env`/`.env.local`/`*.dump`/`*.sql`/`*.csv` from ever being tracked, but that
 only covers files matching those patterns — it does nothing for a real name or figure typed
-directly into a test fixture, comment, or doc. That gap is exactly how commit `9e46ca7` leaked
-the real portfolio-owner names into `backend/tests/test_transactions.py` and this file itself;
-`73ea2dc` removed them from the tree, but the original commit stays fully visible in this
-public repo's history (no rewrite was done — treat that as still-live exposure, not resolved).
+directly into a test fixture, comment, or doc. That gap is exactly how a past commit leaked the
+real portfolio-owner names into `backend/tests/test_transactions.py` and this file itself; a
+later commit removed them from the tree, but the original commit stayed fully visible in this
+public repo's history for months (a plain removal commit never erases history — only a real
+rewrite does). **Fixed 2026-10-09** via `git filter-repo --replace-text` across every branch and
+all 42 affected release tags (commit `9e46ca7` → `d86791b`, `73ea2dc` → `9dac8c9` — every hash
+from that point forward changed; see `git log --grep 'scrub remaining real'` for the rewritten
+commit). The pre-rewrite objects may still be served directly by SHA from GitHub's own servers
+for a window after a force-push (no branch/tag reaches them anymore, but GitHub's background
+garbage collection isn't instant) — not something a repo owner can force on demand, only request
+via GitHub Support.
 
 **`scripts/git-hooks/pre-commit`** is a local safety net for this specific, already-confirmed
 gap: it blocks a commit whose staged diff contains a known real portfolio-owner name (checked

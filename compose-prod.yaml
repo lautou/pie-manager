@@ -61,7 +61,7 @@ services:
 
   haproxy:
     restart: unless-stopped
-    image: docker.io/library/haproxy:alpine@sha256:ac78ddd4921742360f533c28d24ecd0a003ea8065e2bfd5697c565ce1427f4b0
+    image: docker.io/library/haproxy:alpine@sha256:7af8255207ee9964ccb4eec8ce4b7a40b777769665e3ae83897fb01b24d8a43a
     ports:
       - "${APP_PORT:-14943}:8080"
     volumes:

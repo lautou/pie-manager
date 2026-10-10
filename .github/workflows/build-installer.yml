@@ -155,14 +155,14 @@ jobs:
           [ "$output" = "${VERSION}" ] || (echo "ERROR: expected ${VERSION}, got $output" && exit 1)
 
       - name: Upload binaries for real-hardware install testing
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: pie-manager-darwin-arm64
           path: installer/pie-manager-darwin-arm64-*
           retention-days: 1
 
       - name: Upload Linux binary for real-install testing
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: pie-manager-linux-amd64
           path: installer/pie-manager-linux-amd64-*
@@ -592,7 +592,7 @@ jobs:
         # Kept even on failure (unlike the release-attach step below) so a failed run's
         # package can still be downloaded and inspected/sideloaded manually for debugging.
         if: always()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: pie-manager-native-launcher-msix
           path: |

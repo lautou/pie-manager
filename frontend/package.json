@@ -23,7 +23,7 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-i18next": "^17.0.11",
-    "react-router-dom": "^7.18.2",
+    "react-router-dom": "^7.18.4",
     "recharts": "^3.10.1",
     "victory-area": "^37.3.6",
     "victory-axis": "^37.3.6",

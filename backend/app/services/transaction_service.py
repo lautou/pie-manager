@@ -21,7 +21,7 @@ from datetime import date as Date
 from fastapi import HTTPException
 from pgqueuer import Queries
 from pydantic import BaseModel, model_validator
-from sqlalchemy import select, func as sa_func, cast, Numeric, update as sa_update
+from sqlalchemy import select, func as sa_func, cast, Numeric, update as sa_update, case as sa_case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Transaction, Broker, PortfolioAccount
@@ -185,7 +185,13 @@ async def _propagate_balance_eur_delta(
     defaulted — update_transaction_core's date-move path relies on `False` there (it flushes
     and manages session state itself around these calls), while create_transaction_core's
     single call leaves it unset; preserved exactly as each call site had it before this was
-    extracted, not normalized to one choice."""
+    extracted, not normalized to one choice.
+
+    Also keeps balance_currency in sync for EUR-currency rows (it must always equal
+    balance_eur there) — a non-EUR row's balance_currency tracks its own native-currency
+    chain instead (via total_amount, not this EUR delta) and is left untouched here; that
+    chain is propagated separately by each caller's own non-EUR retroactive-update block."""
+    new_balance_eur = sa_func.round(cast(Transaction.balance_eur + delta, Numeric), 2)
     stmt = (
         sa_update(Transaction)
         .where(
@@ -195,7 +201,13 @@ async def _propagate_balance_eur_delta(
             (Transaction.date > after_date) |
             ((Transaction.date == after_date) & (Transaction.id > after_id)),
         )
-        .values(balance_eur=sa_func.round(cast(Transaction.balance_eur + delta, Numeric), 2))
+        .values(
+            balance_eur=new_balance_eur,
+            balance_currency=sa_case(
+                (Transaction.currency == "EUR", new_balance_eur),
+                else_=Transaction.balance_currency,
+            ),
+        )
     )
     if synchronize_session is not None:
         stmt = stmt.execution_options(synchronize_session=synchronize_session)
@@ -258,6 +270,12 @@ async def _create_fee_transaction(
         fee_tx.balance_eur = _no_neg_zero(r2(prev_fee_balance - fee_amount))
         fee_tx.balance_currency = fee_tx.balance_eur
     await _update_account_cash_balance(db, tx.account_id, tx.portfolio_id, -fee_amount, fee_tx.type, fee_tx.ticker, fee_tx.operation)
+    # Retroactive update: a fee entered for a backfilled past transaction must shift the
+    # running balance_eur/balance_currency of every already-existing later transaction too —
+    # same as the main transaction's own propagation a few lines up in the caller. Without
+    # this, a courtage fee recorded for a date earlier than transactions already in the
+    # ledger silently never reaches their displayed "Contrevaleur solde EUR".
+    await _propagate_balance_eur_delta(db, fee_tx.account_id, fee_tx.portfolio_id, fee_tx.date, fee_tx.id, -fee_amount)
     return fee_tx
 
 

@@ -127,6 +127,67 @@ async def test_create_actif_with_courtage_and_ttf(client, db_session):
 
 
 @pytest.mark.asyncio
+async def test_create_actif_with_courtage_propagates_fee_to_subsequent_transaction(client, db_session):
+    """
+    Backfilling a past Achat+courtage must shift the running balance_eur/balance_currency
+    of an already-existing LATER transaction by the courtage amount too, not just by the
+    Achat's own amount — regression test for the auto-linked Frais never propagating its
+    delta (see transaction_service.py's _create_fee_transaction).
+
+    T_existing (today): balance_eur = balance_currency = 100€
+    Backfill yesterday: Achat -50€ + courtage -1€ → T_existing must become 100-50-1 = 49€,
+    on BOTH balance_eur and balance_currency (EUR account).
+    """
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+    from app.models.transaction import Transaction as TxModel
+    from datetime import timedelta
+
+    portfolio = Portfolio(name=f"CourtagePropagate-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name="Degiro", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    db_session.add(PortfolioAccount(portfolio_id=uid, broker_id=account.id))
+    await db_session.flush()
+    aid = account.id
+
+    db_session.add(Product(ticker="TTE.CTST", name="TTE Test", category="Actif", currency="EUR"))
+    db_session.add(Product(ticker="FRAIS.COURTAGE.EUR", name="Frais courtage", category="Frais", currency="EUR", fee_type="Courtage"))
+    await db_session.flush()
+
+    existing = TxModel(
+        portfolio_id=uid, account_id=aid, date=date.today(), type="Actif",
+        ticker="TTE.CTST", currency="EUR", exchange_rate=1.0,
+        quantity=1.0, unit_price=100.0, unit_price_eur=100.0,
+        total_amount=100.0, total_amount_eur=100.0,
+        balance_eur=100.0, balance_currency=100.0,
+    )
+    db_session.add(existing)
+    await db_session.flush()
+    existing_id = existing.id
+
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": yesterday, "type": "Actif", "ticker": "TTE.CTST",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -1.0, "unit_price": 50.0,
+        "courtage_eur": 1.0,
+    })
+    assert r.status_code == 201, r.text
+
+    refreshed = await db_session.get(TxModel, existing_id)
+    await db_session.refresh(refreshed)
+    assert refreshed.balance_eur == pytest.approx(49.0, abs=0.01)
+    assert refreshed.balance_currency == pytest.approx(49.0, abs=0.01)
+
+
+@pytest.mark.asyncio
 async def test_delete_actif_also_deletes_linked_frais(client, db_session):
     """DELETE of parent Actif removes linked Frais and fully restores cash balance."""
     from app.models.portfolio import Portfolio

@@ -510,6 +510,20 @@ computing across mixed EUR+JPY activity, which isn't a simple sum (see above); d
 without re-deriving the exact formula first. Separate from `portfolio_accounts.cash_balance_eur`,
 which IBKR's has always been accurate and Revolut's is now individually corrected.
 
+**Known bug, fixed (`git log --grep 'propagate fee delta'`): an auto-linked courtage/TTF `Frais`
+row never shifted the running balance of transactions already recorded at a later date.**
+`_create_fee_transaction` computed the fee's own `balance_eur` but never called
+`_propagate_balance_eur_delta` — the fee's cash impact reached `cash_balance_eur` correctly, but
+never the "Contrevaleur solde EUR" display of a transaction entered earlier and dated later (the
+normal case when backfilling a past trade after more recent ones already exist). A second,
+related gap in the same function: `_propagate_balance_eur_delta` only updated `balance_eur`,
+never `balance_currency` — for an EUR row the two must always be equal, so a propagated shift
+silently made them diverge (visible as the two columns disagreeing on one row). Both fixed in
+`transaction_service.py`. Affected real data on `auCoffre.com`/Portfolio 1 (7 transactions,
+2026-09-01 through 2026-10-12) was corrected with a one-time, verified `UPDATE` per row, cross-
+checked against the account's own `cash_balance_eur` — same discipline as the corrections above,
+safe here because this account is 100% EUR with no forex activity.
+
 **`update_transaction`'s `date_changed` branch also applies the cash-balance delta**
 (`cash_delta = tx.total_amount_eur - old_total_eur` → `_update_account_cash_balance` when
 non-zero), matching the non-date-move branch — editing date and amount together previously

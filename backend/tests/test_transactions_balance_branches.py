@@ -266,6 +266,116 @@ async def test_create_non_eur_retroactive_balance_currency_propagation(client, d
 
 
 @pytest.mark.asyncio
+async def test_create_eur_retroactive_balance_currency_propagation(client, db_session):
+    """
+    Inserting an EUR transaction in the past must shift balance_currency (not just
+    balance_eur) for all subsequent EUR transactions on the same account — for an EUR
+    row, balance_currency must always mirror balance_eur, including after a retroactive
+    propagation. Regression test for _propagate_balance_eur_delta only touching
+    balance_eur, leaving balance_currency stale (visible as the two columns silently
+    diverging on a row dated after a backfilled transaction).
+    """
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+    from app.models.transaction import Transaction as TxModel
+
+    portfolio = Portfolio(name=f"EurRetro-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name="Revolut4", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    db_session.add(PortfolioAccount(portfolio_id=uid, broker_id=account.id))
+    await db_session.flush()
+    aid = account.id
+
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
+    await db_session.flush()
+
+    later_tx = TxModel(
+        portfolio_id=uid, account_id=aid, date=date.today(), type="Actif",
+        ticker="LIQUIDITE.EURO", currency="EUR", exchange_rate=1.0,
+        quantity=100.0, unit_price=1.0, unit_price_eur=1.0,
+        total_amount=100.0, total_amount_eur=100.0,
+        balance_eur=100.0, balance_currency=100.0,
+    )
+    db_session.add(later_tx)
+    await db_session.flush()
+    later_id = later_tx.id
+
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _LAST_WEEK, "type": "Actif", "ticker": "LIQUIDITE.EURO",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -30.0, "unit_price": 1.0,
+    })
+    assert r.status_code == 201
+
+    refreshed = await db_session.get(TxModel, later_id)
+    await db_session.refresh(refreshed)
+    assert refreshed.balance_eur == pytest.approx(70.0, abs=0.01)
+    assert refreshed.balance_currency == pytest.approx(70.0, abs=0.01)
+
+
+@pytest.mark.asyncio
+async def test_eur_propagation_does_not_shift_non_eur_sibling_balance_currency(client, db_session):
+    """
+    The balance_currency sync added to _propagate_balance_eur_delta is scoped to EUR
+    rows only: a non-EUR transaction's balance_currency tracks its own native-currency
+    chain and must stay untouched by an EUR-amount propagation, even though its
+    balance_eur (the cross-currency view) does shift. Regression guard for the CASE's
+    else_ branch.
+    """
+    from app.models.portfolio import Portfolio
+    from app.models.broker import Broker
+    from app.models.product import Product
+    from app.models.transaction import Transaction as TxModel
+
+    portfolio = Portfolio(name=f"EurVsJpy-{id(db_session)}")
+    db_session.add(portfolio)
+    await db_session.flush()
+    uid = portfolio.id
+
+    account = Broker(name="Revolut5", currency="EUR")
+    db_session.add(account)
+    await db_session.flush()
+    db_session.add(PortfolioAccount(portfolio_id=uid, broker_id=account.id))
+    await db_session.flush()
+    aid = account.id
+
+    db_session.add(Product(ticker="LIQUIDITE.EURO", name="Cash EUR", category="Actif", instrument_type="Cash", currency="EUR"))
+    db_session.add(Product(ticker="JPYEUR=X", name="JPY/EUR", category="Actif", instrument_type="Cash", currency="JPY"))
+    await db_session.flush()
+
+    later_tx = TxModel(
+        portfolio_id=uid, account_id=aid, date=date.today(), type="Actif",
+        ticker="JPYEUR=X", currency="JPY", exchange_rate=0.006,
+        quantity=10000.0, unit_price=1.0, unit_price_eur=0.006,
+        total_amount=10000.0, total_amount_eur=60.0,
+        balance_eur=100.0, balance_currency=5000.0,
+    )
+    db_session.add(later_tx)
+    await db_session.flush()
+    later_id = later_tx.id
+
+    r = await client.post("/api/transactions/", json={
+        "portfolio_id": uid, "account_id": aid,
+        "date": _LAST_WEEK, "type": "Actif", "ticker": "LIQUIDITE.EURO",
+        "currency": "EUR", "exchange_rate": 1.0,
+        "quantity": -30.0, "unit_price": 1.0,
+    })
+    assert r.status_code == 201
+
+    refreshed = await db_session.get(TxModel, later_id)
+    await db_session.refresh(refreshed)
+    assert refreshed.balance_eur == pytest.approx(70.0, abs=0.01)
+    assert refreshed.balance_currency == pytest.approx(5000.0, abs=0.01)
+
+
+@pytest.mark.asyncio
 async def test_create_non_eur_with_explicit_balance_currency_skips_elif(client, db_session):
     """
     Branch 215->237: non-EUR transaction where balance_currency is explicitly provided

@@ -2,6 +2,12 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.8.4] - 2026-10-13
+
+### Fixed
+
+- **transactions:** Propagate fee delta to subsequent transactions
+
 ## [1.8.3] - 2026-10-09
 
 ### Fixed

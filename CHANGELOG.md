@@ -2,6 +2,12 @@
 
 All notable changes to PIE Manager are documented in this file.
 
+## [1.8.5] - 2026-10-13
+
+### Fixed
+
+- **admin:** Stage psql in the backend image
+
 ## [1.8.4] - 2026-10-13
 
 ### Fixed

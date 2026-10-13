@@ -25,14 +25,19 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir --root-user-action=ignore --prefix=/install -r requirements.txt
 
-# Stage pg_dump/pg_restore plus their full transitive shared-library closure
+# Stage pg_dump/pg_restore/psql plus their full transitive shared-library closure
 # (via ldd, not a hand-maintained .so list) into a clean tree mirroring their
 # real absolute paths, so the runtime stage below can reconstruct them with a
 # single COPY --from without needing apt/curl/gnupg/the pgdg repo at all.
+# psql is required by _reset_public_schema (app/api/routers/admin.py) — without it,
+# POST /api/admin/restore fails at runtime with "No such file or directory: 'psql'"
+# even though pg_dump/pg_restore are both present (confirmed live, issue #163).
 RUN mkdir -p /pg-runtime/usr/lib/postgresql/18/bin \
     && cp /usr/lib/postgresql/18/bin/pg_dump /usr/lib/postgresql/18/bin/pg_restore \
+       /usr/lib/postgresql/18/bin/psql \
        /pg-runtime/usr/lib/postgresql/18/bin/ \
-    && for f in /usr/lib/postgresql/18/bin/pg_dump /usr/lib/postgresql/18/bin/pg_restore; do ldd "$f"; done \
+    && for f in /usr/lib/postgresql/18/bin/pg_dump /usr/lib/postgresql/18/bin/pg_restore \
+                /usr/lib/postgresql/18/bin/psql; do ldd "$f"; done \
        | awk '{print $3 ? $3 : $1}' \
        | grep '^/' \
        | sort -u \
@@ -79,8 +84,8 @@ ENV PYTHONPATH=/app
 
 # Build-time self-test, run as the actual runtime user: fail the build
 # itself, immediately, if the pip/setuptools removal above broke a real
-# import of this app's own code, or if the pg_dump/pg_restore
+# import of this app's own code, or if the pg_dump/pg_restore/psql
 # shared-library closure copied above is incomplete or not executable by
 # a non-root user — instead of only discovering either at container start.
 RUN python -c "from app.main import app; import app.tasks.pgq_app" \
-    && pg_dump --version && pg_restore --version
+    && pg_dump --version && pg_restore --version && psql --version

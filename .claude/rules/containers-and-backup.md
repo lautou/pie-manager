@@ -166,6 +166,21 @@ objects of any kind — a fix at the restore endpoint itself, not a one-off manu
   mismatched client version produces dumps the server's own pg_restore can't read, and an
   OLDER client outright refuses to dump a NEWER server at all
 
+**Known bug, fixed (issue #163, `git log --grep 'stage psql'`): `POST /api/admin/restore`
+was broken on every container-based install (Linux/macOS Podman) from v1.8.1 through v1.8.4.**
+`_reset_public_schema` calls `psql`, but the multi-stage build's runtime-stage `COPY` only ever
+staged `pg_dump`/`pg_restore` plus their shared-library closure — `postgresql-client-18` is
+installed in the `builder` stage (so the build-time self-test's `pg_dump --version`/
+`pg_restore --version` passed, and the package install comment above reads as if `psql` were
+covered), but `psql` itself was never copied into `/pg-runtime/`, so the runtime image never had
+it. A restore attempt failed with `{"detail":"Could not launch psql: [Errno 2] No such file or
+directory: 'psql'"}` — silent in normal use (nobody restores a backup often), but was already
+visible in CI the whole time as `publish-images.yml`'s `smoke-test-backend` job failing on
+"Restore backup" every release since v1.8.1 (masked as a known, `continue-on-error: true`
+informational failure instead of being root-caused). Fixed by adding `psql` to the same
+`ldd`-based staging step as `pg_dump`/`pg_restore`, and to the build-time self-test
+(`psql --version`).
+
 ## PostgreSQL major-version bumps (16→18 done in #58 — template for any future bump)
 
 **A PostgreSQL major-version bump is never a simple image-tag swap — never merge one via
